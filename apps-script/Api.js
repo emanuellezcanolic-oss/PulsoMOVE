@@ -240,6 +240,81 @@ function usuariosResumen(req, deps) {
     .map(u => ({ dni: u.dni, nombre: u.nombre, sede: u.sede, turno: u.turno, roles: u.roles }));
 }
 
+// ---------- Administración ----------
+
+const ROLES = ['recepcion', 'coordinador', 'admin'];
+
+function exigirAdmin(req, deps) {
+  const s = sesion(req, deps);
+  if (!tieneRol(s.usuario, 'admin')) falla('prohibido');
+  return s;
+}
+
+function nuevoPin(u, deps) {
+  const pin = generarPin(deps.aleatorio);
+  u.sal = deps.aleatorio(16);
+  u.pin_hash = hashPin(pin, u.sal, deps.props.PIMIENTA, deps.sha256);
+  u.debe_cambiar_pin = 'true';
+  u.intentos = '0';
+  u.bloqueado_hasta = '';
+  return pin;
+}
+
+function usuariosCargar(req, deps) {
+  exigirClave(req, deps);
+  if (!Array.isArray(req.usuarios)) falla('datos_invalidos');
+  const lista = req.usuarios.map(x => ({
+    dni: normalizarDni(x && x.dni), nombre: texto(x && x.nombre), sede: texto(x && x.sede),
+    turno: texto(x && x.turno), roles: rolesDe({ roles: x && x.roles }),
+  }));
+  const valido = x => x.dni && x.nombre && SEDES.indexOf(x.sede) >= 0 && TURNOS.indexOf(x.turno) >= 0 &&
+    x.roles.length && x.roles.every(r => ROLES.indexOf(r) >= 0);
+  if (!lista.every(valido)) falla('datos_invalidos');
+  const usuarios = deps.repo.leer('usuarios');
+  const pines = [];
+  for (const x of lista) {
+    let u = usuarios.find(v => v.dni === x.dni);
+    if (!u) {
+      u = { dni: x.dni, activo: 'true' };
+      usuarios.push(u);
+      pines.push({ dni: x.dni, pin: nuevoPin(u, deps) });
+    }
+    u.nombre = x.nombre;
+    u.sede = x.sede;
+    u.turno = x.turno;
+    u.roles = x.roles.join(',');
+  }
+  deps.repo.escribir('usuarios', usuarios);
+  return { pines: pines };
+}
+
+function pinRegenerar(req, deps) {
+  const { usuarios } = exigirAdmin(req, deps);
+  const u = usuarios.find(v => v.dni === normalizarDni(req.dni));
+  if (!u) falla('no_existe');
+  const pin = nuevoPin(u, deps);
+  deps.repo.escribir('usuarios', usuarios);
+  return { pin: pin };
+}
+
+function usuariosListar(req, deps) {
+  const { usuarios } = exigirAdmin(req, deps);
+  const ahora = deps.ahora();
+  return usuarios.map(u => ({
+    dni: u.dni, nombre: u.nombre, sede: u.sede, turno: u.turno, roles: rolesDe(u),
+    activo: esVerdad(u.activo), bloqueado: Number(u.bloqueado_hasta) > ahora,
+  }));
+}
+
+function usuarioActivo(req, deps) {
+  const { usuarios } = exigirAdmin(req, deps);
+  const u = usuarios.find(v => v.dni === normalizarDni(req.dni));
+  if (!u) falla('no_existe');
+  u.activo = String(req.activo === true || esVerdad(req.activo));
+  deps.repo.escribir('usuarios', usuarios);
+  return {};
+}
+
 const ACCIONES = {
   login: login,
   cambiar_pin: cambiarPin,
@@ -252,6 +327,10 @@ const ACCIONES = {
   reasignar: reasignar,
   garantia_crear: garantiaCrear,
   garantia_decidir: garantiaDecidir,
+  usuarios_cargar: usuariosCargar,
+  pin_regenerar: pinRegenerar,
+  usuarios_listar: usuariosListar,
+  usuario_activo: usuarioActivo,
 };
 
 function manejar(req, deps) {

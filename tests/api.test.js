@@ -262,3 +262,59 @@ test('garantía: crear y decidir', () => {
   assert.deepEqual([d.repo.hojas.garantia[0].estado, d.repo.hojas.garantia[0].decide_dni], ['aprobada', '25111222']);
   assert.equal(pedir(d, { accion: 'sede', token: c }).data.garantias.length, 0);
 });
+
+// ---------- Task 7: administración ----------
+
+const nuevos = () => [
+  { dni: '31.000.001', nombre: 'Uno Prueba', sede: 'bariloche', turno: 'manana', roles: 'recepcion,coordinador' },
+  { dni: '31000002', nombre: 'Dos Prueba', sede: 'bariloche', turno: 'tarde', roles: 'recepcion' },
+];
+
+test('usuarios_cargar crea con PIN y pide cambio; recargar no toca PIN', () => {
+  const d = entorno([]);
+  const r = pedir(d, { accion: 'usuarios_cargar', clave: 'clave-prueba', usuarios: nuevos() });
+  assert.ok(r.ok, JSON.stringify(r));
+  assert.deepEqual(r.data.pines.map(p => p.dni), ['31000001', '31000002']);
+  for (const p of r.data.pines) assert.ok(L.pinValido(p.pin));
+  const pin1 = r.data.pines[0].pin;
+  const login = pedir(d, { accion: 'login', dni: '31000001', pin: pin1 });
+  assert.equal(login.data.debe_cambiar_pin, true);
+  const cambio = [{ ...nuevos()[0], nombre: 'Uno Cambiado' }];
+  const r2 = pedir(d, { accion: 'usuarios_cargar', clave: 'clave-prueba', usuarios: cambio });
+  assert.deepEqual(r2.data.pines, []);
+  assert.equal(d.repo.hojas.usuarios.length, 2);
+  assert.equal(d.repo.hojas.usuarios[0].nombre, 'Uno Cambiado');
+  assert.ok(pedir(d, { accion: 'login', dni: '31000001', pin: pin1 }).ok);
+});
+
+test('usuarios_cargar valida', () => {
+  const d = entorno([]);
+  const mal = u => assert.equal(pedir(d, { accion: 'usuarios_cargar', clave: 'clave-prueba', usuarios: [{ ...nuevos()[1], ...u }] }).error, 'datos_invalidos', JSON.stringify(u));
+  mal({ sede: 'esquel' });
+  mal({ turno: 'noche' });
+  mal({ roles: 'jefe' });
+  mal({ dni: '' });
+  mal({ nombre: '' });
+  assert.equal(pedir(d, { accion: 'usuarios_cargar', clave: 'mala', usuarios: nuevos() }).error, 'clave');
+  assert.equal(d.repo.hojas.usuarios.length, 0);
+});
+
+test('pin_regenerar, usuarios_listar y usuario_activo solo admin', () => {
+  const d = equipo({ tareas: [] });
+  const rec = entrar(d);
+  const adm = entrar(d, '20000001', '0907');
+  for (const accion of ['pin_regenerar', 'usuarios_listar', 'usuario_activo'])
+    assert.equal(pedir(d, { accion, token: rec, dni: '28999888', activo: false }).error, 'prohibido', accion);
+  const lista = pedir(d, { accion: 'usuarios_listar', token: adm }).data;
+  assert.equal(lista.length, 6);
+  for (const u of lista) assert.ok(!('pin_hash' in u) && !('sal' in u));
+  for (let i = 0; i < 5; i++) pedir(d, { accion: 'login', dni: '28999888', pin: '1357' });
+  assert.equal(pedir(d, { accion: 'usuarios_listar', token: adm }).data.find(u => u.dni === '28999888').bloqueado, true);
+  const r = pedir(d, { accion: 'pin_regenerar', token: adm, dni: '28999888' });
+  assert.ok(L.pinValido(r.data.pin));
+  const l = pedir(d, { accion: 'login', dni: '28999888', pin: r.data.pin });
+  assert.ok(l.ok && l.data.debe_cambiar_pin);
+  assert.equal(pedir(d, { accion: 'pin_regenerar', token: adm, dni: '1' }).error, 'no_existe');
+  assert.ok(pedir(d, { accion: 'usuario_activo', token: adm, dni: '28999888', activo: false }).ok);
+  assert.equal(pedir(d, { accion: 'login', dni: '28999888', pin: r.data.pin }).error, 'credenciales');
+});
