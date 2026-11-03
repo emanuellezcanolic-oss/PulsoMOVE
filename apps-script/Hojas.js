@@ -92,6 +92,7 @@ function doPost(e) {
   } catch (err) {
     return respuesta({ ok: false, error: 'datos_invalidos' });
   }
+  if (req && req.accion === 'iniciar_clave') return respuesta(iniciarClave(req));
   const lock = LockService.getScriptLock();
   if (!lock.tryLock(10000)) return respuesta({ ok: false, error: 'ocupado' });
   try {
@@ -103,13 +104,26 @@ function doPost(e) {
   }
 }
 
+// La primera visita del dueño (que autoriza el script) crea la planilla.
 function doGet() {
+  if (!propiedades().getProperty('ID_PLANILLA')) instalar();
   return respuesta({ ok: true, data: 'PulsoMOVE' });
+}
+
+// La clave de carga la genera la computadora que carga las tareas y se fija una sola vez: después no se puede cambiar
+// por la web (para cambiarla, borrar CLAVE_CARGA en Propiedades del script).
+function iniciarClave(req) {
+  const p = propiedades();
+  if (p.getProperty('CLAVE_CARGA') || typeof req.clave !== 'string' || !/^[0-9a-f]{64}$/.test(req.clave)) {
+    return { ok: false, error: 'clave' };
+  }
+  p.setProperty('CLAVE_CARGA', req.clave);
+  return { ok: true, data: {} };
 }
 
 // ---------- Para correr a mano desde el editor ----------
 
-// Una sola vez: crea la planilla privada y las claves. Se puede volver a correr sin romper nada.
+// Crea la planilla privada y los secretos internos. Se puede volver a correr sin romper nada.
 function instalar() {
   const p = propiedades();
   if (!p.getProperty('ID_PLANILLA')) {
@@ -125,13 +139,9 @@ function instalar() {
     h.setFrozenRows(1);
   });
   libro.getSheets().forEach(h => { if (!COLUMNAS[h.getName()] && libro.getSheets().length > 1) libro.deleteSheet(h); });
-  ['CLAVE_CARGA', 'SECRETO_TOKEN', 'PIMIENTA'].forEach(k => {
+  ['SECRETO_TOKEN', 'PIMIENTA'].forEach(k => {
     if (!p.getProperty(k)) p.setProperty(k, aleatorioHex(32));
   });
   Logger.log('Listo. Planilla: ' + libro.getUrl());
 }
 
-// Muestra la clave de carga para copiarla a %USERPROFILE%\.move\pulso_clave.txt. No la compartas.
-function mostrarClaveCarga() {
-  Logger.log(propiedades().getProperty('CLAVE_CARGA'));
-}
