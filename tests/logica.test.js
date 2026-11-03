@@ -25,3 +25,24 @@ test('hashPin determinista y depende de la sal', () => {
 test('generarPin siempre válido', () => {
   for (let i = 0; i < 200; i++) assert.ok(L.pinValido(L.generarPin(azar)));
 });
+
+const hmac = (s, k) => crypto.createHmac('sha256', k).update(s).digest('base64url');
+const H10 = 10 * 3600 * 1000;
+
+test('token: válido, vence a las 10 h', () => {
+  const t = L.crearToken('30123456', 1000, 'sec', hmac);
+  assert.equal(L.leerToken(t, 1000, 'sec', hmac), '30123456');
+  assert.equal(L.leerToken(t, 1000 + H10 - 1, 'sec', hmac), '30123456');
+  assert.equal(L.leerToken(t, 1000 + H10 + 1, 'sec', hmac), null);
+});
+
+test('token: adulterado o basura → null', () => {
+  const t = L.crearToken('30123456', 1000, 'sec', hmac);
+  const [datos, firma] = t.split('.');
+  const otraFirma = firma.slice(0, -1) + (firma.slice(-1) === 'A' ? 'B' : 'A');
+  assert.equal(L.leerToken(datos + '.' + otraFirma, 1000, 'sec', hmac), null);
+  const otroDato = L.crearToken('99999999', 1000, 'sec', hmac).split('.')[0];
+  assert.equal(L.leerToken(otroDato + '.' + firma, 1000, 'sec', hmac), null);
+  assert.equal(L.leerToken(t, 1000, 'otro-secreto', hmac), null);
+  for (const x of ['basura', '', undefined, null, 'a.b.c', '%%%.%%%']) assert.equal(L.leerToken(x, 1000, 'sec', hmac), null);
+});

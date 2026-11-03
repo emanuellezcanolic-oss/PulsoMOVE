@@ -26,3 +26,54 @@ function generarPin(aleatorio) {
     if (pinValido(pin)) return pin;
   }
 }
+
+// ---------- Sesión ----------
+// Token sin estado: base64url("dni|vence_ms") + "." + firma HMAC-SHA256 en base64url.
+
+const DURACION_SESION_MS = 10 * 3600 * 1000;
+const B64 = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_';
+
+// Solo para texto ASCII (el token lleva dígitos y "|")
+function aB64url(s) {
+  let bits = '', out = '';
+  for (const c of s) bits += c.charCodeAt(0).toString(2).padStart(8, '0');
+  for (let i = 0; i < bits.length; i += 6) out += B64[parseInt(bits.slice(i, i + 6).padEnd(6, '0'), 2)];
+  return out;
+}
+
+function deB64url(s) {
+  let bits = '', out = '';
+  for (const c of s) {
+    const i = B64.indexOf(c);
+    if (i < 0) throw new Error('base64url inválido');
+    bits += i.toString(2).padStart(6, '0');
+  }
+  for (let i = 0; i + 8 <= bits.length; i += 8) out += String.fromCharCode(parseInt(bits.slice(i, i + 8), 2));
+  return out;
+}
+
+function igualSeguro(a, b) {
+  if (a.length !== b.length) return false;
+  let dif = 0;
+  for (let i = 0; i < a.length; i++) dif |= a.charCodeAt(i) ^ b.charCodeAt(i);
+  return dif === 0;
+}
+
+// hmac(texto, secreto) devuelve la firma en base64url
+function crearToken(dni, ahoraMs, secreto, hmac) {
+  const datos = aB64url(dni + '|' + (ahoraMs + DURACION_SESION_MS));
+  return datos + '.' + hmac(datos, secreto);
+}
+
+function leerToken(token, ahoraMs, secreto, hmac) {
+  try {
+    const partes = String(token == null ? '' : token).split('.');
+    if (partes.length !== 2 || !partes[0] || !partes[1]) return null;
+    if (!igualSeguro(hmac(partes[0], secreto), partes[1])) return null;
+    const [dni, vence] = deB64url(partes[0]).split('|');
+    if (!/^\d+$/.test(dni || '') || !(Number(vence) > ahoraMs)) return null;
+    return dni;
+  } catch (e) {
+    return null;
+  }
+}
