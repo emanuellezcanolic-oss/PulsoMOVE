@@ -1,0 +1,28 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#f4f2ec">
+  <meta name="robots" content="noindex">
+  <title>PulsoMOVE</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@62..125,400..900&family=Public+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="web/estilo.css">
+</head>
+<body>
+  <div id="app" aria-live="polite"></div>
+  <div id="aviso" role="status"></div>
+  <script src="web/config.js"></script>
+  <script src="apps-script/Logica.js"></script>
+  <script src="web/api.js"></script>
+  <script>
+    // Modo práctica: carga el backend en el navegador, con datos inventados.
+    if (new URLSearchParams(location.search).has('demo')) {
+      document.write('<script src="apps-script/Api.js"><\/script><script src="web/demo.js"><\/script>');
+    }
+  </script>
+  <script src="web/app.js"></script>
+</body>
+</html>
