@@ -126,6 +126,90 @@ function marcar(req, deps) {
   return {};
 }
 
+// ---------- Coordinación ----------
+
+const DIAS_ALERTA = 2;
+
+// Sede que puede ver el usuario: la suya si coordina, la pedida si es admin.
+function sedePermitida(usuario, pedida) {
+  if (tieneRol(usuario, 'admin')) {
+    if (SEDES.indexOf(pedida) < 0) falla('datos_invalidos');
+    return pedida;
+  }
+  if (!tieneRol(usuario, 'coordinador')) falla('prohibido');
+  if (pedida && pedida !== usuario.sede) falla('prohibido');
+  return usuario.sede;
+}
+
+function vistaSede(req, deps) {
+  const { usuario, usuarios } = sesion(req, deps);
+  const sede = sedePermitida(usuario, texto(req.sede));
+  const hoy = deps.hoy();
+  const lunes = lunesDe(hoy);
+  const tareas = deps.repo.leer('tareas').filter(t => t.sede === sede);
+  const equipo = usuarios.filter(u => u.sede === sede && esVerdad(u.activo) && tieneRol(u, 'recepcion'));
+  const nombre = dni => (usuarios.find(u => u.dni === dni) || {}).nombre || '';
+  const personas = equipo.map(u => {
+    const suyas = tareas.filter(t => t.asignado_dni === u.dni);
+    const hechas = suyas.filter(t => t.estado === 'hecha').map(t => fechaArgentina(t.hecha_en));
+    return {
+      dni: u.dni, nombre: u.nombre, sede: u.sede, turno: u.turno,
+      hechas_hoy: hechas.filter(f => f === hoy).length,
+      pendientes: suyas.filter(t => t.estado === 'pendiente').length,
+      hechas_semana: hechas.filter(f => f >= lunes && f <= hoy).length,
+    };
+  });
+  const alertas = tareas.filter(t => t.estado === 'pendiente')
+    .map(t => Object.assign(conDias(t, hoy), { asignado_nombre: nombre(t.asignado_dni) }))
+    .filter(t => t.dias_pendiente >= DIAS_ALERTA)
+    .sort((a, b) => b.dias_pendiente - a.dias_pendiente || ordenTareas(a, b));
+  const garantias = deps.repo.leer('garantia').filter(g => g.sede === sede && g.estado === 'pendiente');
+  return { hoy: hoy, sede: sede, personas: personas, alertas: alertas, garantias: garantias };
+}
+
+function reasignar(req, deps) {
+  const { usuario, usuarios } = sesion(req, deps);
+  const tareas = deps.repo.leer('tareas');
+  const t = tareas.find(x => x.id === texto(req.tarea_id));
+  if (!t) falla('no_existe');
+  sedePermitida(usuario, t.sede);
+  const destino = usuarios.find(u => u.dni === normalizarDni(req.dni));
+  if (!destino || destino.sede !== t.sede || !esVerdad(destino.activo) || !tieneRol(destino, 'recepcion')) falla('datos_invalidos');
+  t.asignado_dni = destino.dni;
+  deps.repo.escribir('tareas', tareas);
+  return {};
+}
+
+function garantiaCrear(req, deps) {
+  const { usuario } = sesion(req, deps);
+  const motivo = texto(req.motivo);
+  if (!motivo || !texto(req.socio_nombre)) falla('datos_invalidos');
+  const ts = new Date(deps.ahora()).toISOString();
+  const id = 'G-' + deps.aleatorio(6);
+  deps.repo.agregar('garantia', {
+    id: id, ts: ts, sede: usuario.sede, socio_id: texto(req.socio_id), socio_nombre: texto(req.socio_nombre),
+    profe: texto(req.profe), motivo: motivo, registra_dni: usuario.dni, estado: 'pendiente',
+    decide_dni: '', comentario: '', decidido_en: '',
+  });
+  return { id: id };
+}
+
+function garantiaDecidir(req, deps) {
+  const { usuario } = sesion(req, deps);
+  const estado = texto(req.estado);
+  const garantias = deps.repo.leer('garantia');
+  const g = garantias.find(x => x.id === texto(req.id));
+  if (!g) falla('no_existe');
+  sedePermitida(usuario, g.sede);
+  if (estado !== 'aprobada' && estado !== 'rechazada') falla('datos_invalidos');
+  g.estado = estado;
+  g.decide_dni = usuario.dni;
+  g.comentario = texto(req.comentario);
+  g.decidido_en = new Date(deps.ahora()).toISOString();
+  deps.repo.escribir('garantia', garantias);
+  return {};
+}
+
 // ---------- Pipeline (con clave) ----------
 
 const SEDES = ['bariloche', 'bolson', 'puelo'];
@@ -164,6 +248,10 @@ const ACCIONES = {
   cargar_tareas: cargarTareas,
   bajar_registro: bajarRegistro,
   usuarios_resumen: usuariosResumen,
+  sede: vistaSede,
+  reasignar: reasignar,
+  garantia_crear: garantiaCrear,
+  garantia_decidir: garantiaDecidir,
 };
 
 function manejar(req, deps) {

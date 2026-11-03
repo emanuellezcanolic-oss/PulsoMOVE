@@ -168,3 +168,14 @@ function fusionarCargaDetalle(existentes, nuevas, cerrar, fecha) {
 function fusionarCarga(existentes, nuevas, cerrar, fecha) {
   return fusionarCargaDetalle(existentes, nuevas, cerrar, fecha).filas;
 }
+
+// Fecha de Argentina (UTC-3, sin horario de verano) de un instante ISO
+function fechaArgentina(iso) {
+  const ms = Date.parse(iso);
+  return isNaN(ms) ? '' : new Date(ms - 3 * 3600 * 1000).toISOString().slice(0, 10);
+}
+
+function lunesDe(iso) {
+  const d = new Date(iso + 'T12:00:00Z');
+  return sumarDias(iso, -((d.getUTCDay() + 6) % 7));
+}
