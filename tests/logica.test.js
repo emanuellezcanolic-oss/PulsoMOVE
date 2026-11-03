@@ -46,3 +46,31 @@ test('token: adulterado o basura → null', () => {
   assert.equal(L.leerToken(t, 1000, 'otro-secreto', hmac), null);
   for (const x of ['basura', '', undefined, null, 'a.b.c', '%%%.%%%']) assert.equal(L.leerToken(x, 1000, 'sec', hmac), null);
 });
+
+// ---------- Task 4 ----------
+
+test('validarMarca', () => {
+  const ok = m => assert.equal(L.validarMarca(m), null, JSON.stringify(m));
+  const mal = m => assert.equal(L.validarMarca(m), 'datos_invalidos', JSON.stringify(m));
+  mal({ canal: 'LL', resultado: 'VUELVE' });
+  ok({ canal: 'LL', resultado: 'VUELVE', fecha: '2026-11-10' });
+  mal({ canal: 'LL', resultado: 'VUELVE', fecha: '10/11' });
+  mal({ canal: 'LL', resultado: 'VUELVE', fecha: '2026-02-30' });
+  mal({ canal: 'MP', resultado: 'PAGA' });
+  mal({ canal: 'MP', resultado: 'VACACIONES' });
+  mal({ canal: 'PR', resultado: 'BAJA' });
+  mal({ canal: 'PR', resultado: 'BAJA', detalle: '   ' });
+  ok({ canal: 'PR', resultado: 'BAJA', detalle: 'Se muda' });
+  mal({ canal: 'WHATSAPP', resultado: 'RESERVA' });
+  mal({ canal: 'MP', resultado: 'VINO' });
+  ok({ canal: 'MP', resultado: 'ENCUESTA ENVIADA' });
+  ok({ canal: 'SIN CONTACTO', resultado: 'NO CONTESTA' });
+});
+
+test('diasHabiles', () => {
+  assert.equal(L.diasHabiles('2026-11-05', '2026-11-09'), 2);
+  assert.equal(L.diasHabiles('2026-11-09', '2026-11-09'), 0);
+  assert.equal(L.diasHabiles('2026-11-07', '2026-11-09'), 0);
+  assert.equal(L.diasHabiles('2026-11-02', '2026-11-09'), 5);
+  assert.equal(L.diasHabiles('', '2026-11-09'), 0);
+});

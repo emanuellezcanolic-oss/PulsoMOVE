@@ -77,3 +77,41 @@ function leerToken(token, ahoraMs, secreto, hmac) {
     return null;
   }
 }
+
+// ---------- Marcas ----------
+
+const CANALES = ['MP', 'MG', 'LL', 'PR', 'SIN CONTACTO'];
+const RESULTADOS = ['VOLVIÓ', 'VUELVE', 'RESERVA', 'PAGÓ', 'PAGA', 'VACACIONES', 'PAUSA', 'SALUD', 'HORARIOS',
+                    'PRECIO', 'BAJA', 'NO CONTESTA', 'TEL MAL', 'ENCUESTA ENVIADA'];
+const PIDEN_FECHA = ['VUELVE', 'PAGA', 'VACACIONES'];
+const PIDEN_DETALLE = ['BAJA'];
+
+function fechaIsoValida(s) {
+  if (typeof s !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(s)) return false;
+  const d = new Date(s + 'T12:00:00Z');
+  return !isNaN(d) && d.toISOString().slice(0, 10) === s;
+}
+
+function validarMarca(m) {
+  if (!m || CANALES.indexOf(m.canal) < 0 || RESULTADOS.indexOf(m.resultado) < 0) return 'datos_invalidos';
+  if (m.fecha && !fechaIsoValida(m.fecha)) return 'datos_invalidos';
+  if (PIDEN_FECHA.indexOf(m.resultado) >= 0 && !m.fecha) return 'datos_invalidos';
+  if (PIDEN_DETALLE.indexOf(m.resultado) >= 0 && !String(m.detalle || '').trim()) return 'datos_invalidos';
+  return null;
+}
+
+// ---------- Fechas ----------
+
+// Días de lunes a viernes desde `desde` (incluido) hasta `hasta` (excluido), fechas ISO.
+function diasHabiles(desde, hasta) {
+  if (!fechaIsoValida(desde) || !fechaIsoValida(hasta)) return 0;
+  let n = 0;
+  const d = new Date(desde + 'T12:00:00Z');
+  const fin = new Date(hasta + 'T12:00:00Z');
+  while (d < fin) {
+    const dia = d.getUTCDay();
+    if (dia !== 0 && dia !== 6) n++;
+    d.setUTCDate(d.getUTCDate() + 1);
+  }
+  return n;
+}

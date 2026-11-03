@@ -84,15 +84,53 @@ function cambiarPin(req, deps) {
   return {};
 }
 
+function ordenTareas(a, b) {
+  return (Number(a.prioridad) - Number(b.prioridad)) || String(a.socio_nombre).localeCompare(String(b.socio_nombre));
+}
+
+function conDias(t, hoy) {
+  const c = Object.assign({}, t);
+  c.dias_pendiente = t.estado === 'pendiente' ? diasHabiles(t.pendiente_desde, hoy) : 0;
+  return c;
+}
+
 function misTareas(req, deps) {
-  sesion(req, deps);
-  return { hoy: deps.hoy(), tareas: [] };
+  const { usuario } = sesion(req, deps);
+  const hoy = deps.hoy();
+  const tareas = deps.repo.leer('tareas')
+    .filter(t => t.asignado_dni === usuario.dni && (t.estado === 'pendiente' || (t.fecha === hoy && t.estado === 'hecha')))
+    .sort(ordenTareas)
+    .map(t => conDias(t, hoy));
+  return { hoy: hoy, tareas: tareas };
+}
+
+function marcar(req, deps) {
+  const { usuario } = sesion(req, deps);
+  const idMarca = texto(req.id_marca);
+  const marca = { canal: texto(req.canal), resultado: texto(req.resultado), fecha: texto(req.fecha), detalle: texto(req.detalle) };
+  if (!idMarca || validarMarca(marca)) falla('datos_invalidos');
+  const tareas = deps.repo.leer('tareas');
+  const t = tareas.find(x => x.id === texto(req.tarea_id));
+  if (!t) falla('no_existe');
+  if (t.asignado_dni !== usuario.dni) falla('prohibido');
+  if (deps.repo.leer('registro').some(r => r.id_marca === idMarca)) return {};
+  const ts = new Date(deps.ahora()).toISOString();
+  deps.repo.agregar('registro', {
+    id_marca: idMarca, ts: ts, tarea_id: t.id, fecha_tarea: t.fecha, sede: t.sede, socio_id: t.socio_id,
+    socio_nombre: t.socio_nombre, tipo: t.tipo, dni: usuario.dni, canal: marca.canal, resultado: marca.resultado,
+    fecha_resultado: marca.fecha, detalle: marca.detalle,
+  });
+  t.estado = 'hecha';
+  t.hecha_en = ts;
+  deps.repo.escribir('tareas', tareas);
+  return {};
 }
 
 const ACCIONES = {
   login: login,
   cambiar_pin: cambiarPin,
   mis_tareas: misTareas,
+  marcar: marcar,
 };
 
 function manejar(req, deps) {

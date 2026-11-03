@@ -86,3 +86,63 @@ test('acción desconocida o pedido raro → datos_invalidos', () => {
   assert.equal(pedir(d, { accion: 'borrar_todo' }).error, 'datos_invalidos');
   assert.equal(pedir(d, null).error, 'datos_invalidos');
 });
+
+// ---------- Task 4: mis tareas y marcar ----------
+
+function tarea(o) {
+  return { id: 'T1', fecha: '2026-11-09', sede: 'bolson', socio_id: '501', socio_nombre: 'Socio Uno', profe: 'Profe A',
+           tipo: 'Vence en 7 días', prioridad: '2', situacion: 'Vence el 12/11', accion: 'Llamar', ultima_anotacion: '',
+           asignado_dni: '30123456', pendiente_desde: '2026-11-09', estado: 'pendiente', hecha_en: '', ...o };
+}
+const OTRA = usuario({ dni: '28999888', nombre: 'Beto Prueba', turno: 'tarde', pin: '0907' });
+
+test('mis_tareas: propias pendientes y de hoy, ordenadas', () => {
+  const d = entorno([usuario(), OTRA], { tareas: [
+    tarea({ id: 'hoy-b', socio_nombre: 'Zoe', prioridad: '1' }),
+    tarea({ id: 'hoy-a', socio_nombre: 'Ana', prioridad: '1' }),
+    tarea({ id: 'vieja', fecha: '2026-11-05', pendiente_desde: '2026-11-05', prioridad: '3' }),
+    tarea({ id: 'hecha-hoy', estado: 'hecha', prioridad: '4' }),
+    tarea({ id: 'hecha-ayer', fecha: '2026-11-06', estado: 'hecha' }),
+    tarea({ id: 'cerrada', estado: 'cerrada' }),
+    tarea({ id: 'ajena', asignado_dni: '28999888' }),
+  ] });
+  const r = pedir(d, { accion: 'mis_tareas', token: entrar(d) });
+  assert.equal(r.data.hoy, '2026-11-09');
+  assert.deepEqual(r.data.tareas.map(t => t.id), ['hoy-a', 'hoy-b', 'vieja', 'hecha-hoy']);
+  assert.equal(r.data.tareas[2].dias_pendiente, 2);
+});
+
+test('marcar: ajena, inexistente, válida', () => {
+  const d = entorno([usuario(), OTRA], { tareas: [tarea({}), tarea({ id: 'T2', asignado_dni: '28999888' })], registro: [] });
+  const token = entrar(d);
+  const m = { accion: 'marcar', token, canal: 'LL', resultado: 'RESERVA', detalle: 'Jueves 18 h' };
+  assert.equal(pedir(d, { ...m, tarea_id: 'T2', id_marca: 'a' }).error, 'prohibido');
+  assert.equal(pedir(d, { ...m, tarea_id: 'NO', id_marca: 'b' }).error, 'no_existe');
+  assert.equal(pedir(d, { ...m, tarea_id: 'T1', id_marca: 'c', resultado: 'VUELVE' }).error, 'datos_invalidos');
+  assert.ok(pedir(d, { ...m, tarea_id: 'T1', id_marca: 'c' }).ok);
+  const reg = d.repo.hojas.registro;
+  assert.equal(reg.length, 1);
+  assert.equal(reg[0].socio_id, '501');
+  assert.equal(reg[0].tipo, 'Vence en 7 días');
+  assert.equal(reg[0].dni, '30123456');
+  assert.equal(reg[0].sede, 'bolson');
+  assert.equal(reg[0].fecha_tarea, '2026-11-09');
+  assert.equal(d.repo.hojas.tareas[0].estado, 'hecha');
+  assert.ok(d.repo.hojas.tareas[0].hecha_en);
+});
+
+test('marcar: mismo id_marca dos veces → una fila; corrección agrega otra', () => {
+  const d = entorno([usuario()], { tareas: [tarea({})], registro: [] });
+  const m = { accion: 'marcar', token: entrar(d), tarea_id: 'T1', canal: 'LL', resultado: 'RESERVA' };
+  assert.ok(pedir(d, { ...m, id_marca: 'x1' }).ok);
+  assert.ok(pedir(d, { ...m, id_marca: 'x1' }).ok);
+  assert.equal(d.repo.hojas.registro.length, 1);
+  assert.ok(pedir(d, { ...m, id_marca: 'x2', resultado: 'NO CONTESTA' }).ok);
+  assert.equal(d.repo.hojas.registro.length, 2);
+  assert.equal(d.repo.hojas.tareas[0].estado, 'hecha');
+});
+
+test('marcar sin id_marca → datos_invalidos', () => {
+  const d = entorno([usuario()], { tareas: [tarea({})], registro: [] });
+  assert.equal(pedir(d, { accion: 'marcar', token: entrar(d), tarea_id: 'T1', canal: 'LL', resultado: 'RESERVA' }).error, 'datos_invalidos');
+});
