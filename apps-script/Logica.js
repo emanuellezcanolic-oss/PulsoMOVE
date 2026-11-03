@@ -115,3 +115,56 @@ function diasHabiles(desde, hasta) {
   }
   return n;
 }
+
+// ---------- Carga diaria ----------
+
+const DIAS_GUARDAR_TAREAS = 60;
+const CAMPOS_ACTUALIZABLES = ['fecha', 'tipo', 'prioridad', 'situacion', 'accion', 'ultima_anotacion', 'socio_nombre', 'profe'];
+
+function sumarDias(iso, n) {
+  const d = new Date(iso + 'T12:00:00Z');
+  d.setUTCDate(d.getUTCDate() + n);
+  return d.toISOString().slice(0, 10);
+}
+
+// Mezcla la carga del día con lo que ya hay. Devuelve {filas, nuevas, actualizadas, cerradas}.
+// Una pendiente del mismo socio conserva id, persona y pendiente_desde; lo hecho hoy no reaparece.
+function fusionarCargaDetalle(existentes, nuevas, cerrar, fecha) {
+  const limite = sumarDias(fecha, -DIAS_GUARDAR_TAREAS);
+  const filas = existentes
+    .filter(t => t.estado === 'pendiente' || String(t.fecha) >= limite)
+    .map(t => Object.assign({}, t));
+  const clave = t => t.sede + '|' + t.socio_id;
+  let n = 0, act = 0, cer = 0;
+  for (const nv of nuevas) {
+    const k = clave(nv);
+    const pend = filas.find(t => clave(t) === k && t.estado === 'pendiente');
+    if (pend) {
+      for (const c of CAMPOS_ACTUALIZABLES) pend[c] = c === 'fecha' ? fecha : String(nv[c] == null ? '' : nv[c]);
+      act++;
+      continue;
+    }
+    if (filas.some(t => clave(t) === k && t.fecha === fecha && t.estado !== 'pendiente')) {
+      act++;
+      continue;
+    }
+    filas.push({
+      id: fecha + '-' + nv.sede + '-' + nv.socio_id, fecha: fecha, sede: nv.sede, socio_id: String(nv.socio_id),
+      socio_nombre: String(nv.socio_nombre || ''), profe: String(nv.profe || ''), tipo: String(nv.tipo || ''),
+      prioridad: String(nv.prioridad == null ? '' : nv.prioridad), situacion: String(nv.situacion || ''),
+      accion: String(nv.accion || ''), ultima_anotacion: String(nv.ultima_anotacion || ''),
+      asignado_dni: String(nv.asignado_dni || ''), pendiente_desde: fecha, estado: 'pendiente', hecha_en: '',
+    });
+    n++;
+  }
+  for (const c of cerrar || []) {
+    for (const t of filas) {
+      if (clave(t) === clave(c) && t.estado === 'pendiente') { t.estado = 'cerrada'; cer++; }
+    }
+  }
+  return { filas: filas, nuevas: n, actualizadas: act, cerradas: cer };
+}
+
+function fusionarCarga(existentes, nuevas, cerrar, fecha) {
+  return fusionarCargaDetalle(existentes, nuevas, cerrar, fecha).filas;
+}

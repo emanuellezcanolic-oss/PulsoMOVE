@@ -126,11 +126,44 @@ function marcar(req, deps) {
   return {};
 }
 
+// ---------- Pipeline (con clave) ----------
+
+const SEDES = ['bariloche', 'bolson', 'puelo'];
+const TURNOS = ['manana', 'tarde'];
+
+function cargarTareas(req, deps) {
+  exigirClave(req, deps);
+  const fecha = texto(req.fecha);
+  const nuevas = req.tareas;
+  const cerrar = req.cerrar || [];
+  if (!fechaIsoValida(fecha) || !Array.isArray(nuevas) || !Array.isArray(cerrar)) falla('datos_invalidos');
+  const completa = t => t && SEDES.indexOf(t.sede) >= 0 && texto(t.socio_id) && texto(t.asignado_dni);
+  if (!nuevas.every(completa) || !cerrar.every(c => c && SEDES.indexOf(c.sede) >= 0 && texto(c.socio_id))) falla('datos_invalidos');
+  const r = fusionarCargaDetalle(deps.repo.leer('tareas'), nuevas, cerrar, fecha);
+  deps.repo.escribir('tareas', r.filas);
+  return { nuevas: r.nuevas, actualizadas: r.actualizadas, cerradas: r.cerradas };
+}
+
+function bajarRegistro(req, deps) {
+  exigirClave(req, deps);
+  const desde = texto(req.desde);
+  return { filas: deps.repo.leer('registro').filter(r => String(r.ts) >= desde) };
+}
+
+function usuariosResumen(req, deps) {
+  exigirClave(req, deps);
+  return deps.repo.leer('usuarios').filter(u => esVerdad(u.activo))
+    .map(u => ({ dni: u.dni, nombre: u.nombre, sede: u.sede, turno: u.turno, roles: u.roles }));
+}
+
 const ACCIONES = {
   login: login,
   cambiar_pin: cambiarPin,
   mis_tareas: misTareas,
   marcar: marcar,
+  cargar_tareas: cargarTareas,
+  bajar_registro: bajarRegistro,
+  usuarios_resumen: usuariosResumen,
 };
 
 function manejar(req, deps) {

@@ -74,3 +74,42 @@ test('diasHabiles', () => {
   assert.equal(L.diasHabiles('2026-11-02', '2026-11-09'), 5);
   assert.equal(L.diasHabiles('', '2026-11-09'), 0);
 });
+
+// ---------- Task 5 ----------
+
+const nueva = o => ({ sede: 'bolson', socio_id: '501', socio_nombre: 'Socio Uno', profe: 'Profe A', tipo: 'Riesgo alto',
+                      prioridad: '5', situacion: 's', accion: 'a', ultima_anotacion: '', asignado_dni: '30123456', ...o });
+
+test('fusionarCarga: nueva, repetida y arrastre', () => {
+  let f = L.fusionarCarga([], [nueva({})], [], '2026-11-06');
+  assert.equal(f.length, 1);
+  assert.equal(f[0].id, '2026-11-06-bolson-501');
+  assert.equal(f[0].pendiente_desde, '2026-11-06');
+  assert.equal(f[0].estado, 'pendiente');
+  // al día siguiente hábil, mismo socio con otro tipo y otra persona: se conserva id, persona y pendiente_desde
+  f = L.fusionarCarga(f, [nueva({ tipo: 'Vence en 7 días', prioridad: '2', asignado_dni: '28999888' })], [], '2026-11-09');
+  assert.equal(f.length, 1);
+  assert.equal(f[0].id, '2026-11-06-bolson-501');
+  assert.equal(f[0].asignado_dni, '30123456');
+  assert.equal(f[0].pendiente_desde, '2026-11-06');
+  assert.equal(f[0].fecha, '2026-11-09');
+  assert.equal(f[0].tipo, 'Vence en 7 días');
+});
+
+test('fusionarCarga: lo hecho hoy no reaparece; lo hecho otro día sí', () => {
+  const hecha = { ...L.fusionarCarga([], [nueva({})], [], '2026-11-09')[0], estado: 'hecha' };
+  assert.equal(L.fusionarCarga([hecha], [nueva({})], [], '2026-11-09').length, 1);
+  const f = L.fusionarCarga([{ ...hecha, fecha: '2026-11-02' }], [nueva({})], [], '2026-11-09');
+  assert.equal(f.length, 2);
+});
+
+test('fusionarCarga: cerrar y limpiar viejas', () => {
+  const base = L.fusionarCarga([], [nueva({}), nueva({ socio_id: '502' })], [], '2026-11-09');
+  const f = L.fusionarCarga(base, [], [{ sede: 'bolson', socio_id: '502' }], '2026-11-09');
+  assert.equal(f.find(t => t.socio_id === '502').estado, 'cerrada');
+  assert.equal(f.find(t => t.socio_id === '501').estado, 'pendiente');
+  const vieja = { ...base[0], id: 'v', fecha: '2026-09-01', estado: 'hecha' };
+  assert.equal(L.fusionarCarga([vieja], [], [], '2026-11-09').length, 0);
+  const viejaPend = { ...vieja, estado: 'pendiente' };
+  assert.equal(L.fusionarCarga([viejaPend], [], [], '2026-11-09').length, 1);
+});

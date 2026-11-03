@@ -146,3 +146,51 @@ test('marcar sin id_marca → datos_invalidos', () => {
   const d = entorno([usuario()], { tareas: [tarea({})], registro: [] });
   assert.equal(pedir(d, { accion: 'marcar', token: entrar(d), tarea_id: 'T1', canal: 'LL', resultado: 'RESERVA' }).error, 'datos_invalidos');
 });
+
+// ---------- Task 5: pipeline ----------
+
+const lote = () => [
+  { sede: 'bolson', socio_id: '501', socio_nombre: 'Socio Uno', profe: 'P', tipo: 'Riesgo alto', prioridad: '5',
+    situacion: 's', accion: 'a', ultima_anotacion: '', asignado_dni: '30123456' },
+  { sede: 'bolson', socio_id: '502', socio_nombre: 'Socio Dos', profe: 'P', tipo: 'Riesgo alto', prioridad: '5',
+    situacion: 's', accion: 'a', ultima_anotacion: '', asignado_dni: '30123456' },
+];
+
+test('pipeline: clave mala → clave', () => {
+  const d = entorno();
+  for (const accion of ['cargar_tareas', 'bajar_registro', 'usuarios_resumen']) {
+    assert.equal(pedir(d, { accion, clave: 'mala' }).error, 'clave', accion);
+    assert.equal(pedir(d, { accion }).error, 'clave', accion);
+  }
+});
+
+test('cargar_tareas dos veces el mismo día no duplica', () => {
+  const d = entorno();
+  const r1 = pedir(d, { accion: 'cargar_tareas', clave: 'clave-prueba', fecha: '2026-11-09', tareas: lote(), cerrar: [] });
+  assert.deepEqual(r1.data, { nuevas: 2, actualizadas: 0, cerradas: 0 });
+  const r2 = pedir(d, { accion: 'cargar_tareas', clave: 'clave-prueba', fecha: '2026-11-09', tareas: lote() });
+  assert.deepEqual(r2.data, { nuevas: 0, actualizadas: 2, cerradas: 0 });
+  assert.equal(d.repo.hojas.tareas.length, 2);
+  const r3 = pedir(d, { accion: 'cargar_tareas', clave: 'clave-prueba', fecha: '2026-11-09', tareas: [], cerrar: [{ sede: 'bolson', socio_id: '502' }] });
+  assert.equal(r3.data.cerradas, 1);
+});
+
+test('cargar_tareas valida fecha y lista', () => {
+  const d = entorno();
+  assert.equal(pedir(d, { accion: 'cargar_tareas', clave: 'clave-prueba', fecha: '09/11', tareas: [] }).error, 'datos_invalidos');
+  assert.equal(pedir(d, { accion: 'cargar_tareas', clave: 'clave-prueba', fecha: '2026-11-09', tareas: 'x' }).error, 'datos_invalidos');
+  assert.equal(pedir(d, { accion: 'cargar_tareas', clave: 'clave-prueba', fecha: '2026-11-09', tareas: [{ sede: 'bolson' }] }).error, 'datos_invalidos');
+});
+
+test('bajar_registro filtra por ts', () => {
+  const d = entorno([usuario()], { registro: [{ id_marca: 'a', ts: '2026-11-06T15:00:00.000Z' }, { id_marca: 'b', ts: '2026-11-09T12:00:00.000Z' }] });
+  const r = pedir(d, { accion: 'bajar_registro', clave: 'clave-prueba', desde: '2026-11-07T00:00:00.000Z' });
+  assert.deepEqual(r.data.filas.map(f => f.id_marca), ['b']);
+});
+
+test('usuarios_resumen sin hash ni sal y solo activos', () => {
+  const d = entorno([usuario(), usuario({ dni: '27000111', activo: false })]);
+  const r = pedir(d, { accion: 'usuarios_resumen', clave: 'clave-prueba' });
+  assert.deepEqual(r.data.map(u => u.dni), ['30123456']);
+  assert.deepEqual(Object.keys(r.data[0]).sort(), ['dni', 'nombre', 'roles', 'sede', 'turno']);
+});
