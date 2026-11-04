@@ -228,8 +228,9 @@ test('sede: permisos', () => {
   const d = equipo({ tareas: [] });
   assert.equal(pedir(d, { accion: 'sede', token: entrar(d) }).error, 'prohibido');
   assert.equal(pedir(d, { accion: 'sede', token: entrar(d, '25111222', '0907'), sede: 'puelo' }).error, 'prohibido');
+  assert.equal(pedir(d, { accion: 'sede', token: adm, sede: 'esquel' }).error, 'datos_invalidos');
   const adm = entrar(d, '20000001', '0907');
-  assert.equal(pedir(d, { accion: 'sede', token: adm }).error, 'datos_invalidos');
+  assert.equal(pedir(d, { accion: 'sede', token: adm }).data.sede, 'bolson');   // sin sede pedida: la suya
   assert.ok(pedir(d, { accion: 'sede', token: adm, sede: 'puelo' }).ok);
 });
 
@@ -587,4 +588,15 @@ test('mi_dia: datos para los avisos personalizados', () => {
   assert.equal(r.siguiente.nombre, 'Primero');
   assert.equal(r.ayer, 1);
   assert.equal(r.para_adelantar, 1);
+});
+
+test('a quien le dieron más permisos con la sesión abierta no le falla nada', () => {
+  const lucia = usuario({ dni: '24000000', nombre: 'Luz Prueba', pin: '0907', roles: 'recepcion,coordinador' });
+  const d = entorno([lucia, usuario()], { tareas: [], registro: [], actividad: [], garantia: [], rendimiento: [], objetivos: [], cierres: [], profes: [] });
+  const token = entrar(d, '24000000', '0907');
+  d.repo.hojas.usuarios[0].roles = 'recepcion,coordinador,admin';
+  assert.ok(pedir(d, { accion: 'sede', token }).ok);
+  assert.ok(pedir(d, { accion: 'rendimiento', token }).ok);
+  assert.ok(pedir(d, { accion: 'profes_ver', token }).ok);
+  assert.deepEqual(pedir(d, { accion: 'mi_dia', token }).data.roles, ['recepcion', 'coordinador', 'admin']);
 });

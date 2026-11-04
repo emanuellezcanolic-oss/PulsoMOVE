@@ -144,8 +144,9 @@ const DIAS_ALERTA = 2;
 // Sede que puede ver el usuario: la suya si coordina, la pedida si es admin.
 function sedePermitida(usuario, pedida) {
   if (tieneRol(usuario, 'admin')) {
-    if (SEDES.indexOf(pedida) < 0) falla('datos_invalidos');
-    return pedida;
+    const sede = pedida || usuario.sede;   // sin sede pedida, la suya
+    if (SEDES.indexOf(sede) < 0) falla('datos_invalidos');
+    return sede;
   }
   if (!tieneRol(usuario, 'coordinador')) falla('prohibido');
   if (pedida && pedida !== usuario.sede) falla('prohibido');
@@ -427,6 +428,7 @@ function miDia(req, deps) {
     return 0;
   })();
   return {
+    roles: rolesDe(usuario),
     siguiente: ordenadas[0] ? { nombre: ordenadas[0].socio_nombre, situacion: ordenadas[0].situacion } : null, ayer: anterior,
     para_adelantar: suyas.filter(t => t.estado === 'pendiente' && String(t.fecha) > hoy).length, hora_inicio: usuario.hora_inicio || '',
     dias_sin_plan: Number(valores.dias_sin_plan_largo) || 0,

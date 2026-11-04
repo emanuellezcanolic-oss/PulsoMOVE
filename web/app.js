@@ -723,12 +723,20 @@
 
   // ---------- Carga de datos ----------
 
+  // Si le cambiaron los permisos con la sesión abierta, las pestañas se ponen al día solas
+  function actualizarRoles(roles) {
+    const s = cliente.sesion();
+    if (s && roles && roles.join() !== (s.roles || []).join()) cliente.guardarSesion(Object.assign(s, { roles: roles }));
+  }
+
   async function cargarVista() {
+    E.errorCarga = '';
     try {
       if (E.vista === 'hoy') {
         const r = await cliente.llamar('mis_tareas', E.adelantar ? { adelantar: true } : {});
         E.paraAdelantar = r.para_adelantar || 0;
         E.dia = await cliente.llamar('mi_dia');
+        actualizarRoles(E.dia.roles);
         if (!E.ultimaMarca) E.ultimaMarca = Date.now();
         saludarUnaVez();
         revisarAvisos();
@@ -749,7 +757,10 @@
       } else if (E.vista === 'admin') {
         E.usuarios = await cliente.llamar('usuarios_listar');
       }
-    } catch (e) { falla(e); }
+    } catch (e) {
+      if (e && e.codigo !== 'sin_sesion') E.errorCarga = e.message;
+      falla(e);
+    }
     render();
   }
 
@@ -783,7 +794,9 @@
     if (disponibles.indexOf(E.vista) < 0) { E.vista = disponibles[0] || null; setTimeout(cargarVista); }
     const cuerpo = E.vista === 'hoy' ? vistaHoy() : E.vista === 'sede' ? vistaSede() : E.vista === 'admin' ? vistaAdmin() : E.vista === 'mes' ? vistaMes() : E.vista === 'rend' ? vistaRendimiento()
       : '<div class="vacio">Tu usuario no tiene ninguna vista asignada. Avisale a Emanuel.</div>';
-    app.innerHTML = encabezado() + `<main class="contenedor">${cuerpo}</main>` + (DEMO ? '<div class="cinta-practica">Modo práctica · datos inventados</div>' : '');
+    const sinDatos = { hoy: !E.tareas, sede: E.personaDni ? !E.persona : !E.sede, mes: !E.rend, rend: !E.rend, admin: !E.usuarios }[E.vista];
+    const mostrar = E.errorCarga && sinDatos ? `<div class="vacio" style="margin-top:18px"><p>${esc(E.errorCarga)}</p><button class="boton" data-accion="reintentar">Reintentar</button></div>` : cuerpo;
+    app.innerHTML = encabezado() + `<main class="contenedor">${mostrar}</main>` + (DEMO ? '<div class="cinta-practica">Modo práctica · datos inventados</div>' : '');
     const abierto = app.querySelector('.marca-form select');
     if (abierto && !E.errorForm) abierto.focus({ preventScroll: true });
   }
@@ -900,6 +913,7 @@
     else if (a === 'rend-lista') { E.vista = 'sede'; E.personaDni = el.dataset.dni; E.persona = null; render(); cargarVista(); }
     else if (a === 'cerrar') { E.abierta = null; E.errorForm = ''; render(); }
     else if (a === 'garantia') dialogoGarantia();
+    else if (a === 'reintentar') { E.errorCarga = ''; render(); cargarVista(); }
     else if (a === 'registrar') dialogoRegistrar();
     else if (a === 'rend-mes') { E.rendMes = el.dataset.m; E.rend = null; render(); cargarVista(); }
     else if (a === 'rend-sede') { E.sedeElegida = el.dataset.s; E.rend = null; E.rendDni = null; render(); cargarVista(); }
