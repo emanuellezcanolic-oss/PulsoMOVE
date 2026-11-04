@@ -120,3 +120,16 @@ test('fusionarCarga guarda y actualiza intro', () => {
   f = L.fusionarCarga(f, [nueva({ intro: 'Texto 2' })], [], '2026-11-09');
   assert.equal(f[0].intro, 'Texto 2');
 });
+
+test('fusionarCarga: cerrar con hecha=true la deja hecha, verificada', () => {
+  const base = L.fusionarCarga([], [nueva({ tipo: 'Asignarle profesor' })], [], '2026-11-05');
+  const f = L.fusionarCarga(base, [], [{ sede: 'bolson', socio_id: '501', hecha: true }], '2026-11-06');
+  assert.equal(f[0].estado, 'hecha');
+  assert.equal(f[0].hecha_en, '2026-11-06T15:00:00.000Z');
+  assert.equal(f[0].fecha, '2026-11-06');
+});
+
+test('seVerificaEnMove', () => {
+  assert.ok(L.seVerificaEnMove('Asignarle profesor'));
+  assert.ok(!L.seVerificaEnMove('Riesgo alto'));
+});

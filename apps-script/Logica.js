@@ -86,6 +86,13 @@ const RESULTADOS = ['VOLVIÓ', 'VUELVE', 'RESERVA', 'PAGÓ', 'PAGA', 'VACACIONES
 const PIDEN_FECHA = ['VUELVE', 'PAGA', 'VACACIONES'];
 const PIDEN_DETALLE = ['BAJA'];
 
+// Tareas que no se marcan a mano: se dan por hechas solo cuando MOVE muestra el dato cargado.
+const SE_VERIFICAN_EN_MOVE = ['Asignarle profesor'];
+
+function seVerificaEnMove(tipo) {
+  return SE_VERIFICAN_EN_MOVE.some(v => String(tipo).indexOf(v) === 0);
+}
+
 function fechaIsoValida(s) {
   if (typeof s !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(s)) return false;
   const d = new Date(s + 'T12:00:00Z');
@@ -159,7 +166,16 @@ function fusionarCargaDetalle(existentes, nuevas, cerrar, fecha) {
   }
   for (const c of cerrar || []) {
     for (const t of filas) {
-      if (clave(t) === clave(c) && t.estado === 'pendiente') { t.estado = 'cerrada'; cer++; }
+      if (clave(t) === clave(c) && t.estado === 'pendiente') {
+        cer++;
+        if (c.hecha) {
+          t.estado = 'hecha';
+          t.fecha = fecha;
+          t.hecha_en = fecha + 'T15:00:00.000Z';
+        } else {
+          t.estado = 'cerrada';
+        }
+      }
     }
   }
   return { filas: filas, nuevas: n, actualizadas: act, cerradas: cer };

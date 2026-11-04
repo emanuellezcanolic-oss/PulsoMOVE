@@ -27,7 +27,7 @@
 
   const E = {
     vista: null, hoy: '', tareas: null, filtro: 'pendientes', tipo: '', abierta: null, errorForm: '',
-    sede: null, sedeElegida: 'bolson', usuarios: null, mensajeLogin: '',
+    sede: null, sedeElegida: 'bolson', usuarios: null, mensajeLogin: '', personaDni: null, persona: null,
   };
 
   const app = document.getElementById('app');
@@ -122,7 +122,7 @@
   }
 
   function etiquetaEstado(t) {
-    if (t.estado === 'hecha') return `<span class="estado hecha">✓ ${esc(t.resultado_local || 'Hecha')}</span>`;
+    if (t.estado === 'hecha') return `<span class="estado hecha">✓ ${esc(t.resultado_local || (t.marca && t.marca.resultado) || (seVerificaEnMove(t.tipo) ? 'Verificada en MOVE' : 'Hecha'))}</span>`;
     if (t.dias_pendiente >= 2) return `<span class="estado atrasada">Desde el ${ddmm(t.pendiente_desde)}</span>`;
     if (t.dias_pendiente === 1) return '<span class="estado ayer">De ayer</span>';
     return '';
@@ -142,7 +142,30 @@
     </form>`;
   }
 
+  // Se cierra sola cuando MOVE muestra el dato: no se marca a mano
+  function tarjetaVerificada(t, i) {
+    return `<article class="tarjeta${t.estado === 'hecha' ? ' hecha' : ''}" style="--i:${i}"><div class="cabeza">
+        <span class="socio">${esc(t.socio_nombre)}</span>${etiquetaEstado(t)}
+        <span class="situacion">${esc(t.situacion)}</span>
+        <span class="accion">${esc(t.accion)}</span>
+        ${t.estado === 'hecha' ? '' : '<span class="nota">No se marca acá: cuando MOVE lo muestre cargado, se cierra sola a la mañana siguiente.</span>'}
+      </div></article>`;
+  }
+
+  function tarjetaLectura(t, i) {
+    const m = t.marca;
+    return `<article class="tarjeta${t.estado === 'hecha' ? ' hecha' : ''}" style="--i:${i}"><div class="cabeza">
+        <span class="socio">${esc(t.socio_nombre)}</span>${etiquetaEstado(t)}
+        <span class="profe">Profe: ${esc(t.profe || '—')}</span>
+        <span class="situacion">${esc(t.situacion)}</span>
+        <span class="accion">${esc(t.accion)}</span>
+        ${t.ultima_anotacion ? `<span class="nota">Última anotación: “${esc(t.ultima_anotacion)}”</span>` : ''}
+        ${m ? `<span class="nota"><b>Marcó:</b> ${esc(m.canal)} · ${esc(m.resultado)}${m.fecha ? ' ' + ddmm(m.fecha) : ''}${m.detalle ? ' · ' + esc(m.detalle) : ''}</span>` : ''}
+      </div></article>`;
+  }
+
   function tarjeta(t, i) {
+    if (seVerificaEnMove(t.tipo)) return tarjetaVerificada(t, i);
     const abierta = E.abierta === t.id;
     return `<article class="tarjeta${t.estado === 'hecha' ? ' hecha' : ''}" style="--i:${i}">
       <button class="cabeza" data-accion="abrir" data-id="${esc(t.id)}" aria-expanded="${abierta}">
@@ -178,15 +201,36 @@
       <div class="grupo"><button class="boton claro ancho" data-accion="garantia">Registrar pedido de garantía</button></div>`;
   }
 
+  // ---------- Lista de una persona, solo lectura ----------
+
+  function vistaPersona() {
+    const volver = '<div class="filtros"><button class="chip" data-accion="persona-volver">← Volver a la sede</button></div>';
+    if (!E.persona) return volver + '<div class="cargando">Cargando su lista…</div>';
+    const P = E.persona;
+    const hechas = P.tareas.filter(t => t.estado === 'hecha').length;
+    const tipos = [];
+    P.tareas.forEach(t => { if (tipos.indexOf(t.tipo) < 0) tipos.push(t.tipo); });
+    let i = 0;
+    return `${volver}<h1 class="titulo">${esc(P.nombre)}</h1>
+      <p class="bajada">${esc(SEDES[P.sede] || '')} · ${esc(TURNOS[P.turno] || '')} · ${esc(tituloDia(P.hoy))}. Ves su lista tal cual, sin poder marcar.</p>
+      ${avance(hechas, P.tareas.length)}
+      ${tipos.length ? tipos.map(tipo => {
+        const lista = P.tareas.filter(t => t.tipo === tipo);
+        return `<section class="grupo"><h2>${esc(tipo)} <span class="cuenta">${lista.length}</span></h2>${lista.map(t => tarjetaLectura(t, i++)).join('')}</section>`;
+      }).join('') : '<div class="vacio">Sin tareas para hoy.</div>'}`;
+  }
+
   // ---------- Sede ----------
 
   function vistaSede() {
+    if (E.personaDni) return vistaPersona();
     const selector = tiene('admin') ? `<div class="filtros">${Object.keys(SEDES).map(k => `<button class="chip" data-accion="sede-elegir" data-s="${k}" aria-pressed="${E.sedeElegida === k}">${SEDES[k]}</button>`).join('')}</div>` : '';
     if (!E.sede) return selector + '<div class="cargando">Cargando la sede…</div>';
     const S = E.sede;
     const nombre = dni => (S.personas.find(p => p.dni === dni) || {}).nombre || 'Otra persona';
     const personas = S.personas.length ? `<div class="personas">${S.personas.map(p => `<div class="persona"><b>${esc(p.nombre)}</b><span class="turno">${esc(TURNOS[p.turno] || '')}</span>
-        <div class="cifras"><div><strong>${p.hechas_hoy}</strong><span>Hoy</span></div><div class="${p.pendientes > 15 ? 'mal' : ''}"><strong>${p.pendientes}</strong><span>Pendientes</span></div><div><strong>${p.hechas_semana}</strong><span>Semana</span></div></div></div>`).join('')}</div>`
+        <div class="cifras"><div><strong>${p.hechas_hoy}</strong><span>Hoy</span></div><div class="${p.pendientes > 15 ? 'mal' : ''}"><strong>${p.pendientes}</strong><span>Pendientes</span></div><div><strong>${p.hechas_semana}</strong><span>Semana</span></div></div>
+        <button class="chip ver-lista" data-accion="ver-persona" data-dni="${esc(p.dni)}">Ver su lista</button></div>`).join('')}</div>`
       : '<div class="vacio">No hay recepcionistas cargados en esta sede.</div>';
     const alertas = S.alertas.length ? S.alertas.map((t, i) => `<article class="tarjeta" style="--i:${i}">
         <div class="cabeza" style="display:grid;grid-template-columns:1fr auto;gap:2px 10px;padding:12px 14px">
@@ -277,6 +321,8 @@
         (E.tareas || []).forEach(t => { if (t.resultado_local) locales[t.id] = t.resultado_local; });
         E.hoy = r.hoy;
         E.tareas = r.tareas.map(t => Object.assign(t, locales[t.id] ? { resultado_local: locales[t.id] } : {}));
+      } else if (E.vista === 'sede' && E.personaDni) {
+        E.persona = await cliente.llamar('tareas_de', { dni: E.personaDni });
       } else if (E.vista === 'sede') {
         E.sede = await cliente.llamar('sede', tiene('admin') ? { sede: E.sedeElegida } : {});
       } else if (E.vista === 'admin') {
@@ -289,6 +335,8 @@
   function irA(vista) {
     E.vista = vista;
     E.abierta = null;
+    E.personaDni = null;
+    E.persona = null;
     render();
     cargarVista();
   }
@@ -388,13 +436,15 @@
     if (a === 'salir') {
       if (cliente.pendientesDeEnvio() && !confirm('Hay marcas que todavía no se enviaron. Si salís, se pierden. ¿Salir igual?')) return;
       cliente.cerrarSesion();
-      Object.assign(E, { vista: null, tareas: null, sede: null, usuarios: null, abierta: null });
+      Object.assign(E, { vista: null, tareas: null, sede: null, usuarios: null, abierta: null, personaDni: null, persona: null });
       render();
     } else if (a === 'vista') irA(el.dataset.v);
     else if (a === 'filtro') { E.filtro = el.dataset.f; E.abierta = null; render(); }
     else if (a === 'abrir') { E.abierta = E.abierta === el.dataset.id ? null : el.dataset.id; E.errorForm = ''; render(); }
     else if (a === 'cerrar') { E.abierta = null; E.errorForm = ''; render(); }
     else if (a === 'garantia') dialogoGarantia();
+    else if (a === 'ver-persona') { E.personaDni = el.dataset.dni; E.persona = null; render(); cargarVista(); }
+    else if (a === 'persona-volver') { E.personaDni = null; E.persona = null; render(); cargarVista(); }
     else if (a === 'sede-elegir') { E.sedeElegida = el.dataset.s; E.sede = null; render(); cargarVista(); }
     else if (a === 'reasignar') {
       const dni = app.querySelector(`[data-reasignar="${CSS.escape(el.dataset.id)}"]`).value;

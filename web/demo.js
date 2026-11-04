@@ -56,6 +56,7 @@
       t(R, 'Premio a la constancia', 4, 'Lucas Ortiz', 'Profe Sol', 'Lleva 2 de 3 semanas para el premio', 'Contarle cuánto le falta y reservarle 3 turnos'),
       t(R, 'Faltó la semana pasada', 5, 'Carla Benítez', 'Profe Ana', 'Venía 3 veces por semana; la pasada, 0', 'Preguntar qué pasó y reservarle el próximo turno',
         { pendiente_desde: diaHabilAntes(hoy, 1) }),
+      t(R, 'Asignarle profesor', 7, 'Nadia Campos', '', 'Socio vigente sin profesor en MOVE', 'Asignarle profesor en MOVE. Sugerido: Profe Sol (da el horario en que más viene)'),
       t(R, 'Riesgo alto', 6, 'Sergio Molina', 'Profe Ana', '21 días sin venir · bajó 60%', 'Hablar en persona o llamar; cerrar con turno o fecha'),
       t(R, 'Vence en 7 días', 2, 'Inés Duarte', 'Profe Leo', 'Vence en 3 días', 'Llamar y reservarle el turno', { estado: 'hecha', hecha_en: new Date().toISOString() }),
       t(T, 'Riesgo alto', 6, 'Pablo Sosa', 'Profe Ana', '30 días sin venir', 'Llamar', { pendiente_desde: diaHabilAntes(hoy, 3) }),

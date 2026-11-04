@@ -318,3 +318,28 @@ test('pin_regenerar, usuarios_listar y usuario_activo solo admin', () => {
   assert.ok(pedir(d, { accion: 'usuario_activo', token: adm, dni: '28999888', activo: false }).ok);
   assert.equal(pedir(d, { accion: 'login', dni: '28999888', pin: r.data.pin }).error, 'credenciales');
 });
+
+// ---------- Ver todo: lista de cada recepcionista ----------
+
+test('tareas_de: admin ve cualquiera con su marca; coordinador solo su sede; recepción no', () => {
+  const d = equipo({ tareas: [tarea({}), tarea({ id: 'T2', estado: 'hecha', hecha_en: '2026-11-09T13:00:00.000Z' }), tarea({ id: 'T3', estado: 'cerrada' })],
+                     registro: [{ id_marca: 'a', ts: '1', tarea_id: 'T2', canal: 'LL', resultado: 'RESERVA', fecha_resultado: '', detalle: 'jueves' }] });
+  const adm = entrar(d, '20000001', '0907');
+  const r = pedir(d, { accion: 'tareas_de', token: adm, dni: '30.123.456' });
+  assert.ok(r.ok, JSON.stringify(r));
+  assert.equal(r.data.nombre, 'Ana Prueba');
+  assert.deepEqual(r.data.tareas.map(t => t.id).sort(), ['T1', 'T2']);
+  const t2 = r.data.tareas.find(t => t.id === 'T2');
+  assert.equal(t2.marca.resultado, 'RESERVA');
+  assert.equal(t2.marca.detalle, 'jueves');
+  assert.equal(pedir(d, { accion: 'tareas_de', token: entrar(d), dni: '28999888' }).error, 'prohibido');
+  assert.equal(pedir(d, { accion: 'tareas_de', token: entrar(d, '25333444', '0907'), dni: '30123456' }).error, 'prohibido');
+  assert.ok(pedir(d, { accion: 'tareas_de', token: entrar(d, '25111222', '0907'), dni: '30123456' }).ok);
+  assert.equal(pedir(d, { accion: 'tareas_de', token: adm, dni: '1' }).error, 'no_existe');
+});
+
+test('marcar rechaza tareas que se verifican en MOVE', () => {
+  const d = entorno([usuario()], { tareas: [tarea({ tipo: 'Asignarle profesor' })], registro: [] });
+  assert.equal(pedir(d, { accion: 'marcar', token: entrar(d), tarea_id: 'T1', id_marca: 'x', canal: 'PR', resultado: 'RESERVA' }).error, 'datos_invalidos');
+  assert.equal(d.repo.hojas.tareas[0].estado, 'pendiente');
+});

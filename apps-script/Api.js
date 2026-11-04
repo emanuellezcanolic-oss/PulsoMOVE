@@ -113,6 +113,7 @@ function marcar(req, deps) {
   const t = tareas.find(x => x.id === texto(req.tarea_id));
   if (!t) falla('no_existe');
   if (t.asignado_dni !== usuario.dni) falla('prohibido');
+  if (seVerificaEnMove(t.tipo)) falla('datos_invalidos');
   if (deps.repo.leer('registro').some(r => r.id_marca === idMarca)) return {};
   const ts = new Date(deps.ahora()).toISOString();
   deps.repo.agregar('registro', {
@@ -165,6 +166,23 @@ function vistaSede(req, deps) {
     .sort((a, b) => b.dias_pendiente - a.dias_pendiente || ordenTareas(a, b));
   const garantias = deps.repo.leer('garantia').filter(g => g.sede === sede && g.estado === 'pendiente');
   return { hoy: hoy, sede: sede, personas: personas, alertas: alertas, garantias: garantias };
+}
+
+// Lista de una persona tal como la ve ella, con lo que marcó en cada tarea. Admin: cualquiera; coordinador: su sede.
+function tareasDe(req, deps) {
+  const { usuario, usuarios } = sesion(req, deps);
+  if (!tieneRol(usuario, 'admin') && !tieneRol(usuario, 'coordinador')) falla('prohibido');
+  const u = usuarios.find(x => x.dni === normalizarDni(req.dni));
+  if (!u) falla('no_existe');
+  if (!tieneRol(usuario, 'admin')) sedePermitida(usuario, u.sede);
+  const hoy = deps.hoy();
+  const marcas = {};
+  deps.repo.leer('registro').forEach(r => { marcas[r.tarea_id] = { canal: r.canal, resultado: r.resultado, fecha: r.fecha_resultado, detalle: r.detalle }; });
+  const tareas = deps.repo.leer('tareas')
+    .filter(t => t.asignado_dni === u.dni && (t.estado === 'pendiente' || (t.estado === 'hecha' && fechaArgentina(t.hecha_en) === hoy)))
+    .sort(ordenTareas)
+    .map(t => Object.assign(conDias(t, hoy), marcas[t.id] ? { marca: marcas[t.id] } : {}));
+  return { hoy: hoy, nombre: u.nombre, turno: u.turno, sede: u.sede, tareas: tareas };
 }
 
 function reasignar(req, deps) {
@@ -325,6 +343,7 @@ const ACCIONES = {
   usuarios_resumen: usuariosResumen,
   sede: vistaSede,
   reasignar: reasignar,
+  tareas_de: tareasDe,
   garantia_crear: garantiaCrear,
   garantia_decidir: garantiaDecidir,
   usuarios_cargar: usuariosCargar,

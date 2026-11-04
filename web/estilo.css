@@ -168,6 +168,8 @@ label.campo .opcional { text-transform: none; letter-spacing: 0; font-weight: 50
 .persona .cifras strong { font: 900 24px/1 var(--display); font-stretch: 70%; }
 .persona .cifras span { font-size: 11px; color: var(--gris); text-transform: uppercase; letter-spacing: .05em; }
 .persona .cifras .mal strong { color: var(--rojo); }
+.persona .ver-lista { margin-top: 10px; }
+.tarjeta > .cabeza { display: grid; grid-template-columns: 1fr auto; gap: 2px 10px; padding: 12px 14px; }
 .fila-accion { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; padding: 0 14px 12px; }
 .fila-accion select, .fila-accion input { border: 1.5px solid var(--linea); border-radius: 8px; padding: 8px; background: #fff; flex: 1; min-width: 140px; }
 .vacio { padding: 18px; text-align: center; color: var(--gris); border: 1.5px dashed var(--linea); border-radius: var(--radio); }
