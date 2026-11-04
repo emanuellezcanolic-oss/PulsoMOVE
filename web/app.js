@@ -613,7 +613,8 @@
     const d = document.createElement('dialog');
     d.innerHTML = `<div class="dentro">${html}</div>`;
     document.body.appendChild(d);
-    d.addEventListener('close', () => d.remove());
+    const cerrarNativo = d.close.bind(d);
+    d.close = () => { cerrarNativo(); d.remove(); };
     d.showModal();
     if (alAbrir) alAbrir(d);
     return d;
