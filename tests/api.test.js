@@ -537,3 +537,15 @@ test('llegada de profes: solo coordinación, por sede', () => {
   assert.ok(pedir(d, { accion: 'cargar_profes', clave: 'clave-prueba', filas: [fila('bolson', 'tarde')] }).ok);
   assert.equal(d.repo.hojas.profes.length, 1);    // cada carga reemplaza la anterior
 });
+
+test('reasignar_tareas cambia de persona solo lo pendiente y conserva fechas', () => {
+  const d = equipo({ tareas: [tarea({ pendiente_desde: '2026-11-05' }), tarea({ id: 'H', socio_id: '502', estado: 'hecha' }), tarea({ id: 'O', socio_id: '503' })] });
+  assert.equal(pedir(d, { accion: 'reasignar_tareas', clave: 'mala', cambios: [] }).error, 'clave');
+  const cambios = [{ sede: 'bolson', socio_id: '501', asignado_dni: '28999888' }, { sede: 'bolson', socio_id: '502', asignado_dni: '28999888' }];
+  assert.equal(pedir(d, { accion: 'reasignar_tareas', clave: 'clave-prueba', cambios }).data.reasignadas, 1);
+  const [a, h, o] = d.repo.hojas.tareas;
+  assert.equal(a.asignado_dni, '28999888');
+  assert.equal(a.pendiente_desde, '2026-11-05');
+  assert.equal(h.asignado_dni, '30123456');
+  assert.equal(o.asignado_dni, '30123456');
+});

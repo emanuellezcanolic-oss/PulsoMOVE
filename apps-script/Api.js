@@ -256,6 +256,22 @@ function cargarTareas(req, deps) {
   return { nuevas: r.nuevas, actualizadas: r.actualizadas, cerradas: r.cerradas };
 }
 
+// Corrige a quién le toca una tarea pendiente. No cambia fechas: no le suma atraso a nadie.
+function reasignarTareas(req, deps) {
+  exigirClave(req, deps);
+  if (!Array.isArray(req.cambios)) falla('datos_invalidos');
+  const tareas = deps.repo.leer('tareas');
+  let n = 0;
+  req.cambios.forEach(c => {
+    tareas.filter(t => t.sede === c.sede && t.socio_id === String(c.socio_id) && t.estado === 'pendiente').forEach(t => {
+      t.asignado_dni = String(c.asignado_dni);
+      n++;
+    });
+  });
+  deps.repo.escribir('tareas', tareas);
+  return { reasignadas: n };
+}
+
 function bajarRegistro(req, deps) {
   exigirClave(req, deps);
   const desde = texto(req.desde);
@@ -606,6 +622,7 @@ const ACCIONES = {
   mis_tareas: misTareas,
   marcar: marcar,
   cargar_tareas: cargarTareas,
+  reasignar_tareas: reasignarTareas,
   bajar_registro: bajarRegistro,
   usuarios_resumen: usuariosResumen,
   sede: vistaSede,
