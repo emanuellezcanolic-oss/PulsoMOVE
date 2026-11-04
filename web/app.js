@@ -18,15 +18,18 @@
 
   const SEDES = { bariloche: 'Bariloche', bolson: 'El Bolsón', puelo: 'Lago Puelo' };
   const TURNOS = { manana: 'Mañana', tarde: 'Tarde' };
-  const NOMBRE_CANAL = { MP: 'Mensaje personal', MG: 'Mensaje general o plantilla', LL: 'Llamada', PR: 'En persona', 'SIN CONTACTO': 'Sin contacto' };
+  const NOMBRE_CANAL = { AU: 'Audio', MP: 'Mensaje personal', MG: 'Mensaje general o plantilla', LL: 'Llamada', PR: 'En persona', 'SIN CONTACTO': 'Sin contacto' };
   const FRASE_GARANTIA = 'Si un profe no te saluda, no te arma tu rutina o no te hace seguimiento, te regalamos el mes siguiente, para darnos la oportunidad de mejorar.';
   const DIAS = ['Domingo', 'Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado'];
 
-  const SOLO_FORMULARIO_SIMPLE = ['SALUDADO', 'SIN CAMBIO', 'SEGUIDO'];
+  const SOLO_FORMULARIO_SIMPLE = ['SALUDADO', 'SIN CAMBIO', 'SEGUIDO', 'HECHO', 'LLEGÓ', 'LLEGÓ TARDE', 'NO VINO'];
+  const AVISO_AUDIO = 'Para este contacto, mejor un audio: obliga a abrirlo, y escuchar tu tono de voz cambia cómo llega el mensaje. Hablale con tus palabras: un texto armado se nota.';
   function formularioDe(tipo) {
     const t = String(tipo);
     if (t.indexOf('Cumpleaños') === 0) return { resultado: 'SALUDADO', conCanal: true, detalle: 'Qué se hizo', boton: 'Listo, saludado' };
     if (t.indexOf('Encuesta de baja') === 0) return { resultado: 'ENCUESTA ENVIADA', conCanal: true, detalle: 'Qué respondió', boton: 'Encuesta enviada' };
+    if (t.indexOf('Profes de hoy') === 0) return { conCanal: false, opciones: ['LLEGÓ', 'LLEGÓ TARDE', 'NO VINO'], detalle: 'Detalle', boton: 'Guardar' };
+    if (t.indexOf('Apertura del turno') === 0 || t.indexOf('Cierre del turno') === 0) return { resultado: 'HECHO', conCanal: false, detalle: 'Alguna novedad', boton: 'Listo' };
     if (t.indexOf('Seguimiento de consulta') === 0) return { resultado: 'SEGUIDO', conCanal: true, detalle: 'Qué respondió', boton: 'Seguimiento hecho' };
     if (t.indexOf('Revisar profesor') === 0) return { resultado: 'SIN CAMBIO', conCanal: false, detalle: 'Por qué se deja como está', obligatorio: true, boton: 'Dejarlo como está' };
     return null;
@@ -37,7 +40,7 @@
 
   const E = {
     vista: null, hoy: '', tareas: null, filtro: 'pendientes', tipo: '', abierta: null, errorForm: '',
-    sede: null, sedeElegida: 'bolson', usuarios: null, mensajeLogin: '', personaDni: null, persona: null, rend: null, rendMes: null, rendDni: null,
+    sede: null, sedeElegida: 'bolson', usuarios: null, mensajeLogin: '', personaDni: null, persona: null, rend: null, rendMes: null, rendDni: null, dia: null, adelantar: false, abiertaEn: null, cierres: null, cierrePospuesto: 0, paraAdelantar: 0, celebrado: {},
   };
 
   const app = document.getElementById('app');
@@ -46,6 +49,34 @@
   const tituloDia = iso => { const d = new Date(iso + 'T12:00:00'); return DIAS[d.getDay()] + ' ' + d.getDate() + '/' + (d.getMonth() + 1); };
   const roles = () => ((cliente.sesion() || {}).roles || []);
   const tiene = r => roles().indexOf(r) >= 0;
+
+  const horaLocal = iso => new Date(Date.parse(iso) - 3 * 3600 * 1000).toISOString().slice(11, 16);
+  const duracion = s => (s < 60 ? s + ' seg' : Math.round(s / 60) + ' min');
+
+  // Avisos del sistema (push del navegador): salen aunque la PC esté en otra pestaña, con PulsoMOVE abierta
+  function push(titulo, cuerpo) {
+    try {
+      if (window.Notification && Notification.permission === 'granted') new Notification(titulo, { body: cuerpo, icon: 'web/logo.png', tag: titulo });
+    } catch (e) { /* sin notificaciones */ }
+  }
+  const avisosPendientes = () => window.Notification && Notification.permission === 'default';
+
+  function celebrar(titulo, texto, grande) {
+    push(titulo, texto);
+    const c = document.createElement('div');
+    c.className = 'celebracion' + (grande ? ' grande' : '');
+    const colores = ['#f2b705', '#f2542d', '#0e9594', '#798254', '#f58a07'];
+    const trozos = grande ? Array.from({ length: 70 }, (_, i) => `<i style="left:${Math.random() * 100}%;background:${colores[i % 5]};animation-delay:${Math.random() * 0.7}s;animation-duration:${2 + Math.random() * 1.6}s"></i>`).join('') : '';
+    c.innerHTML = `${trozos}<div class="celebracion-caja"><b>${esc(titulo)}</b><span>${esc(texto)}</span>${grande && E.paraAdelantar ? '<button class="boton" data-celebra="adelantar">Adelantar tareas de mañana</button>' : ''}<button class="boton claro" data-celebra="cerrar">Seguir</button></div>`;
+    document.body.appendChild(c);
+    c.addEventListener('click', ev => {
+      const b = ev.target.closest('[data-celebra]');
+      if (!b) return;
+      c.remove();
+      if (b.dataset.celebra === 'adelantar') { E.adelantar = true; E.filtro = 'pendientes'; cargarVista(); }
+    });
+    if (!grande) setTimeout(() => c.remove(), 3500);
+  }
 
   let temporizadorAviso;
   function aviso(texto, mal) {
@@ -133,6 +164,7 @@
   }
 
   function etiquetaEstado(t) {
+    if (t.estado === 'pendiente' && E.hoy && String(t.fecha) > E.hoy) return `<span class="estado adelanto">⏩ Del ${ddmm(t.fecha)}</span>`;
     if (t.estado === 'hecha') return `<span class="estado hecha">✓ ${esc(t.resultado_local || (t.marca && t.marca.resultado) || (seVerificaEnMove(t.tipo) ? 'Verificada en MOVE' : 'Hecha'))}</span>`;
     if (t.dias_pendiente >= 2) return `<span class="estado atrasada">Desde el ${ddmm(t.pendiente_desde)}</span>`;
     if (t.dias_pendiente === 1) return '<span class="estado ayer">De ayer</span>';
@@ -141,10 +173,12 @@
 
   // Tareas que no son un contacto de retención: formulario corto con el resultado ya puesto
   function formularioSimple(t, f) {
-    const canal = f.conCanal ? `<label class="campo">Canal<select name="canal" required><option value="">Elegí…</option>${['MP', 'LL', 'PR'].map(v => `<option value="${v}">${esc(NOMBRE_CANAL[v])}</option>`).join('')}</select></label>` : '<input type="hidden" name="canal" value="PR">';
+    const canal = f.conCanal ? `<label class="campo">Canal<select name="canal" required><option value="">Elegí…</option>${['AU', 'MP', 'LL', 'PR'].map(v => `<option value="${v}">${esc(NOMBRE_CANAL[v])}</option>`).join('')}</select></label>` : '<input type="hidden" name="canal" value="PR">';
     return `<form class="marca-form" data-form="marcar" data-id="${esc(t.id)}">
-      <input type="hidden" name="resultado" value="${esc(f.resultado)}">
+      ${f.opciones ? '' : `<input type="hidden" name="resultado" value="${esc(f.resultado)}">`}
+      ${recomiendaAudio(t.tipo) ? `<div class="consejo-audio">🎙️ ${esc(AVISO_AUDIO)}</div>` : ''}
       <div class="campos">${canal}
+        ${f.opciones ? `<label class="campo">Cómo llegó<select name="resultado" required><option value="">Elegí…</option>${f.opciones.map(o => `<option>${esc(o)}</option>`).join('')}</select></label>` : ''}
         <label class="campo">${esc(f.detalle)} <span class="opcional">${f.obligatorio ? '(obligatorio)' : '(opcional)'}</span><textarea name="detalle" maxlength="500" ${f.obligatorio ? 'required' : ''}></textarea></label>
       </div>
       ${E.errorForm ? `<div class="error-form">${esc(E.errorForm)}</div>` : ''}
@@ -157,6 +191,7 @@
     if (simple) return formularioSimple(t, simple);
     const opt = (lista, nombres) => lista.map(v => `<option value="${esc(v)}">${esc(nombres ? nombres[v] || v : v)}</option>`).join('');
     return `<form class="marca-form" data-form="marcar" data-id="${esc(t.id)}">
+      ${recomiendaAudio(t.tipo) ? `<div class="consejo-audio">🎙️ ${esc(AVISO_AUDIO)}</div>` : ''}
       <div class="campos">
         <label class="campo">Canal<select name="canal" required><option value="">Elegí…</option>${opt(CANALES, NOMBRE_CANAL)}</select></label>
         <label class="campo">Resultado<select name="resultado" required data-accion="resultado"><option value="">Elegí…</option>${opt(RESULTADOS.filter(r => SOLO_FORMULARIO_SIMPLE.indexOf(r) < 0))}</select></label>
@@ -186,7 +221,7 @@
         <span class="situacion">${esc(t.situacion)}</span>
         <span class="accion">${esc(t.accion)}</span>
         ${t.ultima_anotacion ? `<span class="nota">Última anotación: “${esc(t.ultima_anotacion)}”</span>` : ''}
-        ${m ? `<span class="nota"><b>Marcó:</b> ${esc(m.canal)} · ${esc(m.resultado)}${m.fecha ? ' ' + ddmm(m.fecha) : ''}${m.detalle ? ' · ' + esc(m.detalle) : ''}</span>` : ''}
+        ${m ? `<span class="nota"><b>Marcó${m.ts ? ' a las ' + horaLocal(m.ts) : ''}${m.segundos ? ' · ' + duracion(Number(m.segundos)) : ''}${m.adelantada ? ' · adelantada' : ''}:</b> ${esc(NOMBRE_CANAL[m.canal] || m.canal)} · ${esc(m.resultado)}${m.fecha ? ' ' + ddmm(m.fecha) : ''}${m.detalle ? ' · ' + esc(m.detalle) : ''}</span>` : ''}
       </div></article>`;
   }
 
@@ -205,27 +240,51 @@
     </article>`;
   }
 
+  function deHoy(t) {
+    return t.estado === 'hecha' || String(t.fecha) <= E.hoy;
+  }
+
+  function panelDia(hechas, total) {
+    const D = E.dia;
+    const semilla = Number(E.hoy.replace(/-/g, '')) + (cliente.sesion().nombre || '').length;
+    const frase = fraseDelDia(hechas, total, semilla);
+    return `<section class="saludo"><b>${esc(D ? D.saludo : 'Hola')}</b><p>${esc(frase)}</p></section>
+      ${avance(hechas, total)}
+      <section class="logros">
+        <div class="logro oro"><strong>${D ? D.puntos : 0}</strong><span>puntos del mes</span></div>
+        <div class="logro"><strong>${D && D.racha ? '🔥 ' + D.racha : '0'}</strong><span>días seguidos</span></div>
+        <div class="logro"><strong>${D ? D.hoy.mensajes : 0}</strong><span>mensajes hoy</span></div>
+      </section>
+      <p class="aclara">Plan de 3 meses: 10 puntos, el doble que un socio nuevo. Cada tarea adelantada suma uno extra.</p>
+      ${D && D.coach.length ? `<section class="coach">${D.coach.map(m => `<p class="${esc(m.tono)}">${m.tono === 'logro' ? '★' : '→'} ${esc(m.texto)}</p>`).join('')}</section>` : ''}
+      ${E.paraAdelantar ? `<button class="boton adelantar ancho" data-accion="adelantar">${E.adelantar ? 'Ocultar las de los próximos días' : `⏩ Adelantar tareas (${E.paraAdelantar})`}</button>` : ''}
+      <button class="boton ancho" data-accion="registrar">Registrar mensaje, consulta o venta</button>
+      <button class="boton claro ancho" data-accion="garantia">Registrar pedido de garantía</button>
+      ${avisosPendientes() ? '<button class="boton claro ancho" data-accion="activar-avisos">🔔 Activar avisos en esta PC</button>' : ''}
+      ${DEMO ? '<button class="boton claro ancho" data-accion="probar-cierre">Probar la pregunta de cierre</button>' : ''}
+      <div class="recordatorio">Todo contacto termina con un turno reservado o una fecha.</div>`;
+  }
+
   function vistaHoy() {
     if (!E.tareas) return '<div class="cargando">Cargando tus tareas…</div>';
     const todas = E.tareas;
-    const hechas = todas.filter(t => t.estado === 'hecha').length;
+    const delDia = todas.filter(deHoy);
+    const hechas = delDia.filter(t => t.estado === 'hecha').length;
     const tipos = [];
     todas.forEach(t => { if (tipos.indexOf(t.tipo) < 0) tipos.push(t.tipo); });
     const visibles = todas.filter(t => (E.filtro === 'todas' || (E.filtro === 'hechas') === (t.estado === 'hecha')) && (!E.tipo || t.tipo === E.tipo));
     const grupos = tipos.map(tipo => [tipo, visibles.filter(t => t.tipo === tipo)]).filter(g => g[1].length);
     let i = 0;
     const chip = (k, txt) => `<button class="chip" data-accion="filtro" data-f="${k}" aria-pressed="${E.filtro === k}">${txt}</button>`;
-    return `<h1 class="titulo">${esc(tituloDia(E.hoy))} <span>·</span> hoy</h1>
+    return `<div class="dos-columnas"><aside class="lado">${panelDia(hechas, delDia.length)}</aside><div class="principal">
+      <h1 class="titulo">${esc(tituloDia(E.hoy))} <span>·</span> hoy</h1>
       <p class="bajada">Tocá una tarea para marcarla.</p>
-      ${avance(hechas, todas.length)}
-      <div class="recordatorio">Todo contacto termina con un turno reservado o una fecha.</div>
       <div class="filtros">${chip('pendientes', 'Pendientes')}${chip('hechas', 'Hechas')}${chip('todas', 'Todas')}
         <select data-accion="tipo" aria-label="Tipo de tarea"><option value="">Todos los tipos</option>${tipos.map(t => `<option ${E.tipo === t ? 'selected' : ''}>${esc(t)}</option>`).join('')}</select>
       </div>
       ${grupos.length ? grupos.map(([tipo, lista]) => `<section class="grupo"><h2>${esc(tipo)} <span class="cuenta">${lista.length}</span></h2>${lista[0].intro ? `<p class="intro-grupo">${esc(lista[0].intro)}</p>` : ''}${lista.map(t => tarjeta(t, i++)).join('')}</section>`).join('')
-        : `<div class="vacio">${E.filtro === 'pendientes' ? 'No te quedan tareas pendientes. ¡Bien!' : 'No hay tareas para mostrar.'}</div>`}
-      <div class="grupo botones-pie"><button class="boton ancho" data-accion="registrar">Registrar mensaje, consulta o venta</button>
-        <button class="boton claro ancho" data-accion="garantia">Registrar pedido de garantía</button></div>`;
+        : `<div class="vacio">${E.filtro === 'pendientes' ? '¡No te quedan tareas pendientes! Si querés sumar, adelantá las de mañana.' : 'No hay tareas para mostrar.'}</div>`}
+    </div></div>`;
   }
 
   // ---------- Rendimiento ----------
@@ -235,11 +294,36 @@
   const plata = n => '$' + Math.round(n || 0).toLocaleString('es-AR');
   const formato = (v, f) => (v == null ? '—' : f === 'pct' ? Math.round(v * 100) + '%' : Math.round(v * 10) / 10);
 
+  // Con quien recibe el tablero se habla de lo que falta, no de lo que está mal: el rojo queda para quien coordina
+  let vistaPropia = false;
   function estadoDe(c) {
     if (c == null) return ['sin', '·', 'Sin datos'];
     if (c >= 0.9) return ['bien', '✓', 'En objetivo'];
     if (c >= 0.6) return ['cerca', '~', 'Cerca'];
-    return ['lejos', '!', 'Lejos'];
+    return vistaPropia ? ['cerca', '→', 'Vamos por más'] : ['lejos', '!', 'Lejos'];
+  }
+
+  function barras(items, alto) {
+    const max = Math.max(1, ...items.map(x => x.valor));
+    return `<div class="barras" style="height:${alto || 110}px">${items.map(x => `<div class="barra" title="${esc(x.titulo)}"><span class="barra-num">${x.valor || ''}</span><i style="height:${Math.round(x.valor / max * 100)}%"></i><em>${esc(x.etiqueta)}</em></div>`).join('')}</div>`;
+  }
+
+  function graficoDias(serie) {
+    if (!serie || !serie.length) return '';
+    const ult = serie.slice(-14);
+    return `<section class="bloque"><div class="bloque-cab"><h2>Tareas hechas por día</h2></div>${barras(ult.map(x => ({ valor: x.hechas, etiqueta: x.fecha.slice(8, 10), titulo: `${ddmm(x.fecha)}: ${x.hechas} hechas` })))}</section>`;
+  }
+
+  function bloqueTiempos(p) {
+    const T = p.tiempos;
+    if (!T || !T.por_dia.length) return '';
+    const horas = [];
+    for (let h = 6; h <= 22; h++) horas.push({ valor: T.por_hora[h] || 0, etiqueta: String(h), titulo: `De ${h} a ${h + 1} h: ${T.por_hora[h] || 0} marcas` });
+    const ult = T.por_dia.slice(-7).reverse();
+    return `<section class="bloque"><div class="bloque-cab"><h2>Cuándo hizo las tareas</h2>${T.segundos_promedio ? `<span class="sello">${duracion(T.segundos_promedio)} por tarea</span>` : ''}</div>
+      ${barras(horas, 90)}
+      <div class="envoltura-tabla"><table class="tabla compacta"><thead><tr><th>Día</th><th>Primera</th><th>Última</th><th>Marcas</th></tr></thead><tbody>${ult.map(d => `<tr><td>${ddmm(d.fecha)}</td><td>${d.primera}</td><td>${d.ultima}</td><td class="num">${d.marcas}</td></tr>`).join('')}</tbody></table></div>
+      <p class="aclara">El tiempo por tarea va de que abre la tarjeta a que la guarda: no mide la charla con el socio.</p></section>`;
   }
 
   function nota(n) {
@@ -262,12 +346,14 @@
     return [anterior, actual].map(m => `<button class="chip" data-accion="rend-mes" data-m="${m}" aria-pressed="${data.mes === m}">${nombreMes(m)}</button>`).join('');
   }
 
-  function detallePersona(p, editable) {
+  function detallePersona(p, editable, propia) {
+    vistaPropia = !!propia;
     const P = p.puntaje, v = p.valores;
     const [cls, ico, txt] = estadoDe(P.total == null ? null : P.total / 100);
     const incentivo = P.incentivo == null ? '' : P.incentivo
       ? '<div class="incentivo si">✓ Incentivos habilitados: el cumplimiento está al día.</div>'
-      : `<div class="incentivo no">! Incentivos en pausa: el cumplimiento está en ${P.grupos[0].puntaje}% y hace falta 90%.</div>`;
+      : `<div class="incentivo no">${propia ? '→ Te falta poco para habilitar los incentivos' : '! Incentivos en pausa'}: el cumplimiento está en ${P.grupos[0].puntaje}% y hace falta 90%.</div>`;
+    const completo = P.filas.every(f => f.cumple == null || f.cumple >= 1) && P.total != null;
     const grupos = P.grupos.map(g => {
       const filas = P.filas.filter(f => f.grupo === g.nombre);
       const [c2, i2, t2] = estadoDe(g.puntaje == null ? null : g.puntaje / 100);
@@ -283,7 +369,7 @@
         }).join('')}</section>`;
     }).join('');
     const dato = (t, val, sub) => `<div class="dato"><strong>${val}</strong><span>${esc(t)}</span>${sub ? `<em>${esc(sub)}</em>` : ''}</div>`;
-    const ventas = v.cajas != null ? `<section class="bloque"><div class="bloque-cab"><h2>Lo que pasó por su caja</h2></div><div class="datos">
+    const ventas = !propia && v.cajas != null ? `<section class="bloque"><div class="bloque-cab"><h2>Lo que pasó por su caja</h2></div><div class="datos">
         ${dato('Cobros de planes', plata(v.cobros_plan_monto), (v.cobros_plan || 0) + ' cobros')}
         ${dato('Mostrador', plata(v.mostrador_monto), (v.mostrador || 0) + ' ventas')}
         ${dato('Renovaciones', v.renovaciones || 0)}
@@ -297,11 +383,11 @@
     const actividad = `<section class="bloque"><div class="bloque-cab"><h2>Cargado a mano</h2></div><div class="datos">
         ${dato('Consultas', v.consultas || 0)}${dato('Días de prueba', v.dias_prueba || 0, 'objetivo 2')}${dato('Reseñas pedidas', v.resenas || 0)}${dato('Referidos', v.referidos || 0)}
       </div></section>`;
-    return `<section class="tablero">
+    return `${completo ? '<div class="todo-cumplido">🏆 ¡Todos los objetivos cumplidos! Sos un ejemplo para el equipo.</div>' : ''}<section class="tablero">
         <div class="puntaje"><span class="puntaje-n">${nota(P.total)}</span><span class="puntaje-de">${P.total == null ? '' : 'de 100'}</span>
           <span class="sello ${cls}">${ico} ${txt}</span></div>
         <div class="grupos">${P.grupos.map(g => `<div class="grupo-mini"><strong>${nota(g.puntaje)}</strong><span>${esc(g.nombre)}</span></div>`).join('')}</div>
-      </section>${incentivo}${grupos}${ventas}${actividad}
+      </section>${incentivo}<div class="tablero-columnas">${graficoDias(p.serie)}${propia ? '' : bloqueTiempos(p)}${grupos}${ventas}${actividad}</div>
       ${editable ? `<div class="botones"><button class="boton verde" data-accion="objetivos-guardar" data-dni="${esc(p.dni)}">Guardar objetivos</button></div>` : ''}`;
   }
 
@@ -317,7 +403,8 @@
     if (!p) return '<div class="vacio">Todavía no hay datos.</div>';
     return `<div class="filtros">${selectorMes(E.rend)}</div>
       <h1 class="titulo">Mi ${nombreMes(E.rend.mes)}</h1><p class="bajada">Cómo vas contra tus objetivos del mes.</p>
-      ${detallePersona(p, false)}${aclaracionDatos(E.rend)}
+      <div class="logros"><div class="logro oro"><strong>${p.puntos || 0}</strong><span>puntos del mes</span></div></div>
+      ${detallePersona(p, false, true)}${aclaracionDatos(E.rend)}
       <div class="grupo"><button class="boton ancho" data-accion="registrar">Registrar mensaje, consulta o venta</button></div>`;
   }
 
@@ -329,7 +416,8 @@
     if (p) {
       return `<div class="filtros"><button class="chip" data-accion="rend-volver">← Volver al equipo</button>${selectorMes(R)}</div>
         <h1 class="titulo">${esc(p.nombre)}</h1><p class="bajada">${esc(SEDES[p.sede] || '')} · ${esc(TURNOS[p.turno] || '')} · ${nombreMes(R.mes)}</p>
-        ${detallePersona(p, tiene('admin'))}${aclaracionDatos(R)}`;
+        <div class="filtros"><button class="chip" data-accion="rend-lista" data-dni="${esc(p.dni)}">Ver su lista de hoy</button></div>
+        ${detallePersona(p, tiene('admin'), false)}${aclaracionDatos(R)}`;
     }
     const filas = R.personas.map((x, i) => {
       const P = x.puntaje, v = x.valores;
@@ -345,7 +433,64 @@
       <p class="bajada">Tocá una persona para ver el detalle${tiene('admin') ? ' y ajustar sus objetivos' : ''}.</p>
       ${R.personas.length ? `<div class="envoltura-tabla"><table class="tabla"><thead><tr><th>#</th><th>Persona</th><th>Puntaje</th><th>Cumpl.</th><th>Reten.</th><th>Ventas</th><th>Exper.</th><th>Nuevos</th><th>Mostrador</th><th>Tareas</th></tr></thead><tbody>${filas}</tbody></table></div>`
         : '<div class="vacio">No hay recepcionistas cargados en esta sede.</div>'}
-      ${aclaracionDatos(R)}`;
+      ${aclaracionDatos(R)}${bloqueCierres()}`;
+  }
+
+  const ANIMOS = { 1: '😞 Muy mal', 2: '😕 Mal', 3: '😐 Normal', 4: '🙂 Bien', 5: '😄 Muy bien' };
+
+  function bloqueCierres() {
+    if (!E.cierres || !E.cierres.length) return '';
+    return `<section class="bloque"><div class="bloque-cab"><h2>Cierres de turno</h2></div>${E.cierres.slice(0, 20).map(c => {
+      const r = Object.values(c.respuestas || {}).filter(Boolean);
+      return `<div class="metrica"><div class="metrica-fila"><span class="metrica-nombre">${esc(c.nombre)} · ${ddmm(c.fecha)}</span><span>${esc(ANIMOS[c.animo] || '')}</span></div>
+        <div class="metrica-pie"><span>${esc(c.hechas)} hechas · ${esc(c.pendientes)} pendientes · ${esc(c.mensajes)} mensajes · ${esc(c.consultas)} consultas</span></div>
+        ${r.map(x => `<p class="aclara">“${esc(x)}”</p>`).join('')}${c.comentario ? `<p class="aclara">“${esc(c.comentario)}”</p>` : ''}</div>`;
+    }).join('')}</section>`;
+  }
+
+  // Cierre de turno: 30 minutos antes de terminar, unas preguntas según lo que pasó en el día
+  function dialogoCierre(prueba) {
+    if (document.querySelector('dialog')) return;
+    const D = E.dia;
+    if (!D) return;
+    push('Se acerca el cierre de tu turno', '¿Cómo estuvo hoy? Contanos en PulsoMOVE antes de irte.');
+    const preguntas = [];
+    if (!D.hoy.consultas) preguntas.push(['consultas', 'Hoy no registraste consultas. ¿No vino nadie a averiguar por los servicios?']);
+    if (!D.hoy.mensajes) preguntas.push(['mensajes', 'Hoy no registraste mensajes. ¿Qué pasó?']);
+    if (D.hoy.pendientes) preguntas.push(['pendientes', `Te ${D.hoy.pendientes === 1 ? 'quedó 1 tarea pendiente' : `quedaron ${D.hoy.pendientes} tareas pendientes`}. ¿Por qué motivo?`]);
+    dialogo(`<h3>¿Cómo terminaste hoy?</h3>
+      <form class="marca-form" style="border:0;padding:0">
+        <div class="animos">${Object.keys(ANIMOS).map(k => `<label><input type="radio" name="animo" value="${k}" required><span>${esc(ANIMOS[k])}</span></label>`).join('')}</div>
+        ${preguntas.map(([k, t]) => `<label class="campo pregunta">${esc(t)}<textarea name="r_${k}" maxlength="300" required></textarea></label>`).join('')}
+        <label class="campo">Algo más que quieras contar <span class="opcional">(opcional)</span><textarea name="comentario" maxlength="400"></textarea></label>
+        <p class="aclara" style="margin:0">Lo lee tu responsable: sirve para ayudarte, no para retarte.</p>
+        <div class="botones"><button class="boton verde">Enviar</button><button type="button" class="boton claro" data-ir>Primero completo lo que falta</button></div>
+      </form>`, d => {
+      d.querySelector('[data-ir]').onclick = () => { E.cierrePospuesto = Date.now() + 10 * 60000; d.close(); };
+      d.querySelector('form').onsubmit = async ev => {
+        ev.preventDefault();
+        const f = new FormData(ev.target);
+        const respuestas = {};
+        preguntas.forEach(([k]) => { respuestas[k] = String(f.get('r_' + k)).trim(); });
+        const btn = ev.target.querySelector('button');
+        btn.disabled = true;
+        try {
+          await cliente.llamar('cierre_guardar', { animo: Number(f.get('animo')), respuestas, comentario: String(f.get('comentario') || '').trim() });
+          D.cierre_hecho = true;
+          d.close();
+          aviso('¡Gracias! Que descanses.');
+        } catch (e) { btn.disabled = false; falla(e); }
+      };
+    });
+  }
+
+  function revisarCierre() {
+    const D = E.dia;
+    if (!D || !D.hora_fin || D.cierre_hecho || !cliente.sesion() || !tiene('recepcion') || Date.now() < E.cierrePospuesto) return;
+    const ahora = new Date();
+    const [h, m] = D.hora_fin.split(':').map(Number);
+    const falta = h * 60 + m - (ahora.getHours() * 60 + ahora.getMinutes());
+    if (falta <= 30 && falta > -60) dialogoCierre();
   }
 
   function dialogoRegistrar() {
@@ -359,7 +504,7 @@
           <option value="prueba">Día de prueba</option><option value="resena">Pedí una reseña de Google</option><option value="referido">Me pasaron un referido</option></select></label>
         <label class="campo">Nombre de la persona<input name="nombre" required></label>
         <label class="campo" data-solo="mensaje">Categoría<select name="categoria">${opciones(CATEGORIA)}</select></label>
-        <label class="campo" data-solo="mensaje">Canal<select name="canal"><option value="MP">Mensaje personal</option><option value="LL">Llamada</option><option value="PR">En persona</option></select></label>
+        <label class="campo" data-solo="mensaje">Canal<select name="canal"><option value="AU">Audio</option><option value="MP">Mensaje personal</option><option value="LL">Llamada</option><option value="PR">En persona</option></select></label>
         <label class="campo" data-solo="consulta">Interés<select name="interes"><option value="alto">Alto: seguimiento hoy</option><option value="medio">Medio: seguimiento en 48 horas</option><option value="exploratorio">Exploratorio: seguimiento en una semana</option></select></label>
         <label class="campo" data-solo="consulta prueba referido">Cómo llegó<select name="origen">${opciones(ORIGEN)}</select></label>
         <label class="campo">Detalle <span class="opcional">(opcional)</span><textarea name="detalle" maxlength="300"></textarea></label>
@@ -506,7 +651,10 @@
   async function cargarVista() {
     try {
       if (E.vista === 'hoy') {
-        const r = await cliente.llamar('mis_tareas');
+        const r = await cliente.llamar('mis_tareas', E.adelantar ? { adelantar: true } : {});
+        E.paraAdelantar = r.para_adelantar || 0;
+        E.dia = await cliente.llamar('mi_dia');
+        saludarUnaVez();
         const locales = {};
         (E.tareas || []).forEach(t => { if (t.resultado_local) locales[t.id] = t.resultado_local; });
         E.hoy = r.hoy;
@@ -518,12 +666,22 @@
       } else if (E.vista === 'mes') {
         E.rend = await cliente.llamar('rendimiento', E.rendMes ? { mes: E.rendMes } : {});
       } else if (E.vista === 'rend') {
+        cliente.llamar('cierres_ver').then(c => { E.cierres = c.cierres; if (E.vista === 'rend' && !E.rendDni) render(); }).catch(() => {});
         E.rend = await cliente.llamar('rendimiento', Object.assign(E.rendMes ? { mes: E.rendMes } : {}, tiene('admin') ? { sede: E.sedeElegida } : {}));
       } else if (E.vista === 'admin') {
         E.usuarios = await cliente.llamar('usuarios_listar');
       }
     } catch (e) { falla(e); }
     render();
+  }
+
+  function saludarUnaVez() {
+    const k = 'pulso_saludo_' + E.hoy;
+    const alm = almacenSeguro();
+    if (DEMO || alm.getItem(k)) return;
+    alm.setItem(k, '1');
+    const primero = E.dia.coach[0];
+    push(E.dia.saludo, primero ? primero.texto : '');
   }
 
   function irA(vista) {
@@ -550,6 +708,18 @@
     app.innerHTML = encabezado() + `<main class="contenedor">${cuerpo}</main>` + (DEMO ? '<div class="cinta-practica">Modo práctica · datos inventados</div>' : '');
     const abierto = app.querySelector('.marca-form select');
     if (abierto && !E.errorForm) abierto.focus({ preventScroll: true });
+  }
+
+  // Reconocimiento apenas ocurre: la mitad, los últimos pasos y la lista completa
+  function revisarLogros() {
+    const delDia = (E.tareas || []).filter(deHoy);
+    const hechas = delDia.filter(t => t.estado === 'hecha').length;
+    const total = delDia.length;
+    const falta = total - hechas;
+    const una = (k, fn) => { const c = E.hoy + k; if (!E.celebrado[c]) { E.celebrado[c] = true; fn(); } };
+    if (total && !falta) una('todo', () => celebrar('¡Lista completa!', 'Dejaste todas las tareas de hoy al día. Excelente trabajo.', true));
+    else if (falta === 3) una('3', () => celebrar('¡Te faltan 3!', 'Ya casi está: cerrá estas y dejás todo al día.'));
+    else if (total >= 4 && hechas / total >= 0.5) una('mitad', () => celebrar('¡Mitad del día hecha!', `Vas ${hechas} de ${total}. Seguí así.`));
   }
 
   // ---------- Eventos ----------
@@ -597,7 +767,7 @@
       }
       const t = E.tareas.find(x => x.id === form.dataset.id);
       btn.disabled = true;
-      const r = await cliente.marcar(Object.assign({ tarea_id: t.id }, marca));
+      const r = await cliente.marcar(Object.assign({ tarea_id: t.id, abierta_en: E.abiertaEn }, marca));
       if (r.descartadas.length) {
         aviso(PulsoApi.mensaje(r.descartadas[0].error), true);
         btn.disabled = false;
@@ -609,6 +779,8 @@
       E.errorForm = '';
       render();
       aviso(r.enviada ? 'Guardado.' : 'Guardado en este equipo. Se envía solo cuando vuelva la conexión.', !r.enviada);
+      revisarLogros();
+      cliente.llamar('mi_dia').then(d => { E.dia = d; if (!E.abierta) render(); }).catch(() => {});
     }
   });
 
@@ -633,11 +805,15 @@
     if (a === 'salir') {
       if (cliente.pendientesDeEnvio() && !confirm('Hay marcas que todavía no se enviaron. Si salís, se pierden. ¿Salir igual?')) return;
       cliente.cerrarSesion();
-      Object.assign(E, { vista: null, tareas: null, sede: null, usuarios: null, abierta: null, personaDni: null, persona: null, rend: null, rendMes: null, rendDni: null });
+      Object.assign(E, { vista: null, tareas: null, sede: null, usuarios: null, abierta: null, personaDni: null, persona: null, rend: null, rendMes: null, rendDni: null, dia: null, adelantar: false, cierres: null, celebrado: {} });
       render();
     } else if (a === 'vista') irA(el.dataset.v);
     else if (a === 'filtro') { E.filtro = el.dataset.f; E.abierta = null; render(); }
-    else if (a === 'abrir') { E.abierta = E.abierta === el.dataset.id ? null : el.dataset.id; E.errorForm = ''; render(); }
+    else if (a === 'abrir') { E.abierta = E.abierta === el.dataset.id ? null : el.dataset.id; E.abiertaEn = new Date().toISOString(); E.errorForm = ''; render(); }
+    else if (a === 'adelantar') { E.adelantar = !E.adelantar; cargarVista(); }
+    else if (a === 'activar-avisos') { Notification.requestPermission().then(() => { render(); if (Notification.permission === 'granted') push('¡Listo!', 'Los avisos de PulsoMOVE van a aparecer acá.'); }); }
+    else if (a === 'probar-cierre') dialogoCierre(true);
+    else if (a === 'rend-lista') { E.vista = 'sede'; E.personaDni = el.dataset.dni; E.persona = null; render(); cargarVista(); }
     else if (a === 'cerrar') { E.abierta = null; E.errorForm = ''; render(); }
     else if (a === 'garantia') dialogoGarantia();
     else if (a === 'registrar') dialogoRegistrar();
@@ -685,6 +861,7 @@
   }
   window.addEventListener('online', enviarPendientes);
   setInterval(enviarPendientes, 30000);
+  setInterval(revisarCierre, 60000);
   setInterval(() => { if (cliente.sesion() && !E.abierta && !document.querySelector('dialog') && document.visibilityState === 'visible') cargarVista(); }, 5 * 60000);
 
   render();

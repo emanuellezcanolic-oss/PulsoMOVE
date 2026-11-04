@@ -25,6 +25,15 @@
     return d.toISOString().slice(0, 10);
   }
 
+  function diaHabilDespues(iso, n) {
+    const d = new Date(iso + 'T12:00:00Z');
+    while (n > 0) {
+      d.setUTCDate(d.getUTCDate() + 1);
+      if (d.getUTCDay() !== 0 && d.getUTCDay() !== 6) n--;
+    }
+    return d.toISOString().slice(0, 10);
+  }
+
   const PIMIENTA = 'demo';
   const PIN = '2580';
   const USUARIOS = [
@@ -60,6 +69,11 @@
       t(R, 'Cumpleaños del socio', 0, 'Paula Ibáñez', 'Profe Sol', 'Cumple el sábado, en 3 días', 'Pensar algo con su profe: un saludo o un detalle en su próximo turno'),
       t(R, 'Encuesta de baja', 85, 'Ramiro Núñez', '', 'Su plan terminó hace 16 días y no renovó', 'Enviarle la encuesta de baja', { intro: 'Saber por qué se va e invitarlo a volver. Mensaje personal, sin presión.' }),
       t(R, 'Revisar profesor', 91, 'Clara Gómez', 'Profe Leo', 'Tiene asignado a Profe Leo, pero 7 de sus últimas 8 asistencias fueron en horarios de Profe Sol', 'Hablarlo con los dos profes y, si corresponde, pasarla a Profe Sol en MOVE', { intro: 'Quien lo evalúa y le arma el plan tiene que ser quien le hace el seguimiento. Se cierra sola si MOVE muestra otro profesor; si hay un motivo para dejarlo, anotalo.' }),
+      t(R, 'Profes de hoy', 0, 'Profe Sol', '', 'Primera clase a las 08:00', 'Recordarle el QR y anotar si llegó', { intro: 'La regla del equipo: llegar 15 minutos antes y fichar con el QR. Recordáselo con buena onda y anotá cómo llegó.' }),
+      t(R, 'Apertura del turno', -1, 'Apertura de mi turno', '', 'Contar la caja y registrar · revisar el inbox y las novedades · recepción y baños en orden', 'Hacerlo al llegar'),
+      t(R, 'Completar ficha', 88, 'Bruno Cáceres', '', 'Falta en su ficha: contacto de emergencia', 'Pedirle el dato cuando venga y cargarlo en MOVE'),
+      t(R, 'Le vence el plan esta semana', 2, 'Elena Ruiz', 'Profe Leo', 'Vence el viernes', 'Mensaje personal y renovar con turnos reservados', { fecha: diaHabilDespues(hoy, 1), pendiente_desde: diaHabilDespues(hoy, 1) }),
+      t(R, 'Le vence el plan esta semana', 2, 'Omar Díaz', 'Profe Sol', 'Vence el sábado', 'Mensaje personal y renovar con turnos reservados', { fecha: diaHabilDespues(hoy, 1), pendiente_desde: diaHabilDespues(hoy, 1) }),
       t(R, 'Riesgo alto', 6, 'Sergio Molina', 'Profe Ana', '21 días sin venir · bajó 60%', 'Hablar en persona o llamar; cerrar con turno o fecha'),
       t(R, 'Vence en 7 días', 2, 'Inés Duarte', 'Profe Leo', 'Vence en 3 días', 'Llamar y reservarle el turno', { estado: 'hecha', hecha_en: new Date().toISOString() }),
       t(T, 'Riesgo alto', 6, 'Pablo Sosa', 'Profe Ana', '30 días sin venir', 'Llamar', { pendiente_desde: diaHabilAntes(hoy, 3) }),
@@ -71,13 +85,13 @@
       motivo: 'Dice que nadie le armó la rutina en 3 semanas', registra_dni: R, estado: 'pendiente', decide_dni: '', comentario: '', decidido_en: '',
     }];
     const mes = hoy.slice(0, 7);
-    const venta = (o) => JSON.stringify(Object.assign({ cajas: 12, cobros_plan: 31, cobros_plan_monto: 2150000, mostrador: 24, mostrador_monto: 386000, bar: 18, recovery: 3, indumentaria: 1, suplementos: 2, otros: 0, tienda: 3, renovaciones: 22, retencion_total: 16, retencion_logradas: 9, retencion_pct: 9 / 16, promesas_total: 5, promesas_cumplidas: 4, promesas_pct: 0.8, aperturas: 12, aperturas_bien: 10, apertura_pct: 10 / 12 }, o));
+    const venta = (o) => JSON.stringify(Object.assign({ cajas: 12, cobros_plan: 31, cobros_plan_monto: 2150000, mostrador: 24, mostrador_monto: 386000, bar: 18, recovery: 3, indumentaria: 1, suplementos: 2, otros: 0, tienda: 3, renovaciones: 22, retencion_total: 16, retencion_logradas: 9, retencion_pct: 9 / 16, dias_sin_plan_largo: 4, promesas_total: 5, promesas_cumplidas: 4, promesas_pct: 0.8, aperturas: 12, aperturas_bien: 10, apertura_pct: 10 / 12 }, o));
     const rendimiento = [
       { mes, dni: R, datos: venta({ nuevos: 9, planes_largos: 4 }), actualizado: new Date().toISOString() },
       { mes, dni: T, datos: venta({ nuevos: 13, planes_largos: 7, mostrador_monto: 512000, retencion_logradas: 11, retencion_pct: 11 / 16, aperturas_bien: 7, apertura_pct: 7 / 12 }), actualizado: new Date().toISOString() },
       { mes, dni: C, datos: venta({ nuevos: 6, planes_largos: 2, mostrador_monto: 214000, retencion_logradas: 5, retencion_pct: 5 / 16 }), actualizado: new Date().toISOString() },
     ];
-    return { usuarios, tareas, registro: [], garantia, rendimiento, actividad: [], objetivos: [] };
+    return { usuarios, tareas, registro: [], garantia, rendimiento, actividad: [], objetivos: [], cierres: [] };
   }
 
   function crearFetchDemo() {

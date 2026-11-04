@@ -80,14 +80,14 @@ function leerToken(token, ahoraMs, secreto, hmac) {
 
 // ---------- Marcas ----------
 
-const CANALES = ['MP', 'MG', 'LL', 'PR', 'SIN CONTACTO'];
+const CANALES = ['MP', 'AU', 'MG', 'LL', 'PR', 'SIN CONTACTO'];
 const RESULTADOS = ['VOLVIÓ', 'VUELVE', 'RESERVA', 'PAGÓ', 'PAGA', 'VACACIONES', 'PAUSA', 'SALUD', 'HORARIOS',
-                    'PRECIO', 'BAJA', 'NO CONTESTA', 'TEL MAL', 'ENCUESTA ENVIADA', 'SALUDADO', 'SIN CAMBIO', 'SEGUIDO'];
+                    'PRECIO', 'BAJA', 'NO CONTESTA', 'TEL MAL', 'ENCUESTA ENVIADA', 'SALUDADO', 'SIN CAMBIO', 'SEGUIDO', 'HECHO', 'LLEGÓ', 'LLEGÓ TARDE', 'NO VINO'];
 const PIDEN_FECHA = ['VUELVE', 'PAGA', 'VACACIONES'];
 const PIDEN_DETALLE = ['BAJA', 'SIN CAMBIO'];
 
 // Tareas que no se marcan a mano: se dan por hechas solo cuando MOVE muestra el dato cargado.
-const SE_VERIFICAN_EN_MOVE = ['Asignarle profesor'];
+const SE_VERIFICAN_EN_MOVE = ['Asignarle profesor', 'Completar ficha'];
 
 function seVerificaEnMove(tipo) {
   return SE_VERIFICAN_EN_MOVE.some(v => String(tipo).indexOf(v) === 0);
@@ -143,24 +143,26 @@ function fusionarCargaDetalle(existentes, nuevas, cerrar, fecha) {
     .map(t => Object.assign({}, t));
   const clave = t => t.sede + '|' + t.socio_id;
   let n = 0, act = 0, cer = 0;
+  const fechaGeneral = fecha;
   for (const nv of nuevas) {
     const k = clave(nv);
+    const fechaTarea = nv.fecha || fechaGeneral;
     const pend = filas.find(t => clave(t) === k && t.estado === 'pendiente');
     if (pend) {
-      for (const c of CAMPOS_ACTUALIZABLES) pend[c] = c === 'fecha' ? fecha : String(nv[c] == null ? '' : nv[c]);
+      for (const c of CAMPOS_ACTUALIZABLES) pend[c] = c === 'fecha' ? fechaTarea : String(nv[c] == null ? '' : nv[c]);
       act++;
       continue;
     }
-    if (filas.some(t => clave(t) === k && t.fecha === fecha && t.estado !== 'pendiente')) {
+    if (filas.some(t => clave(t) === k && t.fecha === fechaTarea && t.estado !== 'pendiente')) {
       act++;
       continue;
     }
     filas.push({
-      id: fecha + '-' + nv.sede + '-' + nv.socio_id, fecha: fecha, sede: nv.sede, socio_id: String(nv.socio_id),
+      id: fechaTarea + '-' + nv.sede + '-' + nv.socio_id, fecha: fechaTarea, sede: nv.sede, socio_id: String(nv.socio_id),
       socio_nombre: String(nv.socio_nombre || ''), profe: String(nv.profe || ''), tipo: String(nv.tipo || ''),
       prioridad: String(nv.prioridad == null ? '' : nv.prioridad), situacion: String(nv.situacion || ''),
       accion: String(nv.accion || ''), ultima_anotacion: String(nv.ultima_anotacion || ''),
-      asignado_dni: String(nv.asignado_dni || ''), pendiente_desde: fecha, estado: 'pendiente', hecha_en: '', intro: String(nv.intro || ''),
+      asignado_dni: String(nv.asignado_dni || ''), pendiente_desde: fechaTarea, estado: 'pendiente', hecha_en: '', intro: String(nv.intro || ''),
     });
     n++;
   }
@@ -234,4 +236,66 @@ function puntuar(valores, objetivos) {
   const grupos = GRUPOS_METRICAS.map(nombre => ({ nombre: nombre, puntaje: puntaje(filas.filter(f => f.grupo === nombre)) }));
   const cumplimiento = grupos[0].puntaje;
   return { total: puntaje(filas), grupos: grupos, filas: filas, incentivo: cumplimiento == null ? null : cumplimiento >= UMBRAL_INCENTIVO };
+}
+
+// ---------- Motivación ----------
+// Metas cercanas, avance visible y reconocimiento inmediato. Nada de textos para mandarles a los socios: eso lo escribe cada persona.
+
+const PUNTOS = { tareas_hechas: 1, adelantadas: 1, nuevos: 5, planes_largos: 10, tienda: 2, resenas: 2, referidos: 3, consultas: 1 };
+
+function calcularPuntos(v) {
+  return Object.keys(PUNTOS).reduce((a, k) => a + (Number(v[k]) || 0) * PUNTOS[k], 0);
+}
+
+function saludo(nombre, hora) {
+  const pila = String(nombre || '').trim().split(/\s+/)[0];
+  const parte = hora < 12 ? '¡buen día!' : hora < 20 ? '¡buenas tardes!' : '¡buenas noches!';
+  return 'Hola ' + pila + ', ' + parte + ' Que tengas una excelente jornada.';
+}
+
+const FRASES_ARRANQUE = [
+  'El primer contacto del día es el que pone todo en marcha.',
+  'Cada socio que recibís hoy puede salir mejor de lo que entró.',
+  'Un mensaje a tiempo puede ser la razón por la que alguien vuelve.',
+  'Lo que hacés acá se nota: nadie pasa por el club sin ser visto.',
+];
+const FRASES_RITMO = [
+  'Vas muy bien: cada tarea hecha es un socio mejor cuidado.',
+  'Buen ritmo. Seguí así, se nota el trabajo.',
+  'Ya hiciste la parte difícil: arrancar.',
+];
+
+// hechas, total, semilla (cambia por día y por persona)
+function fraseDelDia(hechas, total, semilla) {
+  const faltan = total - hechas;
+  if (total > 0 && faltan <= 0) return '¡Lista completa! Hoy dejaste todo al día.';
+  if (total > 0 && faltan <= 3) return faltan === 1 ? '¡Te falta una sola! Cerrala y dejás todo al día.' : '¡Te faltan ' + faltan + '! Ya casi está.';
+  if (total > 0 && hechas / total >= 0.5) return 'Ya pasaste la mitad: te faltan ' + faltan + '. ¡Vamos!';
+  const lista = hechas > 0 ? FRASES_RITMO : FRASES_ARRANQUE;
+  return lista[Math.abs(Number(semilla) || 0) % lista.length];
+}
+
+// c: {hoy, atrasadas, racha}. Como mucho 3 mensajes, primero lo más importante.
+function mensajesCoach(v, objetivos, c) {
+  const obj = k => (objetivos && objetivos[k] != null ? Number(objetivos[k]) : (METRICAS.find(m => m.clave === k) || {}).objetivo);
+  const dia = Number(String(c.hoy).slice(8, 10)) || 1;
+  const ritmo = Math.min(1, dia / 30);
+  const avance = k => (Number(v[k]) || 0) / obj(k);
+  const out = [];
+  if (c.atrasadas > 0) out.push({ clave: 'atrasadas', tono: 'foco', texto: 'Tenés ' + c.atrasadas + (c.atrasadas === 1 ? ' tarea atrasada' : ' tareas atrasadas') + '. Si las cerrás primero, el resto del día fluye mejor.' });
+  if (Number(v.dias_sin_plan_largo) >= 3) out.push({ clave: 'plan', tono: 'foco', texto: 'Van ' + v.dias_sin_plan_largo + ' días sin un plan de 3 meses. Hoy es un buen día para ofrecerlo: cada uno vale el doble de puntos.' });
+  if (v.nuevos != null || v.mensajes != null) {
+    if (avance('nuevos') >= ritmo && avance('mensajes') < ritmo * 0.7) out.push({ clave: 'mensajes', tono: 'foco', texto: 'Las ventas vienen muy bien, pero los mensajes están flojos. ¿Qué te parece si desde ahora le escribís a quienes hace rato no venís viendo?' });
+    else if (avance('mensajes') >= ritmo && avance('nuevos') < ritmo * 0.7) out.push({ clave: 'ventas', tono: 'foco', texto: 'Los mensajes van muy bien. Ahora a transformarlos en ventas: a cada consulta, proponele la visita.' });
+  }
+  if (c.racha >= 3) out.push({ clave: 'racha', tono: 'logro', texto: '¡' + c.racha + ' días seguidos con tareas hechas! Esa constancia es la que retiene socios.' });
+  if (v.tareas_pct >= 0.9) out.push({ clave: 'bien', tono: 'logro', texto: 'Estás al ' + Math.round(v.tareas_pct * 100) + '% de tus tareas del mes. Excelente.' });
+  return out.slice(0, 3);
+}
+
+// Contactos delicados: un audio obliga a abrirlo y el tono de voz cambia cómo llega el mensaje.
+const TIPOS_AUDIO = ['Pagó y no viene', 'Vencieron', 'Riesgo alto', 'Encuesta de baja', 'Faltó', 'Viene menos', 'De vacaciones'];
+
+function recomiendaAudio(tipo) {
+  return TIPOS_AUDIO.some(t => String(tipo).indexOf(t) === 0);
 }

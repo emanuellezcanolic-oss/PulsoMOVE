@@ -171,3 +171,52 @@ test('puntuar: sin ningún dato no hay puntaje', () => {
   const r = L.puntuar({}, {});
   assert.equal(r.total, null);
 });
+
+// ---------- Motivación ----------
+
+test('fusionarCarga usa la fecha de cada tarea y deja adelantar', () => {
+  const f = L.fusionarCarga([], [nueva({ fecha: '2026-11-06' })], [], '2026-11-04');
+  assert.equal(f[0].fecha, '2026-11-06');
+  assert.equal(f[0].pendiente_desde, '2026-11-06');
+  assert.equal(f[0].id, '2026-11-06-bolson-501');
+});
+
+test('puntos: el plan de 3 meses vale el doble que un socio nuevo', () => {
+  assert.equal(L.calcularPuntos({ nuevos: 1 }), 5);
+  assert.equal(L.calcularPuntos({ planes_largos: 1 }), 10);
+  assert.equal(L.calcularPuntos({ tareas_hechas: 3, adelantadas: 2, tienda: 1, resenas: 1, referidos: 1, consultas: 1 }), 3 + 2 + 2 + 2 + 3 + 1);
+  assert.equal(L.calcularPuntos({}), 0);
+});
+
+test('coach: pide planes de 3 meses a los 3 días sin vender', () => {
+  const m = L.mensajesCoach({ dias_sin_plan_largo: 3 }, {}, { hoy: '2026-11-15' });
+  assert.ok(m.some(x => x.clave === 'plan' && /3 días/.test(x.texto)));
+  assert.ok(!L.mensajesCoach({ dias_sin_plan_largo: 2 }, {}, { hoy: '2026-11-15' }).some(x => x.clave === 'plan'));
+});
+
+test('coach: buenas ventas y pocos mensajes, y al revés', () => {
+  const c = { hoy: '2026-11-15' };
+  assert.ok(L.mensajesCoach({ nuevos: 15, mensajes: 5 }, {}, c).some(x => x.clave === 'mensajes'));
+  assert.ok(L.mensajesCoach({ nuevos: 1, mensajes: 90 }, {}, c).some(x => x.clave === 'ventas'));
+  assert.ok(!L.mensajesCoach({ nuevos: 15, mensajes: 90 }, {}, c).some(x => x.clave === 'ventas' || x.clave === 'mensajes'));
+});
+
+test('coach: atrasadas, felicita y no pasa de 3 mensajes', () => {
+  assert.ok(L.mensajesCoach({}, {}, { hoy: '2026-11-15', atrasadas: 4 }).some(x => x.clave === 'atrasadas'));
+  assert.ok(L.mensajesCoach({ tareas_pct: 0.95 }, {}, { hoy: '2026-11-15' }).some(x => x.clave === 'bien'));
+  assert.ok(L.mensajesCoach({ dias_sin_plan_largo: 9, nuevos: 15, mensajes: 1, tareas_pct: 0.95 }, {}, { hoy: '2026-11-15', atrasadas: 2, racha: 5 }).length <= 3);
+});
+
+test('frase y saludo', () => {
+  assert.match(L.saludo('Ara Stettler', 9), /Hola Ara/);
+  assert.ok(L.fraseDelDia(0, 10, 1).length > 10);
+  assert.notEqual(L.fraseDelDia(0, 10, 1), L.fraseDelDia(10, 10, 1));
+  assert.match(L.fraseDelDia(8, 10, 1), /2/);   // faltan 2
+});
+
+test('audio: lo recomienda en los contactos delicados', () => {
+  assert.ok(L.recomiendaAudio('Pagó y no viene: llamada'));
+  assert.ok(L.recomiendaAudio('Encuesta de baja'));
+  assert.ok(!L.recomiendaAudio('Socio nuevo · semana 2'));
+  assert.ok(L.validarMarca({ canal: 'AU', resultado: 'RESERVA' }) === null);
+});

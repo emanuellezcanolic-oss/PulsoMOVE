@@ -2,6 +2,9 @@
 // deps = {repo, ahora, hoy, sha256, hmac, aleatorio, props:{CLAVE_CARGA, SECRETO_TOKEN, PIMIENTA}}
 
 const MAX_INTENTOS = 5;
+const MAX_SEGUNDOS_TAREA = 2 * 3600;   // más que esto es una tarea que quedó abierta en pantalla
+// Lo que un recepcionista no ve de su propio tablero: lo relacionado con plata y caja (Emanuel, 04/11/2026)
+const SOLO_COORDINACION = ['cobros_plan', 'cobros_plan_monto', 'mostrador', 'mostrador_monto', 'bar', 'recovery', 'otros', 'cajas', 'indumentaria', 'suplementos', 'renovaciones'];
 const BLOQUEO_MS = 15 * 60 * 1000;
 
 function ErrorApi(codigo) {
@@ -97,11 +100,14 @@ function conDias(t, hoy) {
 function misTareas(req, deps) {
   const { usuario } = sesion(req, deps);
   const hoy = deps.hoy();
-  const tareas = deps.repo.leer('tareas')
-    .filter(t => t.asignado_dni === usuario.dni && String(t.fecha) <= hoy && (t.estado === 'pendiente' || (t.fecha === hoy && t.estado === 'hecha')))
+  const todas = deps.repo.leer('tareas');
+  const futuras = t => t.asignado_dni === usuario.dni && t.estado === 'pendiente' && String(t.fecha) > hoy;
+  const tareas = todas
+    .filter(t => t.asignado_dni === usuario.dni && ((req.adelantar && futuras(t)) || (String(t.fecha) <= hoy && (t.estado === 'pendiente' || fechaArgentina(t.hecha_en) === hoy || t.fecha === hoy))))
+    .filter(t => t.estado !== 'cerrada')
     .sort(ordenTareas)
     .map(t => conDias(t, hoy));
-  return { hoy: hoy, tareas: tareas };
+  return { hoy: hoy, tareas: tareas, para_adelantar: todas.filter(futuras).length };
 }
 
 function marcar(req, deps) {
@@ -116,7 +122,11 @@ function marcar(req, deps) {
   if (seVerificaEnMove(t.tipo)) falla('datos_invalidos');
   if (deps.repo.leer('registro').some(r => r.id_marca === idMarca)) return {};
   const ts = new Date(deps.ahora()).toISOString();
+  const abierta = Date.parse(texto(req.abierta_en));
+  const segundos = isNaN(abierta) ? null : Math.round((deps.ahora() - abierta) / 1000);
   deps.repo.agregar('registro', {
+    segundos: segundos != null && segundos >= 0 && segundos <= MAX_SEGUNDOS_TAREA ? String(segundos) : '',
+    adelantada: String(t.fecha) > deps.hoy() ? '1' : '',
     id_marca: idMarca, ts: ts, tarea_id: t.id, fecha_tarea: t.fecha, sede: t.sede, socio_id: t.socio_id,
     socio_nombre: t.socio_nombre, tipo: t.tipo, dni: usuario.dni, canal: marca.canal, resultado: marca.resultado,
     fecha_resultado: marca.fecha, detalle: marca.detalle,
@@ -177,7 +187,7 @@ function tareasDe(req, deps) {
   if (!tieneRol(usuario, 'admin')) sedePermitida(usuario, u.sede);
   const hoy = deps.hoy();
   const marcas = {};
-  deps.repo.leer('registro').forEach(r => { marcas[r.tarea_id] = { canal: r.canal, resultado: r.resultado, fecha: r.fecha_resultado, detalle: r.detalle }; });
+  deps.repo.leer('registro').forEach(r => { marcas[r.tarea_id] = { canal: r.canal, resultado: r.resultado, fecha: r.fecha_resultado, detalle: r.detalle, ts: r.ts, segundos: r.segundos, adelantada: r.adelantada }; });
   const tareas = deps.repo.leer('tareas')
     .filter(t => t.asignado_dni === u.dni && (t.estado === 'pendiente' || (t.estado === 'hecha' && fechaArgentina(t.hecha_en) === hoy)))
     .sort(ordenTareas)
@@ -292,20 +302,21 @@ function delMes(iso, mes) {
 }
 
 // Lo que se mide en la app, en vivo. Lo que viene de MOVE (cajas, renovaciones) lo carga el pipeline cada mañana.
-function valoresEnApp(dni, mes, tareas, registro, actividad) {
-  const suyas = tareas.filter(t => t.asignado_dni === dni && t.estado !== 'cerrada' && String(t.pendiente_desde).indexOf(mes) === 0);
+function valoresEnApp(dni, mes, tareas, registro, actividad, hoy) {
+  const suyas = tareas.filter(t => t.asignado_dni === dni && t.estado !== 'cerrada' && String(t.pendiente_desde).indexOf(mes) === 0 && (t.estado === 'hecha' || String(t.fecha) <= hoy));
   const hechas = suyas.filter(t => t.estado === 'hecha');
   const aTiempo = hechas.filter(t => diasHabiles(t.pendiente_desde, fechaArgentina(t.hecha_en)) === 0);
   const marcas = registro.filter(r => r.dni === dni && delMes(r.ts, mes));
-  const contactos = marcas.filter(r => r.canal !== 'SIN CONTACTO');
+  const contactos = marcas.filter(r => r.canal !== 'SIN CONTACTO' && !/^(Profes de hoy|Apertura|Cierre)/.test(r.tipo));
   const CON_FECHA = ['RESERVA', 'VUELVE', 'PAGA', 'PAGÓ', 'VOLVIÓ', 'VACACIONES'];
-  const reten = marcas.filter(r => !/^(Cumpleaños|Encuesta de baja|Revisar profesor|Seguimiento de consulta)/.test(r.tipo));
+  const reten = marcas.filter(r => !/^(Cumpleaños|Encuesta de baja|Revisar profesor|Seguimiento de consulta|Profes de hoy|Apertura|Cierre)/.test(r.tipo));
   const act = actividad.filter(a => a.dni === dni && delMes(a.ts, mes));
   const cuenta = t => act.filter(a => a.tipo === t).length;
   const encuestas = suyas.filter(t => String(t.tipo).indexOf('Encuesta de baja') === 0);
   const v = {
     mensajes: contactos.length + cuenta('mensaje'), consultas: cuenta('consulta'), dias_prueba: cuenta('prueba'), resenas: cuenta('resena'), referidos: cuenta('referido'),
-    tareas_total: suyas.length, tareas_hechas: hechas.length,
+    tareas_total: suyas.length, tareas_hechas: hechas.length, adelantadas: marcas.filter(r => r.adelantada === '1').length,
+    audios: marcas.filter(r => r.canal === 'AU').length,
   };
   if (suyas.length) v.tareas_pct = hechas.length / suyas.length;
   if (hechas.length) v.a_tiempo_pct = aTiempo.length / hechas.length;
@@ -316,11 +327,134 @@ function valoresEnApp(dni, mes, tareas, registro, actividad) {
   return v;
 }
 
+// Hechas por día, para el gráfico
+function serieTareas(dni, mes, tareas) {
+  const dias = {};
+  tareas.filter(t => t.asignado_dni === dni && t.estado === 'hecha' && delMes(t.hecha_en, mes)).forEach(t => {
+    const f = fechaArgentina(t.hecha_en);
+    dias[f] = (dias[f] || 0) + 1;
+  });
+  return Object.keys(dias).sort().map(f => ({ fecha: f, hechas: dias[f] }));
+}
+
+// Cuándo trabajó las tareas: horas de cada día, tareas por hora del día y tiempo promedio con la tarea abierta
+function tiemposDe(dni, mes, registro) {
+  const marcas = registro.filter(r => r.dni === dni && delMes(r.ts, mes));
+  const horaDe = ts => new Date(Date.parse(ts) - 3 * 3600 * 1000).toISOString().slice(11, 16);
+  const dias = {};
+  const porHora = {};
+  marcas.forEach(r => {
+    const f = fechaArgentina(r.ts), h = horaDe(r.ts);
+    const d = dias[f] = dias[f] || { fecha: f, marcas: 0, primera: h, ultima: h };
+    d.marcas++;
+    if (h < d.primera) d.primera = h;
+    if (h > d.ultima) d.ultima = h;
+    const hh = Number(h.slice(0, 2));
+    porHora[hh] = (porHora[hh] || 0) + 1;
+  });
+  const conTiempo = marcas.map(r => Number(r.segundos)).filter(s => !isNaN(s) && s > 0);
+  return {
+    por_dia: Object.keys(dias).sort().map(f => dias[f]), por_hora: porHora,
+    segundos_promedio: conTiempo.length ? Math.round(conTiempo.reduce((a, b) => a + b, 0) / conTiempo.length) : null,
+  };
+}
+
+// ---------- Mi día: lo que motiva ----------
+
+function rachaDe(dni, tareas, hoy) {
+  const dias = {};
+  tareas.filter(t => t.asignado_dni === dni && t.estado === 'hecha').forEach(t => { dias[fechaArgentina(t.hecha_en)] = true; });
+  let n = 0;
+  let d = hoy;
+  if (dias[d]) n++;
+  for (let i = 0; i < 40; i++) {
+    d = sumarDias(d, -1);
+    const dia = new Date(d + 'T12:00:00Z').getUTCDay();
+    if (dia === 0 || dia === 6) continue;
+    if (!dias[d]) break;
+    n++;
+  }
+  return n;
+}
+
+function miDia(req, deps) {
+  const { usuario } = sesion(req, deps);
+  const hoy = deps.hoy(), mes = hoy.slice(0, 7);
+  const tareas = deps.repo.leer('tareas'), registro = deps.repo.leer('registro'), actividad = deps.repo.leer('actividad');
+  const fila = deps.repo.leer('rendimiento').find(r => r.mes === mes && r.dni === usuario.dni);
+  const valores = Object.assign({}, fila ? JSON.parse(fila.datos) : {}, valoresEnApp(usuario.dni, mes, tareas, registro, actividad, hoy));
+  const propios = {};
+  deps.repo.leer('objetivos').filter(o => o.dni === usuario.dni).forEach(o => { propios[o.clave] = Number(o.valor); });
+  const suyas = tareas.filter(t => t.asignado_dni === usuario.dni && t.estado !== 'cerrada');
+  const pendientes = suyas.filter(t => t.estado === 'pendiente' && String(t.fecha) <= hoy);
+  const atrasadas = pendientes.filter(t => diasHabiles(t.pendiente_desde, hoy) >= 1).length;
+  const deHoy = valoresEnAppDia(usuario.dni, hoy, tareas, registro, actividad);
+  const racha = rachaDe(usuario.dni, tareas, hoy);
+  const hora = Number(new Date(deps.ahora() - 3 * 3600 * 1000).toISOString().slice(11, 13));
+  return {
+    saludo: saludo(usuario.nombre, hora), puntos: calcularPuntos(valores), racha: racha,
+    hoy: { hechas: deHoy.hechas, pendientes: pendientes.length, atrasadas: atrasadas, mensajes: deHoy.mensajes, consultas: deHoy.consultas },
+    coach: mensajesCoach(valores, propios, { hoy: hoy, atrasadas: atrasadas, racha: racha }),
+    hora_fin: usuario.hora_fin || '', cierre_hecho: deps.repo.leer('cierres').some(c => c.dni === usuario.dni && c.fecha === hoy),
+  };
+}
+
+function valoresEnAppDia(dni, hoy, tareas, registro, actividad) {
+  const esHoy = ts => fechaArgentina(ts) === hoy;
+  return {
+    hechas: tareas.filter(t => t.asignado_dni === dni && t.estado === 'hecha' && esHoy(t.hecha_en)).length,
+    mensajes: registro.filter(r => r.dni === dni && esHoy(r.ts) && r.canal !== 'SIN CONTACTO' && !/^(Profes de hoy|Apertura|Cierre)/.test(r.tipo)).length
+      + actividad.filter(a => a.dni === dni && a.tipo === 'mensaje' && esHoy(a.ts)).length,
+    consultas: actividad.filter(a => a.dni === dni && a.tipo === 'consulta' && esHoy(a.ts)).length,
+  };
+}
+
+// ---------- Cierre de turno ----------
+
+function cierreGuardar(req, deps) {
+  const { usuario } = sesion(req, deps);
+  const animo = Number(req.animo);
+  if (!(animo >= 1 && animo <= 5)) falla('datos_invalidos');
+  const hoy = deps.hoy();
+  const tareas = deps.repo.leer('tareas');
+  const d = valoresEnAppDia(usuario.dni, hoy, tareas, deps.repo.leer('registro'), deps.repo.leer('actividad'));
+  const pendientes = tareas.filter(t => t.asignado_dni === usuario.dni && t.estado === 'pendiente' && String(t.fecha) <= hoy).length;
+  const filas = deps.repo.leer('cierres').filter(c => !(c.dni === usuario.dni && c.fecha === hoy));
+  filas.push({
+    fecha: hoy, ts: new Date(deps.ahora()).toISOString(), dni: usuario.dni, nombre: usuario.nombre, sede: usuario.sede, animo: String(animo),
+    respuestas: JSON.stringify(req.respuestas || {}), comentario: texto(req.comentario), hechas: String(d.hechas), pendientes: String(pendientes),
+    mensajes: String(d.mensajes), consultas: String(d.consultas),
+  });
+  deps.repo.escribir('cierres', filas);
+  return {};
+}
+
+// Admin y supervisión ven todas las sedes; cada responsable, la suya.
+function cierresVer(req, deps) {
+  const { usuario } = sesion(req, deps);
+  const todas = tieneRol(usuario, 'admin') || tieneRol(usuario, 'supervision');
+  if (!todas && !tieneRol(usuario, 'coordinador')) falla('prohibido');
+  const desde = sumarDias(deps.hoy(), -14);
+  const cierres = deps.repo.leer('cierres').filter(c => c.fecha >= desde && (todas || c.sede === usuario.sede))
+    .map(c => Object.assign({}, c, { respuestas: JSON.parse(c.respuestas || '{}') }))
+    .sort((a, b) => (b.fecha + b.ts).localeCompare(a.fecha + a.ts));
+  return { cierres: cierres };
+}
+
+function respaldo(req, deps) {
+  exigirClave(req, deps);
+  const usuarios = deps.repo.leer('usuarios').map(u => { const c = Object.assign({}, u); delete c.pin_hash; delete c.sal; return c; });
+  const out = { usuarios: usuarios };
+  ['tareas', 'registro', 'garantia', 'actividad', 'rendimiento', 'objetivos', 'cierres'].forEach(h => { out[h] = deps.repo.leer(h); });
+  return out;
+}
+
 function vistaRendimiento(req, deps) {
   const { usuario, usuarios } = sesion(req, deps);
   const mes = /^\d{4}-\d{2}$/.test(texto(req.mes)) ? texto(req.mes) : deps.hoy().slice(0, 7);
   let equipo;
-  if (tieneRol(usuario, 'admin') || tieneRol(usuario, 'coordinador')) {
+  const coordina = tieneRol(usuario, 'admin') || tieneRol(usuario, 'coordinador');
+  if (coordina) {
     if (texto(req.dni)) falla('prohibido');
     const sede = sedePermitida(usuario, texto(req.sede));
     equipo = usuarios.filter(u => u.sede === sede && esVerdad(u.activo) && tieneRol(u, 'recepcion'));
@@ -335,11 +469,16 @@ function vistaRendimiento(req, deps) {
   const personas = equipo.map(u => {
     const fila = calculado.find(r => r.dni === u.dni);
     if (fila && fila.actualizado > actualizado) actualizado = fila.actualizado;
-    const valores = Object.assign({}, fila ? JSON.parse(fila.datos) : {}, valoresEnApp(u.dni, mes, tareas, registro, actividad));
+    const valores = Object.assign({}, fila ? JSON.parse(fila.datos) : {}, valoresEnApp(u.dni, mes, tareas, registro, actividad, deps.hoy()));
     if (valores.consultas && valores.nuevos != null) valores.conversion = Math.min(1, valores.nuevos / valores.consultas);   // hay nuevos que no pasaron por una consulta registrada
     const propios = {};
     objetivos.filter(o => o.dni === u.dni).forEach(o => { propios[o.clave] = Number(o.valor); });
-    return { dni: u.dni, nombre: u.nombre, turno: u.turno, sede: u.sede, valores: valores, puntaje: puntuar(valores, propios) };
+    const puntaje = puntuar(valores, propios);
+    const puntos = calcularPuntos(valores);
+    if (!coordina) SOLO_COORDINACION.forEach(k => { delete valores[k]; });
+    const out = { dni: u.dni, nombre: u.nombre, turno: u.turno, sede: u.sede, valores: valores, puntaje: puntaje, puntos: puntos, serie: serieTareas(u.dni, mes, tareas) };
+    if (coordina) out.tiempos = tiemposDe(u.dni, mes, registro);
+    return out;
   }).sort((a, b) => (b.puntaje.total == null ? -1 : b.puntaje.total) - (a.puntaje.total == null ? -1 : a.puntaje.total));
   return { mes: mes, hoy: deps.hoy(), actualizado: actualizado, personas: personas, metricas: METRICAS };
 }
@@ -372,7 +511,7 @@ function cargarRendimiento(req, deps) {
 
 // ---------- Administración ----------
 
-const ROLES = ['recepcion', 'coordinador', 'admin'];
+const ROLES = ['recepcion', 'coordinador', 'admin', 'supervision'];
 
 function exigirAdmin(req, deps) {
   const s = sesion(req, deps);
@@ -395,7 +534,7 @@ function usuariosCargar(req, deps) {
   if (!Array.isArray(req.usuarios)) falla('datos_invalidos');
   const lista = req.usuarios.map(x => ({
     dni: normalizarDni(x && x.dni), nombre: texto(x && x.nombre), sede: texto(x && x.sede),
-    turno: texto(x && x.turno), roles: rolesDe({ roles: x && x.roles }),
+    turno: texto(x && x.turno), roles: rolesDe({ roles: x && x.roles }), hora_inicio: texto(x && x.hora_inicio), hora_fin: texto(x && x.hora_fin),
   }));
   const valido = x => x.dni && x.nombre && SEDES.indexOf(x.sede) >= 0 && TURNOS.indexOf(x.turno) >= 0 &&
     x.roles.length && x.roles.every(r => ROLES.indexOf(r) >= 0);
@@ -413,6 +552,8 @@ function usuariosCargar(req, deps) {
     u.sede = x.sede;
     u.turno = x.turno;
     u.roles = x.roles.join(',');
+    if (x.hora_inicio) u.hora_inicio = x.hora_inicio;
+    if (x.hora_fin) u.hora_fin = x.hora_fin;
   }
   deps.repo.escribir('usuarios', usuarios);
   return { pines: pines };
@@ -457,6 +598,10 @@ const ACCIONES = {
   reasignar: reasignar,
   tareas_de: tareasDe,
   registrar: registrar,
+  mi_dia: miDia,
+  cierre_guardar: cierreGuardar,
+  cierres_ver: cierresVer,
+  respaldo: respaldo,
   rendimiento: vistaRendimiento,
   objetivos_guardar: objetivosGuardar,
   cargar_rendimiento: cargarRendimiento,

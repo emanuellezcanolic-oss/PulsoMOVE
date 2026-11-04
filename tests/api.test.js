@@ -424,3 +424,92 @@ test('cargar_rendimiento reemplaza el mes de esa persona', () => {
   assert.equal(d.repo.hojas.rendimiento.length, 2);
   assert.equal(JSON.parse(d.repo.hojas.rendimiento.find(x => x.mes === '2026-11').datos).nuevos, 3);
 });
+
+// ---------- Plata, tiempos, adelantar, cierre, respaldo ----------
+
+test('rendimiento: la plata solo la ve quien coordina', () => {
+  const d = equipo({ tareas: [], actividad: [], objetivos: [], rendimiento: [{ mes: '2026-11', dni: '30123456', datos: JSON.stringify({ nuevos: 2, mostrador_monto: 5000, cobros_plan_monto: 9, cobros_plan: 3, mostrador: 1, bar: 1 }), actualizado: 'x' }] });
+  const propia = pedir(d, { accion: 'rendimiento', token: entrar(d) }).data.personas[0].valores;
+  for (const k of ['mostrador_monto', 'cobros_plan_monto', 'cobros_plan', 'mostrador', 'bar']) assert.ok(!(k in propia), k);
+  assert.equal(propia.nuevos, 2);
+  const coord = pedir(d, { accion: 'rendimiento', token: entrar(d, '25111222', '0907') }).data.personas.find(p => p.dni === '30123456').valores;
+  assert.equal(coord.mostrador_monto, 5000);
+});
+
+test('marcar guarda cuánto tardó y si la adelantó', () => {
+  const d = equipo({ tareas: [tarea({}), tarea({ id: 'T2', socio_id: '502', fecha: '2026-11-10', pendiente_desde: '2026-11-10' })] });
+  const token = entrar(d);
+  const m = { accion: 'marcar', token, canal: 'LL', resultado: 'RESERVA' };
+  assert.ok(pedir(d, { ...m, tarea_id: 'T1', id_marca: 'a', abierta_en: new Date(d.t - 90000).toISOString() }).ok);
+  assert.equal(d.repo.hojas.registro[0].segundos, '90');
+  assert.equal(d.repo.hojas.registro[0].adelantada, '');
+  assert.ok(pedir(d, { ...m, tarea_id: 'T2', id_marca: 'b', abierta_en: new Date(d.t - 99999000).toISOString() }).ok);
+  assert.equal(d.repo.hojas.registro[1].segundos, '');       // más de 2 horas: se dejó abierta, no cuenta
+  assert.equal(d.repo.hojas.registro[1].adelantada, '1');
+});
+
+test('mis_tareas: las de mañana se piden aparte', () => {
+  const d = equipo({ tareas: [tarea({}), tarea({ id: 'T2', fecha: '2026-11-10', pendiente_desde: '2026-11-10' })] });
+  const token = entrar(d);
+  const r = pedir(d, { accion: 'mis_tareas', token }).data;
+  assert.deepEqual(r.tareas.map(t => t.id), ['T1']);
+  assert.equal(r.para_adelantar, 1);
+  assert.deepEqual(pedir(d, { accion: 'mis_tareas', token, adelantar: true }).data.tareas.map(t => t.id).sort(), ['T1', 'T2']);
+});
+
+test('mi_dia: saludo, puntos, racha, coach y lo que hizo hoy', () => {
+  const hoyHecha = '2026-11-09T15:00:00.000Z';
+  const d = equipo({ tareas: [tarea({ estado: 'hecha', hecha_en: hoyHecha }), tarea({ id: 'T2', pendiente_desde: '2026-11-05', fecha: '2026-11-05' }), tarea({ id: 'V', estado: 'hecha', fecha: '2026-11-06', pendiente_desde: '2026-11-06', hecha_en: '2026-11-06T15:00:00.000Z' })],
+    registro: [{ ts: hoyHecha, dni: '30123456', canal: 'LL', resultado: 'RESERVA', tipo: 'x' }], actividad: [], cierres: [], objetivos: [], rendimiento: [{ mes: '2026-11', dni: '30123456', datos: JSON.stringify({ dias_sin_plan_largo: 4, nuevos: 1 }), actualizado: 'x' }] });
+  const r = pedir(d, { accion: 'mi_dia', token: entrar(d) });
+  assert.ok(r.ok, JSON.stringify(r));
+  assert.match(r.data.saludo, /Hola Ana/);
+  assert.equal(r.data.hoy.hechas, 1);
+  assert.equal(r.data.hoy.pendientes, 1);
+  assert.equal(r.data.hoy.atrasadas, 1);
+  assert.equal(r.data.hoy.mensajes, 1);
+  assert.equal(r.data.hoy.consultas, 0);
+  assert.equal(r.data.racha, 2);
+  assert.ok(r.data.puntos >= 6);
+  assert.ok(r.data.coach.some(m => m.clave === 'plan'));
+  assert.equal(r.data.cierre_hecho, false);
+});
+
+test('cierre de turno: guarda, avisa y respeta permisos', () => {
+  const d = equipo({ tareas: [], actividad: [], cierres: [], objetivos: [], rendimiento: [] });
+  const token = entrar(d);
+  assert.equal(pedir(d, { accion: 'cierre_guardar', token, animo: 9 }).error, 'datos_invalidos');
+  assert.ok(pedir(d, { accion: 'cierre_guardar', token, animo: 4, respuestas: { consultas: 'No vino nadie' }, comentario: 'Bien' }).ok);
+  assert.ok(pedir(d, { accion: 'cierre_guardar', token, animo: 5 }).ok);    // el segundo reemplaza al primero del día
+  assert.equal(d.repo.hojas.cierres.length, 1);
+  assert.equal(d.repo.hojas.cierres[0].animo, '5');
+  assert.equal(pedir(d, { accion: 'mi_dia', token }).data.cierre_hecho, true);
+  assert.equal(pedir(d, { accion: 'cierres_ver', token }).error, 'prohibido');
+  assert.equal(pedir(d, { accion: 'cierres_ver', token: entrar(d, '25111222', '0907') }).data.cierres.length, 1);
+  assert.equal(pedir(d, { accion: 'cierres_ver', token: entrar(d, '25333444', '0907') }).data.cierres.length, 0);
+  assert.equal(pedir(d, { accion: 'cierres_ver', token: entrar(d, '20000001', '0907') }).data.cierres[0].nombre, 'Ana Prueba');
+});
+
+test('respaldo: exige clave y nunca incluye hash ni sal', () => {
+  const d = equipo({ tareas: [tarea({})], actividad: [], cierres: [], objetivos: [], rendimiento: [] });
+  assert.equal(pedir(d, { accion: 'respaldo' }).error, 'clave');
+  const r = pedir(d, { accion: 'respaldo', clave: 'clave-prueba' }).data;
+  assert.equal(r.tareas.length, 1);
+  assert.ok(r.usuarios.length > 0);
+  for (const u of r.usuarios) assert.ok(!('pin_hash' in u) && !('sal' in u));
+});
+
+test('tiempos en rendimiento para quien coordina', () => {
+  const d = equipo({ tareas: [], actividad: [], objetivos: [], rendimiento: [], cierres: [],
+    registro: [{ ts: '2026-11-09T12:00:00.000Z', dni: '30123456', canal: 'LL', resultado: 'RESERVA', tipo: 'x', segundos: '60' },
+               { ts: '2026-11-09T14:30:00.000Z', dni: '30123456', canal: 'LL', resultado: 'RESERVA', tipo: 'x', segundos: '120' },
+               { ts: '2026-11-06T12:00:00.000Z', dni: '30123456', canal: 'LL', resultado: 'RESERVA', tipo: 'x', segundos: '' }] });
+  const v = pedir(d, { accion: 'rendimiento', token: entrar(d, '25111222', '0907') }).data.personas.find(p => p.dni === '30123456').tiempos;
+  assert.equal(v.segundos_promedio, 90);
+  assert.deepEqual(v.por_dia.map(x => [x.fecha, x.marcas]), [['2026-11-06', 1], ['2026-11-09', 2]]);
+  const hoy = v.por_dia[1];
+  assert.equal(hoy.primera, '09:00');
+  assert.equal(hoy.ultima, '11:30');
+  assert.equal(v.por_hora[9], 2);
+  assert.equal(v.por_hora[11], 1);
+});

@@ -1,14 +1,15 @@
 // PulsoMOVE · lo único que toca Google: la planilla privada, las Propiedades del script y doPost.
 
 const COLUMNAS = {
-  usuarios: ['dni', 'nombre', 'sede', 'turno', 'roles', 'pin_hash', 'sal', 'debe_cambiar_pin', 'intentos', 'bloqueado_hasta', 'activo'],
+  usuarios: ['dni', 'nombre', 'sede', 'turno', 'roles', 'pin_hash', 'sal', 'debe_cambiar_pin', 'intentos', 'bloqueado_hasta', 'activo', 'hora_inicio', 'hora_fin'],
   tareas: ['id', 'fecha', 'sede', 'socio_id', 'socio_nombre', 'profe', 'tipo', 'prioridad', 'situacion', 'accion',
            'ultima_anotacion', 'asignado_dni', 'pendiente_desde', 'estado', 'hecha_en', 'intro'],
   registro: ['id_marca', 'ts', 'tarea_id', 'fecha_tarea', 'sede', 'socio_id', 'socio_nombre', 'tipo', 'dni', 'canal',
-             'resultado', 'fecha_resultado', 'detalle'],
+             'resultado', 'fecha_resultado', 'detalle', 'segundos', 'adelantada'],
   actividad: ['id', 'ts', 'dni', 'sede', 'tipo', 'nombre', 'categoria', 'canal', 'origen', 'interes', 'detalle'],
   rendimiento: ['mes', 'dni', 'datos', 'actualizado'],
   objetivos: ['dni', 'clave', 'valor'],
+  cierres: ['fecha', 'ts', 'dni', 'nombre', 'sede', 'animo', 'respuestas', 'comentario', 'hechas', 'pendientes', 'mensajes', 'consultas'],
   garantia: ['id', 'ts', 'sede', 'socio_id', 'socio_nombre', 'profe', 'motivo', 'registra_dni', 'estado', 'decide_dni',
              'comentario', 'decidido_en'],
 };
