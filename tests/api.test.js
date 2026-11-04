@@ -549,3 +549,18 @@ test('reasignar_tareas cambia de persona solo lo pendiente y conserva fechas', (
   assert.equal(h.asignado_dni, '30123456');
   assert.equal(o.asignado_dni, '30123456');
 });
+
+test('admin que además es recepcionista: ve todo y conserva su lista', () => {
+  const lucia = usuario({ dni: '24000000', nombre: 'Luz Prueba', pin: '0907', roles: 'recepcion,coordinador,admin' });
+  const d = entorno([lucia, usuario(), usuario({ dni: '26555666', nombre: 'Ceci Puelo', pin: '0907', sede: 'puelo' })], { tareas: [tarea({ asignado_dni: '24000000' })], registro: [], actividad: [], garantia: [], rendimiento: [], objetivos: [], cierres: [], profes: [] });
+  const token = entrar(d, '24000000', '0907');
+  assert.equal(pedir(d, { accion: 'mis_tareas', token }).data.tareas.length, 1);
+  assert.ok(pedir(d, { accion: 'mi_dia', token }).ok);
+  assert.deepEqual(pedir(d, { accion: 'rendimiento', token, sede: 'puelo' }).data.personas.map(p => p.dni), ['26555666']);
+  assert.ok(pedir(d, { accion: 'rendimiento', token, sede: 'bolson' }).data.personas.some(p => p.dni === '24000000'));
+  assert.ok(pedir(d, { accion: 'sede', token, sede: 'puelo' }).ok);
+  assert.ok(pedir(d, { accion: 'tareas_de', token, dni: '26555666' }).ok);
+  assert.ok(pedir(d, { accion: 'usuarios_listar', token }).ok);
+  assert.ok(pedir(d, { accion: 'cierres_ver', token }).ok);
+  assert.ok(pedir(d, { accion: 'profes_ver', token, sede: 'puelo' }).ok);
+});

@@ -709,7 +709,7 @@
       } else if (E.vista === 'sede') {
         E.sede = await cliente.llamar('sede', tiene('admin') ? { sede: E.sedeElegida } : {});
       } else if (E.vista === 'mes') {
-        E.rend = await cliente.llamar('rendimiento', E.rendMes ? { mes: E.rendMes } : {});
+        E.rend = await cliente.llamar('rendimiento', Object.assign(E.rendMes ? { mes: E.rendMes } : {}, tiene('admin') ? { sede: cliente.sesion().sede } : {}));
       } else if (E.vista === 'rend') {
         cliente.llamar('cierres_ver').then(c => { E.cierres = c.cierres; if (E.vista === 'rend' && !E.rendDni) render(); }).catch(() => {});
         cliente.llamar('profes_ver', tiene('admin') ? { sede: E.sedeElegida } : {}).then(c => { E.profes = c.filas; if (E.vista === 'rend' && !E.rendDni) render(); }).catch(() => {});

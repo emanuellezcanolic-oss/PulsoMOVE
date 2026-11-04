@@ -40,6 +40,7 @@
     { dni: '11111111', nombre: 'Rocío (práctica)', sede: 'bolson', turno: 'manana', roles: 'recepcion' },
     { dni: '11111112', nombre: 'Tomás (práctica)', sede: 'bolson', turno: 'tarde', roles: 'recepcion' },
     { dni: '22222222', nombre: 'Responsable de sede (práctica)', sede: 'bolson', turno: 'manana', roles: 'recepcion,coordinador' },
+    { dni: '44444444', nombre: 'Coordinación general (práctica)', sede: 'bolson', turno: 'manana', roles: 'recepcion,coordinador,admin' },
     { dni: '33333333', nombre: 'Admin (práctica)', sede: 'bolson', turno: 'manana', roles: 'admin' },
   ];
 
@@ -55,7 +56,7 @@
       prioridad: String(prioridad), situacion: situacion, accion: accion, ultima_anotacion: '', asignado_dni: dni,
       pendiente_desde: hoy, estado: 'pendiente', hecha_en: '',
     }, extra || {});
-    const R = '11111111', C = '22222222', T = '11111112';
+    const R = '11111111', C = '22222222', T = '11111112', G = '44444444';
     const tareas = [
       t(R, 'Socio nuevo · semana 2', 1, 'Valentina Ríos', 'Profe Sol', 'Alta el 27/10 · 2.ª semana', 'Mandar el mensaje de semana 2', { intro: 'Mensaje: “¿Cómo te sentiste en tu primera semana? ¿Algo que podamos mejorar?”.' }),
       t(R, 'Socio nuevo · semana 2', 1, 'Joaquín Paz', 'Profe Leo', 'Alta el 28/10 · 2.ª semana', 'Mandar el mensaje de semana 2'),
@@ -80,6 +81,7 @@
       t(R, 'Vence en 7 días', 2, 'Inés Duarte', 'Profe Leo', 'Vence en 3 días', 'Llamar y reservarle el turno', { estado: 'hecha', hecha_en: new Date().toISOString() }),
       t(T, 'Riesgo alto', 6, 'Pablo Sosa', 'Profe Ana', '30 días sin venir', 'Llamar', { pendiente_desde: diaHabilAntes(hoy, 3) }),
       t(T, 'Socio nuevo · semana 3', 1, 'Emilia Vera', 'Profe Sol', '3.ª semana: encuesta', 'Mandar la encuesta (respondió el mensaje de semana 2)'),
+      t(G, 'Vence en 7 días', 2, 'Nora Paz', 'Profe Leo', 'Vence el viernes', 'Llamar y reservarle el turno'),
       t(C, 'Vence en 7 días', 2, 'Hugo Acosta', 'Profe Leo', 'Vence el viernes', 'Llamar y reservarle el turno'),
     ];
     const garantia = [{
