@@ -286,6 +286,10 @@ label.campo .opcional { text-transform: none; letter-spacing: 0; font-weight: 50
 .checklist input { width: 18px; height: 18px; margin: 1px 0 0; accent-color: var(--verde-o); flex: none; }
 .campo-titulo { font-size: 13px; font-weight: 700; }
 
+.guia-audio { background: var(--hoja); border: 1px solid var(--linea); border-radius: 8px; padding: 9px 12px; font-size: 13.5px; }
+.guia-audio ol { margin: 5px 0 0; padding-left: 20px; }
+.guia-audio li { margin-bottom: 2px; }
+
 /* ---------- Gráficos ---------- */
 .barras { display: flex; align-items: stretch; gap: 3px; margin: 2px 0 8px; }
 .barra { flex: 1; min-width: 0; display: flex; flex-direction: column; justify-content: flex-end; align-items: center; gap: 2px; }

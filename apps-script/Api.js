@@ -325,7 +325,7 @@ function valoresEnApp(dni, mes, tareas, registro, actividad, hoy) {
   const marcas = registro.filter(r => r.dni === dni && delMes(r.ts, mes));
   const contactos = marcas.filter(r => r.canal !== 'SIN CONTACTO' && !/^(Profes de hoy|Apertura|Cierre)/.test(r.tipo));
   const CON_FECHA = ['RESERVA', 'VUELVE', 'PAGA', 'PAGÓ', 'VOLVIÓ', 'VACACIONES'];
-  const reten = marcas.filter(r => !/^(Cumpleaños|Encuesta de baja|Revisar profesor|Seguimiento de consulta|Profes de hoy|Apertura|Cierre)/.test(r.tipo));
+  const reten = marcas.filter(r => !/^(Cumpleaños|Encuesta de baja|Revisar profesor|Seguimiento de consulta|Profes de hoy|Apertura|Cierre|Socio antiguo)/.test(r.tipo));
   const act = actividad.filter(a => a.dni === dni && delMes(a.ts, mes));
   const cuenta = t => act.filter(a => a.tipo === t).length;
   const encuestas = suyas.filter(t => String(t.tipo).indexOf('Encuesta de baja') === 0);
@@ -354,15 +354,16 @@ function serieTareas(dni, mes, tareas) {
 }
 
 // Cuándo trabajó las tareas: horas de cada día, tareas por hora del día y tiempo promedio con la tarea abierta
-function tiemposDe(dni, mes, registro) {
+function tiemposDe(dni, mes, registro, horaFin) {
   const marcas = registro.filter(r => r.dni === dni && delMes(r.ts, mes));
   const horaDe = ts => new Date(Date.parse(ts) - 3 * 3600 * 1000).toISOString().slice(11, 16);
   const dias = {};
   const porHora = {};
   marcas.forEach(r => {
     const f = fechaArgentina(r.ts), h = horaDe(r.ts);
-    const d = dias[f] = dias[f] || { fecha: f, marcas: 0, primera: h, ultima: h };
+    const d = dias[f] = dias[f] || { fecha: f, marcas: 0, primera: h, ultima: h, segundos: 0 };
     d.marcas++;
+    d.segundos += Number(r.segundos) || 0;
     if (h < d.primera) d.primera = h;
     if (h > d.ultima) d.ultima = h;
     const hh = Number(h.slice(0, 2));
@@ -370,7 +371,16 @@ function tiemposDe(dni, mes, registro) {
   });
   const conTiempo = marcas.map(r => Number(r.segundos)).filter(s => !isNaN(s) && s > 0);
   return {
-    por_dia: Object.keys(dias).sort().map(f => dias[f]), por_hora: porHora,
+    por_dia: Object.keys(dias).sort().map(f => {
+      const d = dias[f];
+      const min = hhmm => Number(hhmm.slice(0, 2)) * 60 + Number(hhmm.slice(3, 5));
+      const trabajado = min(d.ultima) - min(d.primera);
+      return Object.assign({}, d, {
+        por_hora: trabajado >= 15 ? Math.round(d.marcas / (trabajado / 60) * 10) / 10 : null,
+        minutos_en_tareas: Math.round(d.segundos / 60),
+        minutos_libres: horaFin ? Math.max(0, min(horaFin) - min(d.ultima)) : null,
+      });
+    }), por_hora: porHora,
     segundos_promedio: conTiempo.length ? Math.round(conTiempo.reduce((a, b) => a + b, 0) / conTiempo.length) : null,
   };
 }
@@ -407,7 +417,19 @@ function miDia(req, deps) {
   const deHoy = valoresEnAppDia(usuario.dni, hoy, tareas, registro, actividad);
   const racha = rachaDe(usuario.dni, tareas, hoy);
   const hora = Number(new Date(deps.ahora() - 3 * 3600 * 1000).toISOString().slice(11, 13));
+  const ordenadas = pendientes.slice().sort(ordenTareas);
+  const anterior = (() => {
+    for (let i = 1, d = hoy; i < 8; i++) {
+      d = sumarDias(d, -1);
+      const n = suyas.filter(t => t.estado === 'hecha' && fechaArgentina(t.hecha_en) === d).length;
+      if (n) return n;
+    }
+    return 0;
+  })();
   return {
+    siguiente: ordenadas[0] ? { nombre: ordenadas[0].socio_nombre, situacion: ordenadas[0].situacion } : null, ayer: anterior,
+    para_adelantar: suyas.filter(t => t.estado === 'pendiente' && String(t.fecha) > hoy).length, hora_inicio: usuario.hora_inicio || '',
+    dias_sin_plan: Number(valores.dias_sin_plan_largo) || 0,
     saludo: saludo(usuario.nombre, hora), puntos: calcularPuntos(valores), racha: racha,
     hoy: { hechas: deHoy.hechas, pendientes: pendientes.length, atrasadas: atrasadas, mensajes: deHoy.mensajes, consultas: deHoy.consultas },
     coach: mensajesCoach(valores, propios, { hoy: hoy, atrasadas: atrasadas, racha: racha }),
@@ -507,7 +529,7 @@ function vistaRendimiento(req, deps) {
     const puntos = calcularPuntos(valores);
     if (!coordina) SOLO_COORDINACION.forEach(k => { delete valores[k]; });
     const out = { dni: u.dni, nombre: u.nombre, turno: u.turno, sede: u.sede, valores: valores, puntaje: puntaje, puntos: puntos, serie: serieTareas(u.dni, mes, tareas) };
-    if (coordina) out.tiempos = tiemposDe(u.dni, mes, registro);
+    if (coordina) out.tiempos = tiemposDe(u.dni, mes, registro, u.hora_fin);
     return out;
   }).sort((a, b) => (b.puntaje.total == null ? -1 : b.puntaje.total) - (a.puntaje.total == null ? -1 : a.puntaje.total));
   return { mes: mes, hoy: deps.hoy(), actualizado: actualizado, personas: personas, metricas: METRICAS };

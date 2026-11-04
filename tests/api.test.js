@@ -564,3 +564,27 @@ test('admin que además es recepcionista: ve todo y conserva su lista', () => {
   assert.ok(pedir(d, { accion: 'cierres_ver', token }).ok);
   assert.ok(pedir(d, { accion: 'profes_ver', token, sede: 'puelo' }).ok);
 });
+
+test('tiempos: tareas por hora y lo que le quedaba del turno', () => {
+  const u = { ...usuario(), hora_fin: '14:00' };
+  const d = entorno([u, usuario({ dni: '25111222', nombre: 'Coord', pin: '0907', roles: 'recepcion,coordinador' })], { tareas: [], actividad: [], objetivos: [], rendimiento: [], cierres: [],
+    registro: [{ ts: '2026-11-06T12:00:00.000Z', dni: '30123456', canal: 'LL', resultado: 'RESERVA', tipo: 'x', segundos: '120' },
+               { ts: '2026-11-06T13:00:00.000Z', dni: '30123456', canal: 'LL', resultado: 'RESERVA', tipo: 'x', segundos: '60' },
+               { ts: '2026-11-06T14:00:00.000Z', dni: '30123456', canal: 'LL', resultado: 'RESERVA', tipo: 'x', segundos: '' }] });
+  const t = pedir(d, { accion: 'rendimiento', token: entrar(d, '25111222', '0907') }).data.personas.find(p => p.dni === '30123456').tiempos;
+  const dia = t.por_dia[0];
+  assert.equal(dia.por_hora, 1.5);        // 3 marcas en 2 horas
+  assert.equal(dia.minutos_libres, 180);  // última 11:00, turno hasta las 14:00
+  assert.equal(dia.minutos_en_tareas, 3);
+});
+
+test('mi_dia: datos para los avisos personalizados', () => {
+  const d = equipo({ actividad: [], cierres: [], objetivos: [], rendimiento: [], tareas: [
+    tarea({ id: 'A', socio_nombre: 'Primero', prioridad: '1', situacion: 'Hace 18 días' }), tarea({ id: 'B', socio_nombre: 'Segundo', prioridad: '5' }),
+    tarea({ id: 'F', fecha: '2026-11-10', pendiente_desde: '2026-11-10' }),
+    tarea({ id: 'Y', estado: 'hecha', fecha: '2026-11-06', pendiente_desde: '2026-11-06', hecha_en: '2026-11-06T15:00:00.000Z' })] });
+  const r = pedir(d, { accion: 'mi_dia', token: entrar(d) }).data;
+  assert.equal(r.siguiente.nombre, 'Primero');
+  assert.equal(r.ayer, 1);
+  assert.equal(r.para_adelantar, 1);
+});

@@ -246,7 +246,7 @@ function puntuar(valores, objetivos) {
 // ---------- Motivación ----------
 // Metas cercanas, avance visible y reconocimiento inmediato. Nada de textos para mandarles a los socios: eso lo escribe cada persona.
 
-const PUNTOS = { tareas_hechas: 1, adelantadas: 1, nuevos: 5, planes_largos: 10, tienda: 2, resenas: 2, referidos: 3, consultas: 1 };
+const PUNTOS = { tareas_hechas: 1, adelantadas: 1, nuevos: 5, planes_largos: 10, reenganches: 10, tienda: 2, resenas: 2, referidos: 3, consultas: 1 };
 
 function calcularPuntos(v) {
   return Object.keys(PUNTOS).reduce((a, k) => a + (Number(v[k]) || 0) * PUNTOS[k], 0);
@@ -299,8 +299,35 @@ function mensajesCoach(v, objetivos, c) {
 }
 
 // Contactos delicados: un audio obliga a abrirlo y el tono de voz cambia cómo llega el mensaje.
-const TIPOS_AUDIO = ['Pagó y no viene', 'Vencieron', 'Riesgo alto', 'Encuesta de baja', 'Faltó', 'Viene menos', 'De vacaciones'];
+const TIPOS_AUDIO = ['Socio antiguo', 'Pagó y no viene', 'Vencieron', 'Riesgo alto', 'Encuesta de baja', 'Faltó', 'Viene menos', 'De vacaciones'];
 
 function recomiendaAudio(tipo) {
   return TIPOS_AUDIO.some(t => String(tipo).indexOf(t) === 0);
+}
+
+// Avisos durante el turno. c: {nombre, minuto, inicio, fin (minutos del día), hechas, pendientes, minutosSinMarcar, enviados, siguiente, ayer, racha, adelantar, diasSinPlan}.
+// Personalizados con su nombre y sus números. La frecuencia la limita quien llama: cada 20 minutos, para que no se vuelvan ruido.
+function proximoAviso(c) {
+  if (c.inicio == null || c.fin == null || c.minuto < c.inicio || c.minuto >= c.fin) return null;
+  const pila = String(c.nombre || '').trim().split(/\s+/)[0];
+  const ya = k => c.enviados && c.enviados[k];
+  const dale = (clave, titulo, cuerpo) => (ya(clave) ? null : { clave: clave, titulo: titulo, cuerpo: cuerpo });
+  const sig = c.siguiente ? c.siguiente.nombre + (c.siguiente.situacion ? ' (' + c.siguiente.situacion + ')' : '') : '';
+  const transcurrido = (c.minuto - c.inicio) / (c.fin - c.inicio);
+  const total = c.hechas + c.pendientes;
+  const falta = c.fin - c.minuto;
+  const candidatos = [];
+  if (c.hechas === 0 && c.pendientes > 0 && c.minuto - c.inicio <= 30) candidatos.push(dale('arranque', '¡Buen arranque, ' + pila + '!', 'Hoy tenés ' + c.pendientes + ' tareas.' + (sig ? ' Podés empezar por ' + sig + '.' : '')));
+  if (c.pendientes > 0 && c.hechas > 0 && falta <= 60) candidatos.push(dale('ultima-hora', pila + ', última hora de tu turno', 'Te ' + (c.pendientes === 1 ? 'queda 1 tarea' : 'quedan ' + c.pendientes + ' tareas') + '.' + (sig ? ' La próxima: ' + sig + '.' : '')));
+  if (c.ayer > 0 && c.hechas > c.ayer) candidatos.push(dale('supero-ayer', '¡Superaste a tu yo de ayer, ' + pila + '!', c.hechas + ' tareas hoy contra ' + c.ayer + ' ayer. Excelente.'));
+  if (c.pendientes === 0 && c.adelantar > 0) candidatos.push(dale('adelantar', pila + ', estás al día', 'Hay ' + c.adelantar + ' tareas para adelantar, y cada una suma un punto extra. ¿Sumamos unas más?'));
+  if (c.hechas > 0 && c.hechas % 5 === 0) candidatos.push(dale('cuenta-' + c.hechas, '¡Ya van ' + c.hechas + ', ' + pila + '!', c.pendientes ? 'Cada contacto cuenta. ' + (sig ? 'Seguí con ' + sig + '.' : '') : 'Vas al día.'));
+  if (transcurrido >= 0.5 && total > 0 && c.hechas / total < 0.4) candidatos.push(dale('ritmo', pila + ', ya pasó la mitad de tu turno', 'Llevás ' + c.hechas + ' de ' + total + '. Con unos minutos ahora, llegás bien.' + (sig ? ' Seguí con ' + sig + '.' : '')));
+  if (c.diasSinPlan >= 3) candidatos.push(dale('plan', 'Hoy va un plan de 3 meses, ' + pila, 'Van ' + c.diasSinPlan + ' días sin venderlo, y vale el doble de puntos. Al próximo que renueve, ofrecéselo.'));
+  if (c.racha >= 3) candidatos.push(dale('racha', '¡' + c.racha + ' días seguidos, ' + pila + '!', 'Esa constancia es la que hace que los socios se queden.'));
+  if (c.pendientes > 0 && c.minutosSinMarcar >= 40) {
+    const tanda = Math.floor(c.minuto / 40);
+    candidatos.push(dale('sin-marcar-' + tanda, '¿Seguimos, ' + pila + '?', 'Si tenés un momento libre, te esperan ' + c.pendientes + ' tareas.' + (sig ? ' La próxima: ' + sig + '.' : '')));
+  }
+  return candidatos.find(x => x) || null;
 }

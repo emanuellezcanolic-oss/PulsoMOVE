@@ -23,6 +23,7 @@
   const DIAS = ['Domingo', 'Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado'];
 
   const SOLO_FORMULARIO_SIMPLE = ['SALUDADO', 'SIN CAMBIO', 'SEGUIDO', 'HECHO'];
+  const GUIA_ANTIGUO = ['Saludalo por su nombre y decile quién sos.', 'Contale que hace rato no lo ven y que te acordaste de él.', 'Preguntale cómo anda, si está entrenando, qué está haciendo.', 'Escuchá por qué dejó: si fue horario, precio o salud, ahí está la conversación.', 'Invitalo sin presión: una visita o un turno concreto. Decide él.'];
   const AVISO_AUDIO = 'Para este contacto, mejor un audio: obliga a abrirlo, y escuchar tu tono de voz cambia cómo llega el mensaje. Hablale con tus palabras: un texto armado se nota.';
   function formularioDe(tipo) {
     const t = String(tipo);
@@ -197,6 +198,7 @@
     const opt = (lista, nombres) => lista.map(v => `<option value="${esc(v)}">${esc(nombres ? nombres[v] || v : v)}</option>`).join('');
     return `<form class="marca-form" data-form="marcar" data-id="${esc(t.id)}">
       ${recomiendaAudio(t.tipo) ? `<div class="consejo-audio">🎙️ ${esc(AVISO_AUDIO)}</div>` : ''}
+      ${String(t.tipo).indexOf('Socio antiguo') === 0 ? `<div class="guia-audio"><b>Ideas para tu audio, con tus palabras</b><ol>${GUIA_ANTIGUO.map(g => `<li>${esc(g)}</li>`).join('')}</ol></div>` : ''}
       <div class="campos">
         <label class="campo">Canal<select name="canal" required><option value="">Elegí…</option>${opt(CANALES, NOMBRE_CANAL)}</select></label>
         <label class="campo">Resultado<select name="resultado" required data-accion="resultado"><option value="">Elegí…</option>${opt(RESULTADOS.filter(r => SOLO_FORMULARIO_SIMPLE.indexOf(r) < 0))}</select></label>
@@ -320,6 +322,8 @@
     return `<div class="barras" style="height:${alto || 110}px">${items.map(x => `<div class="barra" title="${esc(x.titulo)}"><span class="barra-num">${x.valor || ''}</span><i style="height:${Math.round(x.valor / max * 100)}%"></i><em>${esc(x.etiqueta)}</em></div>`).join('')}</div>`;
   }
 
+  const horasMin = m => (!m ? '0 min' : m < 60 ? m + ' min' : Math.floor(m / 60) + ' h ' + String(m % 60).padStart(2, '0'));
+
   function graficoDias(serie) {
     if (!serie || !serie.length) return '';
     const ult = serie.slice(-14);
@@ -334,8 +338,8 @@
     const ult = T.por_dia.slice(-7).reverse();
     return `<section class="bloque"><div class="bloque-cab"><h2>Cuándo hizo las tareas</h2>${T.segundos_promedio ? `<span class="sello">${duracion(T.segundos_promedio)} por tarea</span>` : ''}</div>
       ${barras(horas, 90)}
-      <div class="envoltura-tabla"><table class="tabla compacta"><thead><tr><th>Día</th><th>Primera</th><th>Última</th><th>Marcas</th></tr></thead><tbody>${ult.map(d => `<tr><td>${ddmm(d.fecha)}</td><td>${d.primera}</td><td>${d.ultima}</td><td class="num">${d.marcas}</td></tr>`).join('')}</tbody></table></div>
-      <p class="aclara">El tiempo por tarea va de que abre la tarjeta a que la guarda: no mide la charla con el socio.</p></section>`;
+      <div class="envoltura-tabla"><table class="tabla compacta"><thead><tr><th>Día</th><th>Primera</th><th>Última</th><th>Tareas</th><th>Por hora</th><th>En tareas</th><th>Le quedaban</th></tr></thead><tbody>${ult.map(d => `<tr><td>${ddmm(d.fecha)}</td><td>${d.primera}</td><td>${d.ultima}</td><td class="num">${d.marcas}</td><td class="num">${d.por_hora == null ? '—' : d.por_hora}</td><td class="num">${horasMin(d.minutos_en_tareas)}</td><td class="num">${d.minutos_libres == null ? '—' : horasMin(d.minutos_libres)}</td></tr>`).join('')}</tbody></table></div>
+      <p class="aclara">"Le quedaban" es lo que faltaba para terminar el turno cuando marcó su última tarea: tiempo disponible, no tiempo ocioso, porque también atiende el mostrador. "En tareas" va de que abre la tarjeta a que la guarda y no mide la charla con el socio.</p></section>`;
   }
 
   function nota(n) {
@@ -391,8 +395,10 @@
         ${dato('Suplementos', v.suplementos || 0)}
         ${dato('Sin clasificar', v.otros || 0)}
         ${dato('Días de caja', v.cajas)}
+        ${v.reenganche_total ? dato('Socios antiguos que volvieron', v.reenganches || 0, 'de ' + v.reenganche_total + ' contactados') : ''}
       </div><p class="aclara">Lo cobrado es de quien abrió esa caja, no siempre de quien hizo la venta.</p></section>` : '';
     const actividad = `<section class="bloque"><div class="bloque-cab"><h2>Cargado a mano</h2></div><div class="datos">
+        ${v.reenganche_total ? dato('Socios antiguos que volvieron', v.reenganches || 0, 'de ' + v.reenganche_total + ' contactados') : ''}
         ${dato('Consultas', v.consultas || 0)}${dato('Días de prueba', v.dias_prueba || 0, 'objetivo 2')}${dato('Reseñas pedidas', v.resenas || 0)}${dato('Referidos', v.referidos || 0)}
       </div></section>`;
     return `${completo ? '<div class="todo-cumplido">🏆 ¡Todos los objetivos cumplidos! Sos un ejemplo para el equipo.</div>' : ''}<section class="tablero">
@@ -526,6 +532,30 @@
         } catch (e) { btn.disabled = false; falla(e); }
       };
     });
+  }
+
+  // Avisos personalizados durante el turno, como mucho uno cada 20 minutos
+  const CADA_AVISO_MS = 20 * 60000;
+  function revisarAvisos() {
+    const D = E.dia;
+    if (!D || !cliente.sesion() || !tiene('recepcion') || !D.hora_fin || !D.hora_inicio) return;
+    if (Date.now() - (E.ultimoAviso || 0) < CADA_AVISO_MS) return;
+    const min = t => Number(t.slice(0, 2)) * 60 + Number(t.slice(3, 5));
+    const ahora = new Date();
+    const clave = 'pulso_avisos_' + E.hoy;
+    const alm = almacenSeguro();
+    let enviados = {};
+    try { enviados = JSON.parse(alm.getItem(clave) || '{}'); } catch (e) { enviados = {}; }
+    const a = proximoAviso({
+      nombre: cliente.sesion().nombre, minuto: ahora.getHours() * 60 + ahora.getMinutes(), inicio: min(D.hora_inicio), fin: min(D.hora_fin), hechas: D.hoy.hechas, pendientes: D.hoy.pendientes,
+      minutosSinMarcar: E.ultimaMarca ? (Date.now() - E.ultimaMarca) / 60000 : 0, enviados: enviados, siguiente: D.siguiente, ayer: D.ayer, racha: D.racha, adelantar: D.para_adelantar, diasSinPlan: D.dias_sin_plan,
+    });
+    if (!a) return;
+    enviados[a.clave] = 1;
+    alm.setItem(clave, JSON.stringify(enviados));
+    E.ultimoAviso = Date.now();
+    push(a.titulo, a.cuerpo);
+    aviso(a.titulo);
   }
 
   function revisarCierre() {
@@ -699,7 +729,9 @@
         const r = await cliente.llamar('mis_tareas', E.adelantar ? { adelantar: true } : {});
         E.paraAdelantar = r.para_adelantar || 0;
         E.dia = await cliente.llamar('mi_dia');
+        if (!E.ultimaMarca) E.ultimaMarca = Date.now();
         saludarUnaVez();
+        revisarAvisos();
         const locales = {};
         (E.tareas || []).forEach(t => { if (t.resultado_local) locales[t.id] = t.resultado_local; });
         E.hoy = r.hoy;
@@ -830,8 +862,9 @@
       E.errorForm = '';
       render();
       aviso(r.enviada ? 'Guardado.' : 'Guardado en este equipo. Se envía solo cuando vuelva la conexión.', !r.enviada);
+      E.ultimaMarca = Date.now();
       revisarLogros();
-      cliente.llamar('mi_dia').then(d => { E.dia = d; if (!E.abierta) render(); }).catch(() => {});
+      cliente.llamar('mi_dia').then(d => { E.dia = d; if (!E.abierta) render(); revisarAvisos(); }).catch(() => {});
     }
   });
 
@@ -913,6 +946,7 @@
   window.addEventListener('online', enviarPendientes);
   setInterval(enviarPendientes, 30000);
   setInterval(revisarCierre, 60000);
+  setInterval(revisarAvisos, 60000);
   setInterval(() => { if (cliente.sesion() && !E.abierta && !document.querySelector('dialog') && document.visibilityState === 'visible') cargarVista(); }, 5 * 60000);
 
   render();

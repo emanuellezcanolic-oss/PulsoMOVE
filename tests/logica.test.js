@@ -221,3 +221,42 @@ test('audio: lo recomienda en los contactos delicados', () => {
   assert.ok(!L.recomiendaAudio('Socio nuevo · semana 2'));
   assert.ok(L.validarMarca({ canal: 'AU', resultado: 'RESERVA' }) === null);
 });
+
+// ---------- Avisos personalizados ----------
+
+const ctxAviso = o => Object.assign({ nombre: 'Ara Stettler', minuto: 9 * 60, inicio: 8 * 60, fin: 14 * 60, hechas: 3, pendientes: 10, minutosSinMarcar: 5, enviados: {}, siguiente: null, ayer: 0, racha: 0, adelantar: 0, puntos: 0, diasSinPlan: 0 }, o);
+
+test('aviso: arranque con el primer socio', () => {
+  const a = L.proximoAviso(ctxAviso({ minuto: 8 * 60 + 5, hechas: 0, siguiente: { nombre: 'Diego', situacion: '18 días sin venir' } }));
+  assert.equal(a.clave, 'arranque');
+  assert.match(a.titulo, /Ara/);
+  assert.match(a.cuerpo, /Diego/);
+});
+
+test('aviso: tiempo sin marcar, ritmo y última hora', () => {
+  assert.equal(L.proximoAviso(ctxAviso({ minutosSinMarcar: 45 })).clave.indexOf('sin-marcar'), 0);
+  assert.equal(L.proximoAviso(ctxAviso({ minuto: 11 * 60 + 30, hechas: 2, pendientes: 20 })).clave, 'ritmo');
+  assert.equal(L.proximoAviso(ctxAviso({ minuto: 13 * 60 + 10, hechas: 20, pendientes: 2 })).clave, 'ultima-hora');
+});
+
+test('aviso: logros', () => {
+  assert.equal(L.proximoAviso(ctxAviso({ hechas: 12, ayer: 10 })).clave, 'supero-ayer');
+  assert.equal(L.proximoAviso(ctxAviso({ hechas: 10, enviados: {} })).clave, 'cuenta-10');
+  assert.equal(L.proximoAviso(ctxAviso({ hechas: 5, pendientes: 0, adelantar: 30 })).clave, 'adelantar');
+});
+
+test('aviso: no repite y fuera del turno no molesta', () => {
+  assert.equal(L.proximoAviso(ctxAviso({ hechas: 12, ayer: 10, enviados: { 'supero-ayer': 1, 'cuenta-10': 1 } })), null);
+  assert.equal(L.proximoAviso(ctxAviso({ minuto: 7 * 60 })), null);
+  assert.equal(L.proximoAviso(ctxAviso({ minuto: 15 * 60, minutosSinMarcar: 90 })), null);
+  assert.equal(L.proximoAviso(ctxAviso({ minutosSinMarcar: 45, pendientes: 0 })), null);
+});
+
+test('plan de 3 meses en el aviso', () => {
+  assert.equal(L.proximoAviso(ctxAviso({ diasSinPlan: 4 })).clave, 'plan');
+});
+
+test('audio y guía para socios antiguos', () => {
+  assert.ok(L.recomiendaAudio('Socio antiguo: invitarlo a volver'));
+  assert.ok(L.calcularPuntos({ reenganches: 1 }) >= 10);
+});
