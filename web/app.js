@@ -63,6 +63,7 @@
 
   function celebrar(titulo, texto, grande) {
     push(titulo, texto);
+    document.querySelectorAll('.celebracion').forEach(x => x.remove());
     const c = document.createElement('div');
     c.className = 'celebracion' + (grande ? ' grande' : '');
     const colores = ['#f2b705', '#f2542d', '#0e9594', '#798254', '#f58a07'];
@@ -240,8 +241,9 @@
     </article>`;
   }
 
+  // El avance cuenta lo que se puede marcar: lo que se verifica en MOVE se cierra solo a la mañana siguiente
   function deHoy(t) {
-    return t.estado === 'hecha' || String(t.fecha) <= E.hoy;
+    return (t.estado === 'hecha' || String(t.fecha) <= E.hoy) && !(seVerificaEnMove(t.tipo) && t.estado !== 'hecha');
   }
 
   function panelDia(hechas, total) {
