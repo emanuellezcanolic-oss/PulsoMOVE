@@ -22,7 +22,7 @@
   const FRASE_GARANTIA = 'Si un profe no te saluda, no te arma tu rutina o no te hace seguimiento, te regalamos el mes siguiente, para darnos la oportunidad de mejorar.';
   const DIAS = ['Domingo', 'Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado'];
 
-  const SOLO_FORMULARIO_SIMPLE = ['SALUDADO', 'SIN CAMBIO', 'SEGUIDO', 'HECHO'];
+  const NOMBRE_RESULTADO = { NOTIFICADO: 'NOTIFICADO (ya se le avisó)' };
   const GUIA_ANTIGUO = ['Saludalo por su nombre y decile quién sos.', 'Contale que hace rato no lo ven y que te acordaste de él.', 'Preguntale cómo anda, si está entrenando, qué está haciendo.', 'Escuchá por qué dejó: si fue horario, precio o salud, ahí está la conversación.', 'Invitalo sin presión: una visita o un turno concreto. Decide él.'];
   const AVISO_AUDIO = 'Para este contacto, mejor un audio: obliga a abrirlo, y escuchar tu tono de voz cambia cómo llega el mensaje. Hablale con tus palabras: un texto armado se nota.';
   function formularioDe(tipo) {
@@ -201,8 +201,8 @@
       ${String(t.tipo).indexOf('Socio antiguo') === 0 ? `<div class="guia-audio"><b>Ideas para tu audio, con tus palabras</b><ol>${GUIA_ANTIGUO.map(g => `<li>${esc(g)}</li>`).join('')}</ol></div>` : ''}
       <div class="campos">
         <label class="campo">Canal<select name="canal" required><option value="">Elegí…</option>${opt(CANALES, NOMBRE_CANAL)}</select></label>
-        <label class="campo">Resultado<select name="resultado" required data-accion="resultado"><option value="">Elegí…</option>${opt(RESULTADOS.filter(r => SOLO_FORMULARIO_SIMPLE.indexOf(r) < 0))}</select></label>
-        <label class="campo">Fecha <span class="opcional" data-ayuda="fecha">(si quedó una)</span><input name="fecha" type="date"></label>
+        <label class="campo">Resultado<select name="resultado" required data-accion="resultado"><option value="">Elegí…</option>${GRUPOS_RESULTADO.map(g => `<optgroup label="${esc(g[0])}">${opt(g[1], NOMBRE_RESULTADO)}</optgroup>`).join('')}</select></label>
+        <label class="campo" data-campo="fecha" hidden><span data-ayuda="fecha">Fecha</span><input name="fecha" type="date"></label>
         <label class="campo">Detalle <span class="opcional" data-ayuda="detalle">(opcional)</span><textarea name="detalle" maxlength="500" placeholder="Día y horario del turno, qué dijo…"></textarea></label>
       </div>
       ${E.errorForm ? `<div class="error-form">${esc(E.errorForm)}</div>` : ''}
@@ -888,9 +888,11 @@
       const form = el.closest('form');
       const fecha = PIDEN_FECHA.indexOf(el.value) >= 0;
       const detalle = PIDEN_DETALLE.indexOf(el.value) >= 0;
-      form.querySelector('[data-ayuda=fecha]').textContent = fecha ? '(obligatoria)' : '(si quedó una)';
+      form.querySelector('[data-campo=fecha]').hidden = !fecha;
+      form.querySelector('[data-ayuda=fecha]').textContent = PREGUNTA_FECHA[el.value] || 'Fecha';
       form.querySelector('[data-ayuda=detalle]').textContent = detalle ? '(motivo, obligatorio)' : '(opcional)';
       form.querySelector('[name=fecha]').required = fecha;
+      if (!fecha) form.querySelector('[name=fecha]').value = '';
       form.querySelector('[name=detalle]').required = detalle;
     }
   });

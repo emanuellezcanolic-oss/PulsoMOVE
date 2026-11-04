@@ -133,6 +133,21 @@ test('fusionarCarga: cerrar con hecha=true la deja hecha, verificada', () => {
   assert.equal(f[0].fecha, '2026-11-06');
 });
 
+test('NOTIFICADO: un recordatorio enviado no pide fecha ni motivo', () => {
+  assert.equal(L.validarMarca({ canal: 'MP', resultado: 'NOTIFICADO' }), null);
+});
+
+test('resultados por categoría: cada uno una sola vez, y lo que queda afuera tiene su propio formulario', () => {
+  const agrupados = L.GRUPOS_RESULTADO.flatMap(g => g[1]);
+  assert.equal(new Set(agrupados).size, agrupados.length);
+  assert.deepEqual(L.RESULTADOS.filter(r => agrupados.indexOf(r) < 0).sort(), ['ENCUESTA ENVIADA', 'HECHO', 'SALUDADO', 'SEGUIDO', 'SIN CAMBIO']);
+  assert.ok(agrupados.every(r => L.RESULTADOS.indexOf(r) >= 0));
+});
+
+test('la fecha se pide y se pregunta en los mismos resultados', () => {
+  assert.deepEqual(Object.keys(L.PREGUNTA_FECHA).sort(), L.PIDEN_FECHA.slice().sort());
+});
+
 test('seVerificaEnMove', () => {
   assert.ok(L.seVerificaEnMove('Asignarle profesor'));
   assert.ok(L.seVerificaEnMove('Corregir calendario'));

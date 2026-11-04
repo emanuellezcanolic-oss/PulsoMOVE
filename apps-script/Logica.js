@@ -82,8 +82,17 @@ function leerToken(token, ahoraMs, secreto, hmac) {
 
 const CANALES = ['MP', 'AU', 'MG', 'LL', 'PR', 'SIN CONTACTO'];
 const RESULTADOS = ['VOLVIÓ', 'VUELVE', 'RESERVA', 'PAGÓ', 'PAGA', 'VACACIONES', 'PAUSA', 'SALUD', 'HORARIOS',
-                    'PRECIO', 'BAJA', 'NO CONTESTA', 'TEL MAL', 'ENCUESTA ENVIADA', 'SALUDADO', 'SIN CAMBIO', 'SEGUIDO', 'HECHO'];
-const PIDEN_FECHA = ['VUELVE', 'PAGA', 'VACACIONES'];
+                    'PRECIO', 'BAJA', 'NO CONTESTA', 'TEL MAL', 'NOTIFICADO', 'ENCUESTA ENVIADA', 'SALUDADO', 'SIN CAMBIO', 'SEGUIDO', 'HECHO'];
+const PIDEN_FECHA = ['VUELVE', 'PAGA', 'VACACIONES'];   // la fecha se pide solo en estos: en los demás no aparece
+const PREGUNTA_FECHA = { VUELVE: '¿Qué día vuelve?', PAGA: '¿Qué día paga?', VACACIONES: '¿Qué día vuelve de vacaciones?' };
+// El desplegable de resultados, por categoría
+const GRUPOS_RESULTADO = [
+  ['Ya se resolvió', ['VOLVIÓ', 'RESERVA', 'PAGÓ']],
+  ['Quedó en una fecha', ['VUELVE', 'PAGA', 'VACACIONES']],
+  ['Solo se le avisó', ['NOTIFICADO']],
+  ['Por qué no viene', ['PAUSA', 'SALUD', 'HORARIOS', 'PRECIO', 'BAJA']],
+  ['No se pudo hablar', ['NO CONTESTA', 'TEL MAL']],
+];
 const PIDEN_DETALLE = ['BAJA', 'SIN CAMBIO'];
 
 // Tareas que no se marcan a mano: se dan por hechas solo cuando MOVE muestra el dato cargado.

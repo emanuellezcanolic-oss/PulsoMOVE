@@ -11,6 +11,8 @@ function cargar() {
     const ruta = path.join(__dirname, '..', 'apps-script', a);
     if (fs.existsSync(ruta)) vm.runInContext(fs.readFileSync(ruta, 'utf8'), ctx, { filename: a });
   }
+  // Las constantes no quedan en el contexto por sí solas: se exponen las que miran las pruebas
+  vm.runInContext('this.RESULTADOS = RESULTADOS; this.PIDEN_FECHA = PIDEN_FECHA; this.PREGUNTA_FECHA = PREGUNTA_FECHA; this.GRUPOS_RESULTADO = GRUPOS_RESULTADO;', ctx);
   return ctx;
 }
 
