@@ -30,7 +30,7 @@
   const USUARIOS = [
     { dni: '11111111', nombre: 'Rocío (práctica)', sede: 'bolson', turno: 'manana', roles: 'recepcion' },
     { dni: '11111112', nombre: 'Tomás (práctica)', sede: 'bolson', turno: 'tarde', roles: 'recepcion' },
-    { dni: '22222222', nombre: 'Coordinadora (práctica)', sede: 'bolson', turno: 'manana', roles: 'recepcion,coordinador' },
+    { dni: '22222222', nombre: 'Responsable de sede (práctica)', sede: 'bolson', turno: 'manana', roles: 'recepcion,coordinador' },
     { dni: '33333333', nombre: 'Admin (práctica)', sede: 'bolson', turno: 'manana', roles: 'admin' },
   ];
 
@@ -57,6 +57,9 @@
       t(R, 'Faltó la semana pasada', 5, 'Carla Benítez', 'Profe Ana', 'Venía 3 veces por semana; la pasada, 0', 'Preguntar qué pasó y reservarle el próximo turno',
         { pendiente_desde: diaHabilAntes(hoy, 1) }),
       t(R, 'Asignarle profesor', 7, 'Nadia Campos', '', 'Socio vigente sin profesor en MOVE', 'Asignarle profesor en MOVE. Sugerido: Profe Sol (da el horario en que más viene)'),
+      t(R, 'Cumpleaños del socio', 0, 'Paula Ibáñez', 'Profe Sol', 'Cumple el sábado, en 3 días', 'Pensar algo con su profe: un saludo o un detalle en su próximo turno'),
+      t(R, 'Encuesta de baja', 85, 'Ramiro Núñez', '', 'Su plan terminó hace 16 días y no renovó', 'Enviarle la encuesta de baja', { intro: 'Saber por qué se va e invitarlo a volver. Mensaje personal, sin presión.' }),
+      t(R, 'Revisar profesor', 91, 'Clara Gómez', 'Profe Leo', 'Tiene asignado a Profe Leo, pero 7 de sus últimas 8 asistencias fueron en horarios de Profe Sol', 'Hablarlo con los dos profes y, si corresponde, pasarla a Profe Sol en MOVE', { intro: 'Quien lo evalúa y le arma el plan tiene que ser quien le hace el seguimiento. Se cierra sola si MOVE muestra otro profesor; si hay un motivo para dejarlo, anotalo.' }),
       t(R, 'Riesgo alto', 6, 'Sergio Molina', 'Profe Ana', '21 días sin venir · bajó 60%', 'Hablar en persona o llamar; cerrar con turno o fecha'),
       t(R, 'Vence en 7 días', 2, 'Inés Duarte', 'Profe Leo', 'Vence en 3 días', 'Llamar y reservarle el turno', { estado: 'hecha', hecha_en: new Date().toISOString() }),
       t(T, 'Riesgo alto', 6, 'Pablo Sosa', 'Profe Ana', '30 días sin venir', 'Llamar', { pendiente_desde: diaHabilAntes(hoy, 3) }),

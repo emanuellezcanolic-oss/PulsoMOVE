@@ -65,6 +65,9 @@ test('validarMarca', () => {
   mal({ canal: 'MP', resultado: 'VINO' });
   ok({ canal: 'MP', resultado: 'ENCUESTA ENVIADA' });
   ok({ canal: 'SIN CONTACTO', resultado: 'NO CONTESTA' });
+  ok({ canal: 'MP', resultado: 'SALUDADO' });
+  mal({ canal: 'PR', resultado: 'SIN CAMBIO' });
+  ok({ canal: 'PR', resultado: 'SIN CAMBIO', detalle: 'Lo pidió el socio' });
 });
 
 test('diasHabiles', () => {

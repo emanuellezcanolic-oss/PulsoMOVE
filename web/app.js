@@ -19,10 +19,19 @@
   const SEDES = { bariloche: 'Bariloche', bolson: 'El Bolsón', puelo: 'Lago Puelo' };
   const TURNOS = { manana: 'Mañana', tarde: 'Tarde' };
   const NOMBRE_CANAL = { MP: 'Mensaje personal', MG: 'Mensaje general o plantilla', LL: 'Llamada', PR: 'En persona', 'SIN CONTACTO': 'Sin contacto' };
-  const FRASE_GARANTIA = 'Si un profe no te saluda, no te arma tu rutina o no te hace seguimiento, te devolvemos el mes.';
+  const FRASE_GARANTIA = 'Si un profe no te saluda, no te arma tu rutina o no te hace seguimiento, te regalamos el mes siguiente, para darnos la oportunidad de mejorar.';
   const DIAS = ['Domingo', 'Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado'];
 
-  const PULSO_ICONO = '<svg class="pulso" viewBox="0 0 44 18" aria-hidden="true"><path d="M1 10 H13 l3 -7 l4 13 l3 -9 l2 3 H43" fill="none" stroke="#21785a" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/></svg>';
+  const SOLO_FORMULARIO_SIMPLE = ['SALUDADO', 'SIN CAMBIO'];
+  function formularioDe(tipo) {
+    const t = String(tipo);
+    if (t.indexOf('Cumpleaños') === 0) return { resultado: 'SALUDADO', conCanal: true, detalle: 'Qué se hizo', boton: 'Listo, saludado' };
+    if (t.indexOf('Encuesta de baja') === 0) return { resultado: 'ENCUESTA ENVIADA', conCanal: true, detalle: 'Qué respondió', boton: 'Encuesta enviada' };
+    if (t.indexOf('Revisar profesor') === 0) return { resultado: 'SIN CAMBIO', conCanal: false, detalle: 'Por qué se deja como está', obligatorio: true, boton: 'Dejarlo como está' };
+    return null;
+  }
+
+  const PULSO_ICONO = '<svg class="pulso" viewBox="0 0 44 18" aria-hidden="true"><path d="M1 10 H13 l3 -7 l4 13 l3 -9 l2 3 H43" fill="none" stroke="#798254" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/></svg>';
   const PULSO_LARGO = 'M2 22 H110 l8 -14 l9 28 l8 -20 l6 6 H290 l8 -14 l9 28 l8 -20 l6 6 H470 l8 -14 l9 28 l8 -20 l6 6 H598';
 
   const E = {
@@ -54,7 +63,7 @@
   // ---------- Login y PIN ----------
 
   function vistaLogin() {
-    const practica = DEMO ? `<div class="practica"><b>Modo práctica.</b> Probá con DNI <b>11111111</b> (recepción), <b>22222222</b> (coordinación) o <b>33333333</b> (admin). PIN <b>${PulsoDemo.PIN}</b>.</div>` : '';
+    const practica = DEMO ? `<div class="practica"><b>Modo práctica.</b> Probá con DNI <b>11111111</b> (recepción), <b>22222222</b> (responsable de sede) o <b>33333333</b> (admin). PIN <b>${PulsoDemo.PIN}</b>.</div>` : '';
     return `<main class="login"><div class="caja">
       <img src="web/logo.png" alt="The Move Club">
       <svg class="gran-pulso" viewBox="0 0 380 56" aria-hidden="true"><path d="M2 32 H150 l10 -24 l12 44 l10 -32 l8 12 H378"/></svg>
@@ -128,12 +137,27 @@
     return '';
   }
 
+  // Tareas que no son un contacto de retención: formulario corto con el resultado ya puesto
+  function formularioSimple(t, f) {
+    const canal = f.conCanal ? `<label class="campo">Canal<select name="canal" required><option value="">Elegí…</option>${['MP', 'LL', 'PR'].map(v => `<option value="${v}">${esc(NOMBRE_CANAL[v])}</option>`).join('')}</select></label>` : '<input type="hidden" name="canal" value="PR">';
+    return `<form class="marca-form" data-form="marcar" data-id="${esc(t.id)}">
+      <input type="hidden" name="resultado" value="${esc(f.resultado)}">
+      <div class="campos">${canal}
+        <label class="campo">${esc(f.detalle)} <span class="opcional">${f.obligatorio ? '(obligatorio)' : '(opcional)'}</span><textarea name="detalle" maxlength="500" ${f.obligatorio ? 'required' : ''}></textarea></label>
+      </div>
+      ${E.errorForm ? `<div class="error-form">${esc(E.errorForm)}</div>` : ''}
+      <div class="botones"><button class="boton verde">${esc(f.boton)}</button><button type="button" class="boton claro" data-accion="cerrar">Cancelar</button></div>
+    </form>`;
+  }
+
   function formularioMarca(t) {
+    const simple = formularioDe(t.tipo);
+    if (simple) return formularioSimple(t, simple);
     const opt = (lista, nombres) => lista.map(v => `<option value="${esc(v)}">${esc(nombres ? nombres[v] || v : v)}</option>`).join('');
     return `<form class="marca-form" data-form="marcar" data-id="${esc(t.id)}">
       <div class="campos">
         <label class="campo">Canal<select name="canal" required><option value="">Elegí…</option>${opt(CANALES, NOMBRE_CANAL)}</select></label>
-        <label class="campo">Resultado<select name="resultado" required data-accion="resultado"><option value="">Elegí…</option>${opt(RESULTADOS)}</select></label>
+        <label class="campo">Resultado<select name="resultado" required data-accion="resultado"><option value="">Elegí…</option>${opt(RESULTADOS.filter(r => SOLO_FORMULARIO_SIMPLE.indexOf(r) < 0))}</select></label>
         <label class="campo">Fecha <span class="opcional" data-ayuda="fecha">(si quedó una)</span><input name="fecha" type="date"></label>
         <label class="campo">Detalle <span class="opcional" data-ayuda="detalle">(opcional)</span><textarea name="detalle" maxlength="500" placeholder="Día y horario del turno, qué dijo…"></textarea></label>
       </div>
@@ -245,14 +269,14 @@
           <span class="profe">Profe: ${esc(g.profe || '—')} · registró ${esc(nombre(g.registra_dni))} el ${ddmm(g.ts.slice(0, 10))}</span>
           <span class="situacion">“${esc(g.motivo)}”</span></div>
         <div class="fila-accion"><input data-comentario="${esc(g.id)}" placeholder="Comentario (opcional)">
-          <button class="boton verde" data-accion="decidir" data-id="${esc(g.id)}" data-estado="aprobada">Devolver el mes</button>
+          <button class="boton verde" data-accion="decidir" data-id="${esc(g.id)}" data-estado="aprobada">Regalar el mes siguiente</button>
           <button class="boton claro" data-accion="decidir" data-id="${esc(g.id)}" data-estado="rechazada">Rechazar</button></div></article>`).join('')
       : '<div class="vacio">No hay pedidos de garantía pendientes.</div>';
     return `${selector}<h1 class="titulo">${esc(SEDES[S.sede])} <span>·</span> ${esc(tituloDia(S.hoy))}</h1>
       <p class="bajada">Avance del equipo, tareas atrasadas y pedidos de garantía.</p>
       ${personas}
       <section class="grupo"><h2>Atrasadas, 2 días o más <span class="cuenta">${S.alertas.length}</span></h2>${alertas}</section>
-      <section class="grupo"><h2>Garantía de atención <span class="cuenta">${S.garantias.length}</span></h2><div class="frase">${esc(FRASE_GARANTIA)}</div><p class="bajada" style="margin-top:8px">Se devuelve el mes en curso. Decide la coordinación.</p>${garantias}</section>`;
+      <section class="grupo"><h2>Garantía de atención <span class="cuenta">${S.garantias.length}</span></h2><div class="frase">${esc(FRASE_GARANTIA)}</div><p class="bajada" style="margin-top:8px">Se regala el mes siguiente. Decide el responsable de sede.</p>${garantias}</section>`;
   }
 
   // ---------- Equipo (admin) ----------
@@ -286,7 +310,7 @@
     const nombres = (E.tareas || []).map(t => t.socio_nombre);
     dialogo(`<h3>Pedido de garantía</h3>
       <div class="frase">${esc(FRASE_GARANTIA)}</div>
-      <p class="bajada" style="margin:0">Recepción solo registra el pedido. Decide la coordinación.</p>
+      <p class="bajada" style="margin:0">Recepción solo registra el pedido. Decide el responsable de sede.</p>
       <form data-form="garantia" class="marca-form" style="border:0;padding:0">
         <label class="campo">Socio<input name="socio" list="lista-socios" required></label>
         <datalist id="lista-socios">${nombres.map(n => `<option value="${esc(n)}">`).join('')}</datalist>
@@ -305,7 +329,7 @@
         try {
           await cliente.llamar('garantia_crear', { socio_id: t ? t.socio_id : '', socio_nombre: socio, profe: String(f.get('profe') || (t ? t.profe : '')).trim(), motivo: String(f.get('motivo')).trim() });
           d.close();
-          aviso('Pedido registrado. Le llega a la coordinación.');
+          aviso('Pedido registrado. Le llega al responsable de sede.');
         } catch (e) { btn.disabled = false; falla(e); }
       };
     });
@@ -391,6 +415,7 @@
       } catch (e) { E.mensajeLogin = e.message; render(); }
     } else if (tipo === 'marcar') {
       const marca = { canal: f.get('canal'), resultado: f.get('resultado'), fecha: f.get('fecha') || '', detalle: String(f.get('detalle') || '').trim() };
+      if (!marca.canal) { E.errorForm = 'Elegí el canal.'; render(); return; }
       if (validarMarca(marca)) {
         E.errorForm = PIDEN_FECHA.indexOf(marca.resultado) >= 0 && !marca.fecha ? `Con ${marca.resultado} hace falta la fecha. Todo contacto termina con un turno o una fecha.`
           : PIDEN_DETALLE.indexOf(marca.resultado) >= 0 && !marca.detalle ? 'Con BAJA hace falta escribir el motivo en el detalle.'

@@ -82,9 +82,9 @@ function leerToken(token, ahoraMs, secreto, hmac) {
 
 const CANALES = ['MP', 'MG', 'LL', 'PR', 'SIN CONTACTO'];
 const RESULTADOS = ['VOLVIÓ', 'VUELVE', 'RESERVA', 'PAGÓ', 'PAGA', 'VACACIONES', 'PAUSA', 'SALUD', 'HORARIOS',
-                    'PRECIO', 'BAJA', 'NO CONTESTA', 'TEL MAL', 'ENCUESTA ENVIADA'];
+                    'PRECIO', 'BAJA', 'NO CONTESTA', 'TEL MAL', 'ENCUESTA ENVIADA', 'SALUDADO', 'SIN CAMBIO'];
 const PIDEN_FECHA = ['VUELVE', 'PAGA', 'VACACIONES'];
-const PIDEN_DETALLE = ['BAJA'];
+const PIDEN_DETALLE = ['BAJA', 'SIN CAMBIO'];
 
 // Tareas que no se marcan a mano: se dan por hechas solo cuando MOVE muestra el dato cargado.
 const SE_VERIFICAN_EN_MOVE = ['Asignarle profesor'];
