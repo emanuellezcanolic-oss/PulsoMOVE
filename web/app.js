@@ -232,7 +232,7 @@
     return `<article class="tarjeta${t.estado === 'hecha' ? ' hecha' : ''}" style="--i:${i}">
       <button class="cabeza" data-accion="abrir" data-id="${esc(t.id)}" aria-expanded="${abierta}">
         <span class="socio">${esc(t.socio_nombre)}</span>${etiquetaEstado(t)}
-        <span class="profe">Profe: ${esc(t.profe || '—')}</span>
+        ${t.profe ? `<span class="profe">Profe: ${esc(t.profe)}</span>` : ''}
         <span class="situacion">${esc(t.situacion)}</span>
         <span class="accion">${esc(t.accion)}</span>
         ${t.ultima_anotacion ? `<span class="nota">Última anotación: “${esc(t.ultima_anotacion)}”</span>` : ''}
