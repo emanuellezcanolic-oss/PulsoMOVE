@@ -354,7 +354,7 @@
     const [cls, ico, txt] = estadoDe(P.total == null ? null : P.total / 100);
     const incentivo = P.incentivo == null ? '' : P.incentivo
       ? '<div class="incentivo si">✓ Incentivos habilitados: el cumplimiento está al día.</div>'
-      : `<div class="incentivo no">${propia ? '→ Te falta poco para habilitar los incentivos' : '! Incentivos en pausa'}: el cumplimiento está en ${P.grupos[0].puntaje}% y hace falta 90%.</div>`;
+      : `<div class="incentivo no">${propia ? '→ Para habilitar los incentivos, seguí sumando' : '! Incentivos en pausa'}: el cumplimiento está en ${P.grupos[0].puntaje}% y hace falta 90%.</div>`;
     const completo = P.filas.every(f => f.cumple == null || f.cumple >= 1) && P.total != null;
     const grupos = P.grupos.map(g => {
       const filas = P.filas.filter(f => f.grupo === g.nombre);
