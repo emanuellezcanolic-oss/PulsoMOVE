@@ -228,8 +228,8 @@ test('sede: permisos', () => {
   const d = equipo({ tareas: [] });
   assert.equal(pedir(d, { accion: 'sede', token: entrar(d) }).error, 'prohibido');
   assert.equal(pedir(d, { accion: 'sede', token: entrar(d, '25111222', '0907'), sede: 'puelo' }).error, 'prohibido');
-  assert.equal(pedir(d, { accion: 'sede', token: adm, sede: 'esquel' }).error, 'datos_invalidos');
   const adm = entrar(d, '20000001', '0907');
+  assert.equal(pedir(d, { accion: 'sede', token: adm, sede: 'esquel' }).error, 'datos_invalidos');
   assert.equal(pedir(d, { accion: 'sede', token: adm }).data.sede, 'bolson');   // sin sede pedida: la suya
   assert.ok(pedir(d, { accion: 'sede', token: adm, sede: 'puelo' }).ok);
 });
