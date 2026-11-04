@@ -82,9 +82,10 @@ function leerToken(token, ahoraMs, secreto, hmac) {
 
 const CANALES = ['MP', 'AU', 'MG', 'LL', 'PR', 'SIN CONTACTO'];
 const RESULTADOS = ['VOLVIÓ', 'VUELVE', 'RESERVA', 'PAGÓ', 'PAGA', 'VACACIONES', 'PAUSA', 'SALUD', 'HORARIOS',
-                    'PRECIO', 'BAJA', 'NO CONTESTA', 'TEL MAL', 'NOTIFICADO', 'ENCUESTA ENVIADA', 'SALUDADO', 'SIN CAMBIO', 'SEGUIDO', 'HECHO'];
-const PIDEN_FECHA = ['VUELVE', 'PAGA', 'VACACIONES'];   // la fecha se pide solo en estos: en los demás no aparece
-const PREGUNTA_FECHA = { VUELVE: '¿Qué día vuelve?', PAGA: '¿Qué día paga?', VACACIONES: '¿Qué día vuelve de vacaciones?' };
+                    'PRECIO', 'BAJA', 'NO CONTESTA', 'TEL MAL', 'NOTIFICADO', 'ENCUESTA ENVIADA', 'SALUDADO', 'SIN CAMBIO', 'SEGUIDO', 'HECHO',
+                    'AGENDADA', 'REPROGRAMADA', 'SE HIZO', 'NO SE HACE'];
+const PIDEN_FECHA = ['VUELVE', 'PAGA', 'VACACIONES', 'AGENDADA', 'REPROGRAMADA'];   // la fecha se pide solo en estos: en los demás no aparece
+const PREGUNTA_FECHA = { VUELVE: '¿Qué día vuelve?', PAGA: '¿Qué día paga?', VACACIONES: '¿Qué día vuelve de vacaciones?', AGENDADA: '¿Qué día es la evaluación?', REPROGRAMADA: '¿Para qué día quedó?' };
 // El desplegable de resultados, por categoría
 const GRUPOS_RESULTADO = [
   ['Ya se resolvió', ['VOLVIÓ', 'RESERVA', 'PAGÓ']],
@@ -93,10 +94,10 @@ const GRUPOS_RESULTADO = [
   ['Por qué no viene', ['PAUSA', 'SALUD', 'HORARIOS', 'PRECIO', 'BAJA']],
   ['No se pudo hablar', ['NO CONTESTA', 'TEL MAL']],
 ];
-const PIDEN_DETALLE = ['BAJA', 'SIN CAMBIO'];
+const PIDEN_DETALLE = ['BAJA', 'SIN CAMBIO', 'NO SE HACE'];
 
 // Tareas que no se marcan a mano: se dan por hechas solo cuando MOVE muestra el dato cargado.
-const SE_VERIFICAN_EN_MOVE = ['Asignarle profesor', 'Completar ficha', 'Corregir calendario', 'Coordinar evaluación inicial', 'Coordinar reevaluación'];
+const SE_VERIFICAN_EN_MOVE = ['Asignarle profesor', 'Completar ficha', 'Corregir calendario'];
 
 // Avisos para el turno: se leen, no se marcan ni cuentan como tarea. La llegada de los profes se mide sola con el QR.
 function esRecordatorio(tipo) {

@@ -31,6 +31,8 @@
     if (t.indexOf('Encuesta de baja') === 0) return { resultado: 'ENCUESTA ENVIADA', conCanal: true, detalle: 'Qué respondió', boton: 'Encuesta enviada' };
     if (t.indexOf('Apertura del turno') === 0) return { resultado: 'HECHO', conCanal: false, checklist: true, detalle: 'Si algo quedó sin hacer, contá por qué', boton: 'Listo' };
     if (t.indexOf('Seguimiento de consulta') === 0) return { resultado: 'SEGUIDO', conCanal: true, detalle: 'Qué respondió', boton: 'Seguimiento hecho' };
+    if (t.indexOf('Coordinar') === 0) return { resultado: 'AGENDADA', conCanal: false, conFecha: true, consejo: 'Marcala recién cuando la evaluación ya esté agendada, con la fecha del turno. Después de esa fecha miramos en MOVE que se haya cargado.', detalle: 'Con quién y a qué hora', boton: 'Quedó agendada' };
+    if (t.indexOf('Evaluación sin cargar') === 0) return { conCanal: false, etiqueta: 'Qué pasó', opciones: [['REPROGRAMADA', 'Faltó o no se hizo: la reprogramé'], ['SE HIZO', 'Se hizo: falta que el profe la cargue'], ['NO SE HACE', 'No se va a hacer']], detalle: 'Contá qué pasó', boton: 'Guardar' };
     if (t.indexOf('Revisar profesor') === 0) return { resultado: 'SIN CAMBIO', conCanal: false, detalle: 'Por qué se deja como está', obligatorio: true, boton: 'Dejarlo como está' };
     return null;
   }
@@ -182,10 +184,12 @@
     return `<form class="marca-form" data-form="marcar" data-id="${esc(t.id)}">
       ${f.opciones ? '' : `<input type="hidden" name="resultado" value="${esc(f.resultado)}">`}
       ${recomiendaAudio(t.tipo) ? `<div class="consejo-audio">🎙️ ${esc(AVISO_AUDIO)}</div>` : ''}
+      ${f.consejo ? `<div class="consejo-audio">${esc(f.consejo)}</div>` : ''}
       ${f.checklist ? checklistHtml(itemsDe(t)) : ''}
       <div class="campos">${canal}
-        ${f.opciones ? `<label class="campo">Cómo llegó<select name="resultado" required><option value="">Elegí…</option>${f.opciones.map(o => `<option>${esc(o)}</option>`).join('')}</select></label>` : ''}
-        <label class="campo">${esc(f.detalle)} <span class="opcional">${f.obligatorio ? '(obligatorio)' : '(opcional)'}</span><textarea name="detalle" maxlength="500" ${f.obligatorio ? 'required' : ''}></textarea></label>
+        ${f.opciones ? `<label class="campo">${esc(f.etiqueta)}<select name="resultado" required data-accion="resultado"><option value="">Elegí…</option>${f.opciones.map(o => `<option value="${esc(o[0])}">${esc(o[1])}</option>`).join('')}</select></label>` : ''}
+        ${f.conFecha || f.opciones ? `<label class="campo" data-campo="fecha" ${f.conFecha ? '' : 'hidden'}><span data-ayuda="fecha">${esc(PREGUNTA_FECHA[f.resultado] || 'Fecha')}</span><input name="fecha" type="date" min="${esc(E.hoy)}" ${f.conFecha ? 'required' : ''}></label>` : ''}
+        <label class="campo">${esc(f.detalle)} <span class="opcional" data-ayuda="detalle">${f.obligatorio ? '(obligatorio)' : '(opcional)'}</span><textarea name="detalle" maxlength="500" ${f.obligatorio ? 'required' : ''}></textarea></label>
       </div>
       ${E.errorForm ? `<div class="error-form">${esc(E.errorForm)}</div>` : ''}
       <div class="botones"><button class="boton verde">${esc(f.boton)}</button><button type="button" class="boton claro" data-accion="cerrar">Cancelar</button></div>
@@ -855,8 +859,8 @@
       }
       if (!marca.canal) { E.errorForm = 'Elegí el canal.'; render(); return; }
       if (validarMarca(marca)) {
-        E.errorForm = PIDEN_FECHA.indexOf(marca.resultado) >= 0 && !marca.fecha ? `Con ${marca.resultado} hace falta la fecha. Todo contacto termina con un turno o una fecha.`
-          : PIDEN_DETALLE.indexOf(marca.resultado) >= 0 && !marca.detalle ? 'Con BAJA hace falta escribir el motivo en el detalle.'
+        E.errorForm = PIDEN_FECHA.indexOf(marca.resultado) >= 0 && !marca.fecha ? `Con ${marca.resultado} hace falta la fecha.`
+          : PIDEN_DETALLE.indexOf(marca.resultado) >= 0 && !marca.detalle ? `Con ${marca.resultado} hace falta escribir el motivo.`
           : 'Elegí el canal y el resultado.';
         render();
         return;

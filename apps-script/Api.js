@@ -327,9 +327,9 @@ function valoresEnApp(dni, mes, tareas, registro, actividad, hoy) {
   const hechas = suyas.filter(t => t.estado === 'hecha');
   const aTiempo = hechas.filter(t => diasHabiles(t.pendiente_desde, fechaArgentina(t.hecha_en)) === 0);
   const marcas = registro.filter(r => r.dni === dni && delMes(r.ts, mes));
-  const contactos = marcas.filter(r => r.canal !== 'SIN CONTACTO' && !/^(Profes de hoy|Apertura|Cierre)/.test(r.tipo));
+  const contactos = marcas.filter(r => r.canal !== 'SIN CONTACTO' && !/^(Profes de hoy|Apertura|Cierre|Coordinar|Evaluación sin cargar)/.test(r.tipo));
   const CON_FECHA = ['RESERVA', 'VUELVE', 'PAGA', 'PAGÓ', 'VOLVIÓ', 'VACACIONES'];
-  const reten = marcas.filter(r => !/^(Cumpleaños|Encuesta de baja|Revisar profesor|Seguimiento de consulta|Profes de hoy|Apertura|Cierre|Socio antiguo)/.test(r.tipo));
+  const reten = marcas.filter(r => !/^(Cumpleaños|Encuesta de baja|Revisar profesor|Seguimiento de consulta|Profes de hoy|Apertura|Cierre|Socio antiguo|Coordinar|Evaluación sin cargar)/.test(r.tipo));
   const act = actividad.filter(a => a.dni === dni && delMes(a.ts, mes));
   const cuenta = t => act.filter(a => a.tipo === t).length;
   const encuestas = suyas.filter(t => String(t.tipo).indexOf('Encuesta de baja') === 0);
@@ -446,7 +446,7 @@ function valoresEnAppDia(dni, hoy, tareas, registro, actividad) {
   const esHoy = ts => fechaArgentina(ts) === hoy;
   return {
     hechas: tareas.filter(t => t.asignado_dni === dni && t.estado === 'hecha' && esHoy(t.hecha_en)).length,
-    mensajes: registro.filter(r => r.dni === dni && esHoy(r.ts) && r.canal !== 'SIN CONTACTO' && !/^(Profes de hoy|Apertura|Cierre)/.test(r.tipo)).length
+    mensajes: registro.filter(r => r.dni === dni && esHoy(r.ts) && r.canal !== 'SIN CONTACTO' && !/^(Profes de hoy|Apertura|Cierre|Coordinar|Evaluación sin cargar)/.test(r.tipo)).length
       + actividad.filter(a => a.dni === dni && a.tipo === 'mensaje' && esHoy(a.ts)).length,
     consultas: actividad.filter(a => a.dni === dni && a.tipo === 'consulta' && esHoy(a.ts)).length,
   };

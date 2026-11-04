@@ -140,8 +140,17 @@ test('NOTIFICADO: un recordatorio enviado no pide fecha ni motivo', () => {
 test('resultados por categoría: cada uno una sola vez, y lo que queda afuera tiene su propio formulario', () => {
   const agrupados = L.GRUPOS_RESULTADO.flatMap(g => g[1]);
   assert.equal(new Set(agrupados).size, agrupados.length);
-  assert.deepEqual(L.RESULTADOS.filter(r => agrupados.indexOf(r) < 0).sort(), ['ENCUESTA ENVIADA', 'HECHO', 'SALUDADO', 'SEGUIDO', 'SIN CAMBIO']);
+  assert.deepEqual(L.RESULTADOS.filter(r => agrupados.indexOf(r) < 0).sort(), ['AGENDADA', 'ENCUESTA ENVIADA', 'HECHO', 'NO SE HACE', 'REPROGRAMADA', 'SALUDADO', 'SE HIZO', 'SEGUIDO', 'SIN CAMBIO']);
   assert.ok(agrupados.every(r => L.RESULTADOS.indexOf(r) >= 0));
+});
+
+test('evaluación: agendada y reprogramada piden la fecha; si no se hace, el motivo', () => {
+  assert.equal(L.validarMarca({ canal: 'PR', resultado: 'AGENDADA' }), 'datos_invalidos');
+  assert.equal(L.validarMarca({ canal: 'PR', resultado: 'AGENDADA', fecha: '2026-11-20' }), null);
+  assert.equal(L.validarMarca({ canal: 'PR', resultado: 'REPROGRAMADA' }), 'datos_invalidos');
+  assert.equal(L.validarMarca({ canal: 'PR', resultado: 'SE HIZO' }), null);
+  assert.equal(L.validarMarca({ canal: 'PR', resultado: 'NO SE HACE' }), 'datos_invalidos');
+  assert.equal(L.validarMarca({ canal: 'PR', resultado: 'NO SE HACE', detalle: 'Se fue de viaje' }), null);
 });
 
 test('la fecha se pide y se pregunta en los mismos resultados', () => {
@@ -151,8 +160,8 @@ test('la fecha se pide y se pregunta en los mismos resultados', () => {
 test('seVerificaEnMove', () => {
   assert.ok(L.seVerificaEnMove('Asignarle profesor'));
   assert.ok(L.seVerificaEnMove('Corregir calendario'));
-  assert.ok(L.seVerificaEnMove('Coordinar reevaluación'));
-  assert.ok(L.seVerificaEnMove('Coordinar evaluación inicial'));
+  assert.ok(!L.seVerificaEnMove('Coordinar reevaluación'));
+  assert.ok(!L.seVerificaEnMove('Coordinar evaluación inicial'));
   assert.ok(!L.seVerificaEnMove('Riesgo alto'));
 });
 
