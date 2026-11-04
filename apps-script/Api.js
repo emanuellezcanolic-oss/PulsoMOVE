@@ -158,8 +158,11 @@ function vistaSede(req, deps) {
   const sede = sedePermitida(usuario, texto(req.sede));
   const hoy = deps.hoy();
   const lunes = lunesDe(hoy);
-  const tareas = deps.repo.leer('tareas').filter(t => t.sede === sede && !esRecordatorio(t.tipo));
   const equipo = usuarios.filter(u => u.sede === sede && esVerdad(u.activo) && tieneRol(u, 'recepcion'));
+  // Lo online lo atiende una persona de otra sede: se ve con quien lo tiene, no en la sede del socio
+  const deOtraSede = dni => usuarios.some(u => u.dni === dni && u.sede !== sede);
+  const tareas = deps.repo.leer('tareas').filter(t => !esRecordatorio(t.tipo)
+    && (equipo.some(u => u.dni === t.asignado_dni) || (t.sede === sede && !deOtraSede(t.asignado_dni))));
   const nombre = dni => (usuarios.find(u => u.dni === dni) || {}).nombre || '';
   const personas = equipo.map(u => {
     const suyas = tareas.filter(t => t.asignado_dni === u.dni);

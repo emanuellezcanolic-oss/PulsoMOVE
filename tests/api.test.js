@@ -224,6 +224,13 @@ test('sede: alertas desde 2 días hábiles', () => {
   assert.ok(!r.data.personas.some(p => p.sede === 'puelo' || p.dni === '26555666'));
 });
 
+test('sede: una tarea de otra sede se ve con quien la tiene', () => {
+  const d = equipo({ tareas: [tarea({ id: 'online', sede: 'puelo', pendiente_desde: '2026-11-02' }), tarea({ id: 'suya', sede: 'bolson', asignado_dni: '26555666', pendiente_desde: '2026-11-02' })] });
+  const r = pedir(d, { accion: 'sede', token: entrar(d, '25111222', '0907') });
+  assert.deepEqual(r.data.alertas.map(t => t.id), ['online']);
+  assert.equal(r.data.personas.find(p => p.dni === '30123456').pendientes, 1);
+});
+
 test('sede: permisos', () => {
   const d = equipo({ tareas: [] });
   assert.equal(pedir(d, { accion: 'sede', token: entrar(d) }).error, 'prohibido');
