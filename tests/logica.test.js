@@ -66,6 +66,7 @@ test('validarMarca', () => {
   ok({ canal: 'MP', resultado: 'ENCUESTA ENVIADA' });
   ok({ canal: 'SIN CONTACTO', resultado: 'NO CONTESTA' });
   ok({ canal: 'MP', resultado: 'SALUDADO' });
+  mal({ canal: 'PR', resultado: 'LLEGÓ' });
   mal({ canal: 'PR', resultado: 'SIN CAMBIO' });
   ok({ canal: 'PR', resultado: 'SIN CAMBIO', detalle: 'Lo pidió el socio' });
 });

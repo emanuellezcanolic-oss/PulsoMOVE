@@ -119,7 +119,7 @@ function marcar(req, deps) {
   const t = tareas.find(x => x.id === texto(req.tarea_id));
   if (!t) falla('no_existe');
   if (t.asignado_dni !== usuario.dni) falla('prohibido');
-  if (seVerificaEnMove(t.tipo)) falla('datos_invalidos');
+  if (seVerificaEnMove(t.tipo) || esRecordatorio(t.tipo)) falla('datos_invalidos');
   if (deps.repo.leer('registro').some(r => r.id_marca === idMarca)) return {};
   const ts = new Date(deps.ahora()).toISOString();
   const abierta = Date.parse(texto(req.abierta_en));
@@ -157,7 +157,7 @@ function vistaSede(req, deps) {
   const sede = sedePermitida(usuario, texto(req.sede));
   const hoy = deps.hoy();
   const lunes = lunesDe(hoy);
-  const tareas = deps.repo.leer('tareas').filter(t => t.sede === sede);
+  const tareas = deps.repo.leer('tareas').filter(t => t.sede === sede && !esRecordatorio(t.tipo));
   const equipo = usuarios.filter(u => u.sede === sede && esVerdad(u.activo) && tieneRol(u, 'recepcion'));
   const nombre = dni => (usuarios.find(u => u.dni === dni) || {}).nombre || '';
   const personas = equipo.map(u => {
@@ -303,7 +303,7 @@ function delMes(iso, mes) {
 
 // Lo que se mide en la app, en vivo. Lo que viene de MOVE (cajas, renovaciones) lo carga el pipeline cada mañana.
 function valoresEnApp(dni, mes, tareas, registro, actividad, hoy) {
-  const suyas = tareas.filter(t => t.asignado_dni === dni && t.estado !== 'cerrada' && String(t.pendiente_desde).indexOf(mes) === 0 && (t.estado === 'hecha' || String(t.fecha) <= hoy));
+  const suyas = tareas.filter(t => t.asignado_dni === dni && t.estado !== 'cerrada' && !esRecordatorio(t.tipo) && String(t.pendiente_desde).indexOf(mes) === 0 && (t.estado === 'hecha' || String(t.fecha) <= hoy));
   const hechas = suyas.filter(t => t.estado === 'hecha');
   const aTiempo = hechas.filter(t => diasHabiles(t.pendiente_desde, fechaArgentina(t.hecha_en)) === 0);
   const marcas = registro.filter(r => r.dni === dni && delMes(r.ts, mes));
@@ -386,7 +386,7 @@ function miDia(req, deps) {
   const propios = {};
   deps.repo.leer('objetivos').filter(o => o.dni === usuario.dni).forEach(o => { propios[o.clave] = Number(o.valor); });
   const suyas = tareas.filter(t => t.asignado_dni === usuario.dni && t.estado !== 'cerrada');
-  const pendientes = suyas.filter(t => t.estado === 'pendiente' && String(t.fecha) <= hoy && !seVerificaEnMove(t.tipo));
+  const pendientes = suyas.filter(t => t.estado === 'pendiente' && String(t.fecha) <= hoy && !seVerificaEnMove(t.tipo) && !esRecordatorio(t.tipo));
   const atrasadas = pendientes.filter(t => diasHabiles(t.pendiente_desde, hoy) >= 1).length;
   const deHoy = valoresEnAppDia(usuario.dni, hoy, tareas, registro, actividad);
   const racha = rachaDe(usuario.dni, tareas, hoy);
@@ -418,7 +418,7 @@ function cierreGuardar(req, deps) {
   const hoy = deps.hoy();
   const tareas = deps.repo.leer('tareas');
   const d = valoresEnAppDia(usuario.dni, hoy, tareas, deps.repo.leer('registro'), deps.repo.leer('actividad'));
-  const pendientes = tareas.filter(t => t.asignado_dni === usuario.dni && t.estado === 'pendiente' && String(t.fecha) <= hoy && !seVerificaEnMove(t.tipo)).length;
+  const pendientes = tareas.filter(t => t.asignado_dni === usuario.dni && t.estado === 'pendiente' && String(t.fecha) <= hoy && !seVerificaEnMove(t.tipo) && !esRecordatorio(t.tipo)).length;
   const filas = deps.repo.leer('cierres').filter(c => !(c.dni === usuario.dni && c.fecha === hoy));
   filas.push({
     fecha: hoy, ts: new Date(deps.ahora()).toISOString(), dni: usuario.dni, nombre: usuario.nombre, sede: usuario.sede, animo: String(animo),
@@ -441,11 +441,25 @@ function cierresVer(req, deps) {
   return { cierres: cierres };
 }
 
+// Llegada de los profes, medida con su QR. La carga el pipeline cada mañana.
+function cargarProfes(req, deps) {
+  exigirClave(req, deps);
+  if (!Array.isArray(req.filas)) falla('datos_invalidos');
+  deps.repo.escribir('profes', req.filas);
+  return { filas: req.filas.length };
+}
+
+function profesVer(req, deps) {
+  const { usuario } = sesion(req, deps);
+  const sede = sedePermitida(usuario, texto(req.sede));
+  return { filas: deps.repo.leer('profes').filter(f => f.sede === sede) };
+}
+
 function respaldo(req, deps) {
   exigirClave(req, deps);
   const usuarios = deps.repo.leer('usuarios').map(u => { const c = Object.assign({}, u); delete c.pin_hash; delete c.sal; return c; });
   const out = { usuarios: usuarios };
-  ['tareas', 'registro', 'garantia', 'actividad', 'rendimiento', 'objetivos', 'cierres'].forEach(h => { out[h] = deps.repo.leer(h); });
+  ['tareas', 'registro', 'garantia', 'actividad', 'rendimiento', 'objetivos', 'cierres', 'profes'].forEach(h => { out[h] = deps.repo.leer(h); });
   return out;
 }
 
@@ -602,6 +616,8 @@ const ACCIONES = {
   cierre_guardar: cierreGuardar,
   cierres_ver: cierresVer,
   respaldo: respaldo,
+  cargar_profes: cargarProfes,
+  profes_ver: profesVer,
   rendimiento: vistaRendimiento,
   objetivos_guardar: objetivosGuardar,
   cargar_rendimiento: cargarRendimiento,

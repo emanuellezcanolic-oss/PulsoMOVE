@@ -513,3 +513,27 @@ test('tiempos en rendimiento para quien coordina', () => {
   assert.equal(v.por_hora[9], 2);
   assert.equal(v.por_hora[11], 1);
 });
+
+// ---------- Profes: recordatorio sin marcar y llegada automática ----------
+
+test('Profes de hoy no se marca ni cuenta como tarea', () => {
+  const d = equipo({ tareas: [tarea({ id: 'P', tipo: 'Profes de hoy', socio_nombre: 'Profe Sol' }), tarea({})], actividad: [], cierres: [], objetivos: [], rendimiento: [] });
+  const token = entrar(d);
+  assert.equal(pedir(d, { accion: 'marcar', token, tarea_id: 'P', id_marca: 'x', canal: 'PR', resultado: 'HECHO' }).error, 'datos_invalidos');
+  assert.equal(pedir(d, { accion: 'mi_dia', token }).data.hoy.pendientes, 1);
+  assert.equal(pedir(d, { accion: 'rendimiento', token }).data.personas[0].valores.tareas_total, 1);
+  assert.equal(pedir(d, { accion: 'sede', token: entrar(d, '25111222', '0907') }).data.personas.find(p => p.dni === '30123456').pendientes, 1);
+  assert.equal(pedir(d, { accion: 'mis_tareas', token }).data.tareas.length, 2);   // la ve como recordatorio
+});
+
+test('llegada de profes: solo coordinación, por sede', () => {
+  const fila = (sede, estado) => ({ fecha: '2026-11-03', sede, profe_id: '5', profe: 'Sol', clase: '08:00', qr: '07:40', estado });
+  const d = equipo({ tareas: [], profes: [] });
+  assert.equal(pedir(d, { accion: 'cargar_profes', clave: 'mala', filas: [] }).error, 'clave');
+  assert.ok(pedir(d, { accion: 'cargar_profes', clave: 'clave-prueba', filas: [fila('bolson', 'a_tiempo'), fila('puelo', 'sin_qr')] }).ok);
+  assert.equal(pedir(d, { accion: 'profes_ver', token: entrar(d) }).error, 'prohibido');
+  assert.deepEqual(pedir(d, { accion: 'profes_ver', token: entrar(d, '25111222', '0907') }).data.filas.map(f => f.sede), ['bolson']);
+  assert.deepEqual(pedir(d, { accion: 'profes_ver', token: entrar(d, '20000001', '0907'), sede: 'puelo' }).data.filas.map(f => f.estado), ['sin_qr']);
+  assert.ok(pedir(d, { accion: 'cargar_profes', clave: 'clave-prueba', filas: [fila('bolson', 'tarde')] }).ok);
+  assert.equal(d.repo.hojas.profes.length, 1);    // cada carga reemplaza la anterior
+});

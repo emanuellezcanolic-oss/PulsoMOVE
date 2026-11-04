@@ -22,14 +22,13 @@
   const FRASE_GARANTIA = 'Si un profe no te saluda, no te arma tu rutina o no te hace seguimiento, te regalamos el mes siguiente, para darnos la oportunidad de mejorar.';
   const DIAS = ['Domingo', 'Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado'];
 
-  const SOLO_FORMULARIO_SIMPLE = ['SALUDADO', 'SIN CAMBIO', 'SEGUIDO', 'HECHO', 'LLEGÓ', 'LLEGÓ TARDE', 'NO VINO'];
+  const SOLO_FORMULARIO_SIMPLE = ['SALUDADO', 'SIN CAMBIO', 'SEGUIDO', 'HECHO'];
   const AVISO_AUDIO = 'Para este contacto, mejor un audio: obliga a abrirlo, y escuchar tu tono de voz cambia cómo llega el mensaje. Hablale con tus palabras: un texto armado se nota.';
   function formularioDe(tipo) {
     const t = String(tipo);
     if (t.indexOf('Cumpleaños') === 0) return { resultado: 'SALUDADO', conCanal: true, detalle: 'Qué se hizo', boton: 'Listo, saludado' };
     if (t.indexOf('Encuesta de baja') === 0) return { resultado: 'ENCUESTA ENVIADA', conCanal: true, detalle: 'Qué respondió', boton: 'Encuesta enviada' };
-    if (t.indexOf('Profes de hoy') === 0) return { conCanal: false, opciones: ['LLEGÓ', 'LLEGÓ TARDE', 'NO VINO'], detalle: 'Detalle', boton: 'Guardar' };
-    if (t.indexOf('Apertura del turno') === 0 || t.indexOf('Cierre del turno') === 0) return { resultado: 'HECHO', conCanal: false, detalle: 'Alguna novedad', boton: 'Listo' };
+    if (t.indexOf('Apertura del turno') === 0) return { resultado: 'HECHO', conCanal: false, checklist: true, detalle: 'Si algo quedó sin hacer, contá por qué', boton: 'Listo' };
     if (t.indexOf('Seguimiento de consulta') === 0) return { resultado: 'SEGUIDO', conCanal: true, detalle: 'Qué respondió', boton: 'Seguimiento hecho' };
     if (t.indexOf('Revisar profesor') === 0) return { resultado: 'SIN CAMBIO', conCanal: false, detalle: 'Por qué se deja como está', obligatorio: true, boton: 'Dejarlo como está' };
     return null;
@@ -172,12 +171,17 @@
     return '';
   }
 
+  const itemsDe = t => String(t.situacion).split(' · ').map(x => x.trim()).filter(Boolean);
+  const checklistHtml = items => `<div class="checklist">${items.map(i => `<label><input type="checkbox" data-check="${esc(i)}"><span>${esc(i)}</span></label>`).join('')}</div>`;
+  const CIERRE_BASE = ['Cerrar la caja', 'Baños y bolsas', 'Recepción ordenada', 'Dejar las novedades en el inbox'];
+
   // Tareas que no son un contacto de retención: formulario corto con el resultado ya puesto
   function formularioSimple(t, f) {
     const canal = f.conCanal ? `<label class="campo">Canal<select name="canal" required><option value="">Elegí…</option>${['AU', 'MP', 'LL', 'PR'].map(v => `<option value="${v}">${esc(NOMBRE_CANAL[v])}</option>`).join('')}</select></label>` : '<input type="hidden" name="canal" value="PR">';
     return `<form class="marca-form" data-form="marcar" data-id="${esc(t.id)}">
       ${f.opciones ? '' : `<input type="hidden" name="resultado" value="${esc(f.resultado)}">`}
       ${recomiendaAudio(t.tipo) ? `<div class="consejo-audio">🎙️ ${esc(AVISO_AUDIO)}</div>` : ''}
+      ${f.checklist ? checklistHtml(itemsDe(t)) : ''}
       <div class="campos">${canal}
         ${f.opciones ? `<label class="campo">Cómo llegó<select name="resultado" required><option value="">Elegí…</option>${f.opciones.map(o => `<option>${esc(o)}</option>`).join('')}</select></label>` : ''}
         <label class="campo">${esc(f.detalle)} <span class="opcional">${f.obligatorio ? '(obligatorio)' : '(opcional)'}</span><textarea name="detalle" maxlength="500" ${f.obligatorio ? 'required' : ''}></textarea></label>
@@ -228,6 +232,10 @@
 
   function tarjeta(t, i) {
     if (seVerificaEnMove(t.tipo)) return tarjetaVerificada(t, i);
+    if (String(t.tipo).indexOf('Cierre del turno') === 0 && t.estado !== 'hecha') {
+      return `<article class="tarjeta" style="--i:${i}"><button class="cabeza" data-accion="probar-cierre-real">
+        <span class="socio">Checklist de cierre</span><span class="situacion">${esc(t.situacion)}</span><span class="accion">Tocá para completarlo antes de irte</span></button></article>`;
+    }
     const abierta = E.abierta === t.id;
     return `<article class="tarjeta${t.estado === 'hecha' ? ' hecha' : ''}" style="--i:${i}">
       <button class="cabeza" data-accion="abrir" data-id="${esc(t.id)}" aria-expanded="${abierta}">
@@ -243,10 +251,10 @@
 
   // El avance cuenta lo que se puede marcar: lo que se verifica en MOVE se cierra solo a la mañana siguiente
   function deHoy(t) {
-    return (t.estado === 'hecha' || String(t.fecha) <= E.hoy) && !(seVerificaEnMove(t.tipo) && t.estado !== 'hecha');
+    return !esRecordatorio(t.tipo) && (t.estado === 'hecha' || String(t.fecha) <= E.hoy) && !(seVerificaEnMove(t.tipo) && t.estado !== 'hecha');
   }
 
-  function panelDia(hechas, total) {
+  function panelDia(hechas, total, profes) {
     const D = E.dia;
     const semilla = Number(E.hoy.replace(/-/g, '')) + (cliente.sesion().nombre || '').length;
     const frase = fraseDelDia(hechas, total, semilla);
@@ -259,6 +267,7 @@
       </section>
       <p class="aclara">Plan de 3 meses: 10 puntos, el doble que un socio nuevo. Cada tarea adelantada suma uno extra.</p>
       ${D && D.coach.length ? `<section class="coach">${D.coach.map(m => `<p class="${esc(m.tono)}">${m.tono === 'logro' ? '★' : '→'} ${esc(m.texto)}</p>`).join('')}</section>` : ''}
+      ${profes.length ? `<section class="profes-hoy"><b>Profes de hoy en tu turno</b><p>Recordales que fichen con el QR al ingresar.</p>${profes.map(p => `<div><span>${esc(p.socio_nombre)}</span><em>${esc(String(p.situacion).replace('Primera clase a las ', ''))}</em></div>`).join('')}</section>` : ''}
       ${E.paraAdelantar ? `<button class="boton adelantar ancho" data-accion="adelantar">${E.adelantar ? 'Ocultar las de los próximos días' : `⏩ Adelantar tareas (${E.paraAdelantar})`}</button>` : ''}
       <button class="boton ancho" data-accion="registrar">Registrar mensaje, consulta o venta</button>
       <button class="boton claro ancho" data-accion="garantia">Registrar pedido de garantía</button>
@@ -269,7 +278,8 @@
 
   function vistaHoy() {
     if (!E.tareas) return '<div class="cargando">Cargando tus tareas…</div>';
-    const todas = E.tareas;
+    const profes = E.tareas.filter(t => esRecordatorio(t.tipo));
+    const todas = E.tareas.filter(t => !esRecordatorio(t.tipo));
     const delDia = todas.filter(deHoy);
     const hechas = delDia.filter(t => t.estado === 'hecha').length;
     const tipos = [];
@@ -278,7 +288,7 @@
     const grupos = tipos.map(tipo => [tipo, visibles.filter(t => t.tipo === tipo)]).filter(g => g[1].length);
     let i = 0;
     const chip = (k, txt) => `<button class="chip" data-accion="filtro" data-f="${k}" aria-pressed="${E.filtro === k}">${txt}</button>`;
-    return `<div class="dos-columnas"><aside class="lado">${panelDia(hechas, delDia.length)}</aside><div class="principal">
+    return `<div class="dos-columnas"><aside class="lado">${panelDia(hechas, delDia.length, profes)}</aside><div class="principal">
       <h1 class="titulo">${esc(tituloDia(E.hoy))} <span>·</span> hoy</h1>
       <p class="bajada">Tocá una tarea para marcarla.</p>
       <div class="filtros">${chip('pendientes', 'Pendientes')}${chip('hechas', 'Hechas')}${chip('todas', 'Todas')}
@@ -435,7 +445,23 @@
       <p class="bajada">Tocá una persona para ver el detalle${tiene('admin') ? ' y ajustar sus objetivos' : ''}.</p>
       ${R.personas.length ? `<div class="envoltura-tabla"><table class="tabla"><thead><tr><th>#</th><th>Persona</th><th>Puntaje</th><th>Cumpl.</th><th>Reten.</th><th>Ventas</th><th>Exper.</th><th>Nuevos</th><th>Mostrador</th><th>Tareas</th></tr></thead><tbody>${filas}</tbody></table></div>`
         : '<div class="vacio">No hay recepcionistas cargados en esta sede.</div>'}
-      ${aclaracionDatos(R)}${bloqueCierres()}`;
+      ${aclaracionDatos(R)}${bloqueProfes()}${bloqueCierres()}`;
+  }
+
+  // Llegada de los profes: sale sola del QR. Regla del equipo: fichar 15 minutos antes de la primera clase.
+  function bloqueProfes() {
+    if (!E.profes || !E.profes.length) return '';
+    const por = {};
+    E.profes.forEach(f => {
+      const p = por[f.profe] = por[f.profe] || { nombre: f.profe, dias: 0, a_tiempo: 0, justo: 0, tarde: 0, sin_qr: 0 };
+      p.dias++;
+      p[f.estado]++;
+    });
+    const filas = Object.values(por).sort((a, b) => (a.a_tiempo / a.dias) - (b.a_tiempo / b.dias));
+    return `<section class="bloque"><div class="bloque-cab"><h2>Llegada de los profes</h2><span class="sello">Últimos 14 días</span></div>
+      <div class="envoltura-tabla"><table class="tabla compacta"><thead><tr><th>Profe</th><th>Días</th><th>15 min antes</th><th>Antes de clase</th><th>Tarde</th><th>Sin QR</th></tr></thead>
+      <tbody>${filas.map(p => `<tr><td><b>${esc(p.nombre)}</b></td><td class="num">${p.dias}</td><td class="num">${p.a_tiempo}</td><td class="num">${p.justo}</td><td class="num">${p.tarde}</td><td class="num">${p.sin_qr}</td></tr>`).join('')}</tbody></table></div>
+      <p class="aclara">Se mide solo, con el QR de entrada y la primera clase de cada día. "Sin QR" no quiere decir que no vino, y un reemplazo puede figurar a nombre del profe titular: conviene hablarlo antes de sacar conclusiones.</p></section>`;
   }
 
   const ANIMOS = { 1: '😞 Muy mal', 2: '😕 Mal', 3: '😐 Normal', 4: '🙂 Bien', 5: '😄 Muy bien' };
@@ -456,12 +482,17 @@
     const D = E.dia;
     if (!D) return;
     push('Se acerca el cierre de tu turno', '¿Cómo estuvo hoy? Contanos en PulsoMOVE antes de irte.');
+    const tareaCierre = (E.tareas || []).find(t => String(t.tipo).indexOf('Cierre del turno') === 0 && t.estado !== 'hecha');
+    const items = tareaCierre ? itemsDe(tareaCierre) : CIERRE_BASE;
     const preguntas = [];
     if (!D.hoy.consultas) preguntas.push(['consultas', 'Hoy no registraste consultas. ¿No vino nadie a averiguar por los servicios?']);
     if (!D.hoy.mensajes) preguntas.push(['mensajes', 'Hoy no registraste mensajes. ¿Qué pasó?']);
     if (D.hoy.pendientes) preguntas.push(['pendientes', `Te ${D.hoy.pendientes === 1 ? 'quedó 1 tarea pendiente' : `quedaron ${D.hoy.pendientes} tareas pendientes`}. ¿Por qué motivo?`]);
-    dialogo(`<h3>¿Cómo terminaste hoy?</h3>
+    dialogo(`<h3>Cierre de turno</h3>
       <form class="marca-form" style="border:0;padding:0">
+        <div class="campo-titulo">Antes de irte, tildá lo que ya hiciste</div>
+        ${checklistHtml(items)}
+        <div class="campo-titulo">¿Cómo terminaste hoy?</div>
         <div class="animos">${Object.keys(ANIMOS).map(k => `<label><input type="radio" name="animo" value="${k}" required><span>${esc(ANIMOS[k])}</span></label>`).join('')}</div>
         ${preguntas.map(([k, t]) => `<label class="campo pregunta">${esc(t)}<textarea name="r_${k}" maxlength="300" required></textarea></label>`).join('')}
         <label class="campo">Algo más que quieras contar <span class="opcional">(opcional)</span><textarea name="comentario" maxlength="400"></textarea></label>
@@ -474,12 +505,23 @@
         const f = new FormData(ev.target);
         const respuestas = {};
         preguntas.forEach(([k]) => { respuestas[k] = String(f.get('r_' + k)).trim(); });
+        const sinTildar = [...ev.target.querySelectorAll('[data-check]')].filter(c => !c.checked).map(c => c.dataset.check);
+        const comentario = String(f.get('comentario') || '').trim();
+        if (sinTildar.length && !comentario) { aviso('Tildá todo el checklist, o contá en el comentario por qué algo quedó sin hacer.', true); return; }
+        if (sinTildar.length) respuestas.checklist = 'Sin hacer: ' + sinTildar.join(', ');
         const btn = ev.target.querySelector('button');
         btn.disabled = true;
         try {
           await cliente.llamar('cierre_guardar', { animo: Number(f.get('animo')), respuestas, comentario: String(f.get('comentario') || '').trim() });
           D.cierre_hecho = true;
+          if (tareaCierre) {
+            await cliente.marcar({ tarea_id: tareaCierre.id, abierta_en: new Date().toISOString(), canal: 'PR', resultado: 'HECHO', fecha: '', detalle: respuestas.checklist || '' });
+            tareaCierre.estado = 'hecha';
+            tareaCierre.resultado_local = 'Checklist hecho';
+          }
           d.close();
+          render();
+          revisarLogros();
           aviso('¡Gracias! Que descanses.');
         } catch (e) { btn.disabled = false; falla(e); }
       };
@@ -670,6 +712,7 @@
         E.rend = await cliente.llamar('rendimiento', E.rendMes ? { mes: E.rendMes } : {});
       } else if (E.vista === 'rend') {
         cliente.llamar('cierres_ver').then(c => { E.cierres = c.cierres; if (E.vista === 'rend' && !E.rendDni) render(); }).catch(() => {});
+        cliente.llamar('profes_ver', tiene('admin') ? { sede: E.sedeElegida } : {}).then(c => { E.profes = c.filas; if (E.vista === 'rend' && !E.rendDni) render(); }).catch(() => {});
         E.rend = await cliente.llamar('rendimiento', Object.assign(E.rendMes ? { mes: E.rendMes } : {}, tiene('admin') ? { sede: E.sedeElegida } : {}));
       } else if (E.vista === 'admin') {
         E.usuarios = await cliente.llamar('usuarios_listar');
@@ -760,6 +803,11 @@
       } catch (e) { E.mensajeLogin = e.message; render(); }
     } else if (tipo === 'marcar') {
       const marca = { canal: f.get('canal'), resultado: f.get('resultado'), fecha: f.get('fecha') || '', detalle: String(f.get('detalle') || '').trim() };
+      const sinTildar = [...form.querySelectorAll('[data-check]')].filter(c => !c.checked).map(c => c.dataset.check);
+      if (sinTildar.length) {
+        if (!marca.detalle) { E.errorForm = 'Tildá todo, o contá por qué algo quedó sin hacer.'; render(); return; }
+        marca.detalle = 'Sin hacer: ' + sinTildar.join(', ') + '. ' + marca.detalle;
+      }
       if (!marca.canal) { E.errorForm = 'Elegí el canal.'; render(); return; }
       if (validarMarca(marca)) {
         E.errorForm = PIDEN_FECHA.indexOf(marca.resultado) >= 0 && !marca.fecha ? `Con ${marca.resultado} hace falta la fecha. Todo contacto termina con un turno o una fecha.`
@@ -815,7 +863,7 @@
     else if (a === 'abrir') { E.abierta = E.abierta === el.dataset.id ? null : el.dataset.id; E.abiertaEn = new Date().toISOString(); E.errorForm = ''; render(); }
     else if (a === 'adelantar') { E.adelantar = !E.adelantar; cargarVista(); }
     else if (a === 'activar-avisos') { Notification.requestPermission().then(() => { render(); if (Notification.permission === 'granted') push('¡Listo!', 'Los avisos de PulsoMOVE van a aparecer acá.'); }); }
-    else if (a === 'probar-cierre') dialogoCierre(true);
+    else if (a === 'probar-cierre' || a === 'probar-cierre-real') dialogoCierre(true);
     else if (a === 'rend-lista') { E.vista = 'sede'; E.personaDni = el.dataset.dni; E.persona = null; render(); cargarVista(); }
     else if (a === 'cerrar') { E.abierta = null; E.errorForm = ''; render(); }
     else if (a === 'garantia') dialogoGarantia();

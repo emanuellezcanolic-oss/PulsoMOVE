@@ -82,12 +82,17 @@ function leerToken(token, ahoraMs, secreto, hmac) {
 
 const CANALES = ['MP', 'AU', 'MG', 'LL', 'PR', 'SIN CONTACTO'];
 const RESULTADOS = ['VOLVIÓ', 'VUELVE', 'RESERVA', 'PAGÓ', 'PAGA', 'VACACIONES', 'PAUSA', 'SALUD', 'HORARIOS',
-                    'PRECIO', 'BAJA', 'NO CONTESTA', 'TEL MAL', 'ENCUESTA ENVIADA', 'SALUDADO', 'SIN CAMBIO', 'SEGUIDO', 'HECHO', 'LLEGÓ', 'LLEGÓ TARDE', 'NO VINO'];
+                    'PRECIO', 'BAJA', 'NO CONTESTA', 'TEL MAL', 'ENCUESTA ENVIADA', 'SALUDADO', 'SIN CAMBIO', 'SEGUIDO', 'HECHO'];
 const PIDEN_FECHA = ['VUELVE', 'PAGA', 'VACACIONES'];
 const PIDEN_DETALLE = ['BAJA', 'SIN CAMBIO'];
 
 // Tareas que no se marcan a mano: se dan por hechas solo cuando MOVE muestra el dato cargado.
 const SE_VERIFICAN_EN_MOVE = ['Asignarle profesor', 'Completar ficha'];
+
+// Avisos para el turno: se leen, no se marcan ni cuentan como tarea. La llegada de los profes se mide sola con el QR.
+function esRecordatorio(tipo) {
+  return String(tipo).indexOf('Profes de hoy') === 0;
+}
 
 function seVerificaEnMove(tipo) {
   return SE_VERIFICAN_EN_MOVE.some(v => String(tipo).indexOf(v) === 0);

@@ -276,6 +276,16 @@ label.campo .opcional { text-transform: none; letter-spacing: 0; font-weight: 50
 .celebracion i { position: absolute; top: -14px; width: 10px; height: 16px; border-radius: 2px; animation: cae linear forwards; }
 @keyframes cae { to { transform: translateY(105vh) rotate(720deg); opacity: .8; } }
 
+.profes-hoy { background: var(--hoja); border: 1px solid var(--linea); border-radius: 10px; padding: 10px 12px; font-size: 13.5px; }
+.profes-hoy b { font-weight: 700; }
+.profes-hoy p { margin: 2px 0 6px; color: var(--gris); font-size: 12.5px; }
+.profes-hoy div { display: flex; justify-content: space-between; gap: 8px; padding: 3px 0; border-top: 1px solid var(--suave); }
+.profes-hoy em { font-style: normal; color: var(--gris); }
+.checklist { display: grid; gap: 6px; }
+.checklist label { display: flex; gap: 9px; align-items: flex-start; font-size: 14px; cursor: pointer; }
+.checklist input { width: 18px; height: 18px; margin: 1px 0 0; accent-color: var(--verde-o); flex: none; }
+.campo-titulo { font-size: 13px; font-weight: 700; }
+
 /* ---------- Gráficos ---------- */
 .barras { display: flex; align-items: stretch; gap: 3px; margin: 2px 0 8px; }
 .barra { flex: 1; min-width: 0; display: flex; flex-direction: column; justify-content: flex-end; align-items: center; gap: 2px; }
