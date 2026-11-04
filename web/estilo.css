@@ -90,6 +90,8 @@ button { cursor: pointer; }
 .grupo h2 .cuenta { font: 600 12px/1 var(--texto); color: var(--gris); letter-spacing: 0; text-transform: none; }
 .grupo h2::after { content: ''; flex: 1; height: 1.5px; background: var(--tinta); opacity: .8; }
 
+.intro-grupo { margin: -2px 0 10px; font-size: 13.5px; color: var(--gris); }
+
 .tarjeta {
   background: var(--hoja); border: 1px solid var(--linea); border-radius: var(--radio); margin-bottom: 8px; box-shadow: var(--sombra);
   animation: entra .35s both cubic-bezier(.2, .8, .2, 1); animation-delay: calc(var(--i, 0) * 30ms);

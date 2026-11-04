@@ -48,7 +48,7 @@
     }, extra || {});
     const R = '11111111', C = '22222222', T = '11111112';
     const tareas = [
-      t(R, 'Socio nuevo · semana 2', 1, 'Valentina Ríos', 'Profe Sol', 'Alta el 27/10 · 2.ª semana', 'Mandar el mensaje de semana 2'),
+      t(R, 'Socio nuevo · semana 2', 1, 'Valentina Ríos', 'Profe Sol', 'Alta el 27/10 · 2.ª semana', 'Mandar el mensaje de semana 2', { intro: 'Mensaje: “¿Cómo te sentiste en tu primera semana? ¿Algo que podamos mejorar?”.' }),
       t(R, 'Socio nuevo · semana 2', 1, 'Joaquín Paz', 'Profe Leo', 'Alta el 28/10 · 2.ª semana', 'Mandar el mensaje de semana 2'),
       t(R, 'Vence en 7 días', 2, 'Marta Quiroga', 'Profe Sol', 'Vence en 5 días', 'Llamar y reservarle el turno de la semana'),
       t(R, 'Pagó y no viene', 3, 'Diego Ferreyra', 'Profe Leo', 'Pagó y no viene: 18 días', 'Llamar, proponer día y horario concretos',

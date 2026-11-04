@@ -65,7 +65,7 @@
         <label class="campo pin">PIN<input name="pin" type="password" inputmode="numeric" maxlength="4" pattern="\\d{4}" autocomplete="current-password" required></label>
         ${E.mensajeLogin ? `<div class="error-form">${esc(E.mensajeLogin)}</div>` : ''}
         <button class="boton ancho">Entrar</button>
-      </form>${practica}
+      </form>${practica}${DEMO ? '' : '<p class="bajada" style="margin:16px 0 0"><a href="?demo=1">Probar el modo práctica</a>, con datos inventados.</p>'}
     </div></main>`;
   }
 
@@ -173,7 +173,7 @@
       <div class="filtros">${chip('pendientes', 'Pendientes')}${chip('hechas', 'Hechas')}${chip('todas', 'Todas')}
         <select data-accion="tipo" aria-label="Tipo de tarea"><option value="">Todos los tipos</option>${tipos.map(t => `<option ${E.tipo === t ? 'selected' : ''}>${esc(t)}</option>`).join('')}</select>
       </div>
-      ${grupos.length ? grupos.map(([tipo, lista]) => `<section class="grupo"><h2>${esc(tipo)} <span class="cuenta">${lista.length}</span></h2>${lista.map(t => tarjeta(t, i++)).join('')}</section>`).join('')
+      ${grupos.length ? grupos.map(([tipo, lista]) => `<section class="grupo"><h2>${esc(tipo)} <span class="cuenta">${lista.length}</span></h2>${lista[0].intro ? `<p class="intro-grupo">${esc(lista[0].intro)}</p>` : ''}${lista.map(t => tarjeta(t, i++)).join('')}</section>`).join('')
         : `<div class="vacio">${E.filtro === 'pendientes' ? 'No te quedan tareas pendientes. ¡Bien!' : 'No hay tareas para mostrar.'}</div>`}
       <div class="grupo"><button class="boton claro ancho" data-accion="garantia">Registrar pedido de garantía</button></div>`;
   }

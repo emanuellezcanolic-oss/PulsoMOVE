@@ -113,3 +113,10 @@ test('fusionarCarga: cerrar y limpiar viejas', () => {
   const viejaPend = { ...vieja, estado: 'pendiente' };
   assert.equal(L.fusionarCarga([viejaPend], [], [], '2026-11-09').length, 1);
 });
+
+test('fusionarCarga guarda y actualiza intro', () => {
+  let f = L.fusionarCarga([], [nueva({ intro: 'Texto 1' })], [], '2026-11-06');
+  assert.equal(f[0].intro, 'Texto 1');
+  f = L.fusionarCarga(f, [nueva({ intro: 'Texto 2' })], [], '2026-11-09');
+  assert.equal(f[0].intro, 'Texto 2');
+});

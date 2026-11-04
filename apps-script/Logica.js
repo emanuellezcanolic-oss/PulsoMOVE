@@ -119,7 +119,7 @@ function diasHabiles(desde, hasta) {
 // ---------- Carga diaria ----------
 
 const DIAS_GUARDAR_TAREAS = 60;
-const CAMPOS_ACTUALIZABLES = ['fecha', 'tipo', 'prioridad', 'situacion', 'accion', 'ultima_anotacion', 'socio_nombre', 'profe'];
+const CAMPOS_ACTUALIZABLES = ['fecha', 'tipo', 'prioridad', 'situacion', 'accion', 'ultima_anotacion', 'socio_nombre', 'profe', 'intro'];
 
 function sumarDias(iso, n) {
   const d = new Date(iso + 'T12:00:00Z');
@@ -153,7 +153,7 @@ function fusionarCargaDetalle(existentes, nuevas, cerrar, fecha) {
       socio_nombre: String(nv.socio_nombre || ''), profe: String(nv.profe || ''), tipo: String(nv.tipo || ''),
       prioridad: String(nv.prioridad == null ? '' : nv.prioridad), situacion: String(nv.situacion || ''),
       accion: String(nv.accion || ''), ultima_anotacion: String(nv.ultima_anotacion || ''),
-      asignado_dni: String(nv.asignado_dni || ''), pendiente_desde: fecha, estado: 'pendiente', hecha_en: '',
+      asignado_dni: String(nv.asignado_dni || ''), pendiente_desde: fecha, estado: 'pendiente', hecha_en: '', intro: String(nv.intro || ''),
     });
     n++;
   }

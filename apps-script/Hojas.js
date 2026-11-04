@@ -3,7 +3,7 @@
 const COLUMNAS = {
   usuarios: ['dni', 'nombre', 'sede', 'turno', 'roles', 'pin_hash', 'sal', 'debe_cambiar_pin', 'intentos', 'bloqueado_hasta', 'activo'],
   tareas: ['id', 'fecha', 'sede', 'socio_id', 'socio_nombre', 'profe', 'tipo', 'prioridad', 'situacion', 'accion',
-           'ultima_anotacion', 'asignado_dni', 'pendiente_desde', 'estado', 'hecha_en'],
+           'ultima_anotacion', 'asignado_dni', 'pendiente_desde', 'estado', 'hecha_en', 'intro'],
   registro: ['id_marca', 'ts', 'tarea_id', 'fecha_tarea', 'sede', 'socio_id', 'socio_nombre', 'tipo', 'dni', 'canal',
              'resultado', 'fecha_resultado', 'detalle'],
   garantia: ['id', 'ts', 'sede', 'socio_id', 'socio_nombre', 'profe', 'motivo', 'registra_dni', 'estado', 'decide_dni',
@@ -43,6 +43,7 @@ function repoHojas() {
     escribir: function (nombre, objetos) {
       const h = hoja(nombre);
       const cols = COLUMNAS[nombre].length;
+      h.getRange(1, 1, 1, cols).setValues([COLUMNAS[nombre]]);
       if (h.getLastRow() > 1) h.getRange(2, 1, h.getLastRow() - 1, cols).clearContent();
       if (!objetos.length) return;
       h.getRange(2, 1, objetos.length, cols).setNumberFormat('@').setValues(aFilas(nombre, objetos));
