@@ -88,7 +88,7 @@ function cambiarPin(req, deps) {
 }
 
 function ordenTareas(a, b) {
-  return (Number(a.prioridad) - Number(b.prioridad)) || String(a.socio_nombre).localeCompare(String(b.socio_nombre));
+  return (nivelDeTarea(a) - nivelDeTarea(b)) || (Number(a.prioridad) - Number(b.prioridad)) || String(a.socio_nombre).localeCompare(String(b.socio_nombre));
 }
 
 function conDias(t, hoy) {
@@ -327,9 +327,9 @@ function valoresEnApp(dni, mes, tareas, registro, actividad, hoy) {
   const hechas = suyas.filter(t => t.estado === 'hecha');
   const aTiempo = hechas.filter(t => diasHabiles(t.pendiente_desde, fechaArgentina(t.hecha_en)) === 0);
   const marcas = registro.filter(r => r.dni === dni && delMes(r.ts, mes));
-  const contactos = marcas.filter(r => r.canal !== 'SIN CONTACTO' && !/^(Profes de hoy|Apertura|Cierre|Coordinar|Evaluación sin cargar)/.test(r.tipo));
+  const contactos = marcas.filter(r => r.canal !== 'SIN CONTACTO' && !/^(Profes de hoy|Apertura|Cierre|Coordinar|Evaluación sin cargar|Entrena en otra sede|Revisar plan)/.test(r.tipo));
   const CON_FECHA = ['RESERVA', 'VUELVE', 'PAGA', 'PAGÓ', 'VOLVIÓ', 'VACACIONES'];
-  const reten = marcas.filter(r => !/^(Cumpleaños|Encuesta de baja|Revisar profesor|Seguimiento de consulta|Profes de hoy|Apertura|Cierre|Socio antiguo|Coordinar|Evaluación sin cargar)/.test(r.tipo));
+  const reten = marcas.filter(r => !/^(Cumpleaños|Encuesta de baja|Revisar profesor|Seguimiento de consulta|Profes de hoy|Apertura|Cierre|Socio antiguo|Coordinar|Evaluación sin cargar|Entrena en otra sede|Revisar plan)/.test(r.tipo));
   const act = actividad.filter(a => a.dni === dni && delMes(a.ts, mes));
   const cuenta = t => act.filter(a => a.tipo === t).length;
   const encuestas = suyas.filter(t => String(t.tipo).indexOf('Encuesta de baja') === 0);
@@ -416,7 +416,7 @@ function miDia(req, deps) {
   const propios = {};
   deps.repo.leer('objetivos').filter(o => o.dni === usuario.dni).forEach(o => { propios[o.clave] = Number(o.valor); });
   const suyas = tareas.filter(t => t.asignado_dni === usuario.dni && t.estado !== 'cerrada');
-  const pendientes = suyas.filter(t => t.estado === 'pendiente' && String(t.fecha) <= hoy && !seVerificaEnMove(t.tipo) && !esRecordatorio(t.tipo));
+  const pendientes = suyas.filter(t => t.estado === 'pendiente' && String(t.fecha) <= hoy && !seVerificaEnMove(t.tipo) && !esRecordatorio(t.tipo)).map(t => conDias(t, hoy));
   const atrasadas = pendientes.filter(t => diasHabiles(t.pendiente_desde, hoy) >= 1).length;
   const deHoy = valoresEnAppDia(usuario.dni, hoy, tareas, registro, actividad);
   const racha = rachaDe(usuario.dni, tareas, hoy);
@@ -430,7 +430,18 @@ function miDia(req, deps) {
     }
     return 0;
   })();
+  const delMesReg = registro.filter(r => r.dni === usuario.dni && String(fechaArgentina(r.ts)).indexOf(mes) === 0);
+  const delMesCierres = deps.repo.leer('cierres').filter(c => c.dni === usuario.dni && String(c.fecha).indexOf(mes) === 0);
+  const medallas = medallasDelMes({
+    tareas: valores.tareas_hechas, racha: racha, adelantadas: valores.adelantadas, volvieron: valores.reenganches,
+    puente: delMesReg.filter(r => /^(Coordinar|Evaluación sin cargar|Revisar plan|Entrena en otra sede|Revisar profesor)/.test(r.tipo)).length,
+    corregidos: delMesReg.filter(r => r.resultado === 'CORREGIDO').length,
+    encuestas: delMesCierres.length, redondos: delMesCierres.filter(c => Number(c.pendientes) === 0).length,
+  });
+  const deMiSede = tareas.filter(t => t.sede === usuario.sede && !esRecordatorio(t.tipo) && !seVerificaEnMove(t.tipo) && t.estado !== 'cerrada');
   return {
+    medallas: medallas, volvieron: Number(valores.reenganches) || 0, prioritarias: pendientes.filter(t => nivelDeTarea(t) === 1).length,
+    equipo: { hechas: deMiSede.filter(t => t.estado === 'hecha' && fechaArgentina(t.hecha_en) === hoy).length, faltan: deMiSede.filter(t => t.estado === 'pendiente' && String(t.fecha) <= hoy).length },
     roles: rolesDe(usuario),
     siguiente: ordenadas[0] ? { nombre: ordenadas[0].socio_nombre, situacion: ordenadas[0].situacion } : null, ayer: anterior,
     para_adelantar: suyas.filter(t => t.estado === 'pendiente' && String(t.fecha) > hoy).length, hora_inicio: usuario.hora_inicio || '',
@@ -446,7 +457,7 @@ function valoresEnAppDia(dni, hoy, tareas, registro, actividad) {
   const esHoy = ts => fechaArgentina(ts) === hoy;
   return {
     hechas: tareas.filter(t => t.asignado_dni === dni && t.estado === 'hecha' && esHoy(t.hecha_en)).length,
-    mensajes: registro.filter(r => r.dni === dni && esHoy(r.ts) && r.canal !== 'SIN CONTACTO' && !/^(Profes de hoy|Apertura|Cierre|Coordinar|Evaluación sin cargar)/.test(r.tipo)).length
+    mensajes: registro.filter(r => r.dni === dni && esHoy(r.ts) && r.canal !== 'SIN CONTACTO' && !/^(Profes de hoy|Apertura|Cierre|Coordinar|Evaluación sin cargar|Entrena en otra sede|Revisar plan)/.test(r.tipo)).length
       + actividad.filter(a => a.dni === dni && a.tipo === 'mensaje' && esHoy(a.ts)).length,
     consultas: actividad.filter(a => a.dni === dni && a.tipo === 'consulta' && esHoy(a.ts)).length,
   };
@@ -458,6 +469,13 @@ function cierreGuardar(req, deps) {
   const { usuario } = sesion(req, deps);
   const animo = Number(req.animo);
   if (!(animo >= 1 && animo <= 5)) falla('datos_invalidos');
+  const nota = v => {
+    if (v == null || v === '') return '';
+    const n = Number(v);
+    if (!(n >= 1 && n <= 5)) falla('datos_invalidos');
+    return String(n);
+  };
+  const sala = nota(req.sala), profes = nota(req.profes);
   const hoy = deps.hoy();
   const tareas = deps.repo.leer('tareas');
   const d = valoresEnAppDia(usuario.dni, hoy, tareas, deps.repo.leer('registro'), deps.repo.leer('actividad'));
@@ -466,7 +484,7 @@ function cierreGuardar(req, deps) {
   filas.push({
     fecha: hoy, ts: new Date(deps.ahora()).toISOString(), dni: usuario.dni, nombre: usuario.nombre, sede: usuario.sede, animo: String(animo),
     respuestas: JSON.stringify(req.respuestas || {}), comentario: texto(req.comentario), hechas: String(d.hechas), pendientes: String(pendientes),
-    mensajes: String(d.mensajes), consultas: String(d.consultas),
+    mensajes: String(d.mensajes), consultas: String(d.consultas), sala: sala, profes: profes, lo_mejor: texto(req.lo_mejor).slice(0, 300),
   });
   deps.repo.escribir('cierres', filas);
   return {};
@@ -481,7 +499,7 @@ function cierresVer(req, deps) {
   const cierres = deps.repo.leer('cierres').filter(c => c.fecha >= desde && (todas || c.sede === usuario.sede))
     .map(c => Object.assign({}, c, { respuestas: JSON.parse(c.respuestas || '{}') }))
     .sort((a, b) => (b.fecha + b.ts).localeCompare(a.fecha + a.ts));
-  return { cierres: cierres };
+  return { cierres: cierres, resumen: resumenCierres(cierres) };
 }
 
 // Llegada de los profes, medida con su QR. La carga el pipeline cada mañana.

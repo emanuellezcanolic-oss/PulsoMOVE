@@ -140,7 +140,7 @@ test('NOTIFICADO: un recordatorio enviado no pide fecha ni motivo', () => {
 test('resultados por categoría: cada uno una sola vez, y lo que queda afuera tiene su propio formulario', () => {
   const agrupados = L.GRUPOS_RESULTADO.flatMap(g => g[1]);
   assert.equal(new Set(agrupados).size, agrupados.length);
-  assert.deepEqual(L.RESULTADOS.filter(r => agrupados.indexOf(r) < 0).sort(), ['AGENDADA', 'ENCUESTA ENVIADA', 'HECHO', 'NO SE HACE', 'REPROGRAMADA', 'SALUDADO', 'SE HIZO', 'SEGUIDO', 'SIN CAMBIO']);
+  assert.deepEqual(L.RESULTADOS.filter(r => agrupados.indexOf(r) < 0).sort(), ['AGENDADA', 'CORREGIDO', 'ENCUESTA ENVIADA', 'HECHO', 'LO CAMBIA EL PROFE', 'LO SIGUE EL PROFE', 'NO HACE FALTA', 'NO SE HACE', 'REPROGRAMADA', 'SALUDADO', 'SE HIZO', 'SEGUIDO', 'SIN CAMBIO']);
   assert.ok(agrupados.every(r => L.RESULTADOS.indexOf(r) >= 0));
 });
 
@@ -286,4 +286,48 @@ test('plan de 3 meses en el aviso', () => {
 test('audio y guía para socios antiguos', () => {
   assert.ok(L.recomiendaAudio('Socio antiguo: invitarlo a volver'));
   assert.ok(L.calcularPuntos({ reenganches: 1 }) >= 10);
+});
+
+test('prioridad: lo que se pierde va primero, lo atrasado sube y el cierre queda al final', () => {
+  assert.equal(L.nivelDeTarea({ tipo: 'Le vence el plan esta semana' }), 1);
+  assert.equal(L.nivelDeTarea({ tipo: 'Apertura del turno' }), 1);
+  assert.equal(L.nivelDeTarea({ tipo: 'Entrena en otra sede' }), 2);
+  assert.equal(L.nivelDeTarea({ tipo: 'Revisar plan con el profe' }), 2);
+  assert.equal(L.nivelDeTarea({ tipo: 'Socio antiguo: invitarlo a volver' }), 3);
+  assert.equal(L.nivelDeTarea({ tipo: 'Socio antiguo: invitarlo a volver', dias_pendiente: 2 }), 2);
+  assert.equal(L.nivelDeTarea({ tipo: 'Entrena en otra sede', dias_pendiente: 3 }), 1);
+  assert.equal(L.nivelDeTarea({ tipo: 'Cierre del turno', dias_pendiente: 5 }), 3);
+});
+
+test('medallas: avance propio, con tope en la meta', () => {
+  const m = L.medallasDelMes({ tareas: 3, racha: 7, puente: 4 });
+  const de = k => m.find(x => x.clave === k);
+  assert.equal(de('primera').ganada, true);
+  assert.equal(de('constancia').ganada, true);
+  assert.equal(de('constancia').actual, 5);
+  assert.equal(de('puente').ganada, false);
+  assert.equal(de('puente').actual, 4);
+  assert.equal(de('voz').actual, 0);
+});
+
+test('resumen de cierres: promedia lo respondido y cuenta las notas bajas', () => {
+  const r = L.resumenCierres([
+    { sede: 'bolson', animo: '5', sala: '2', profes: '4' },
+    { sede: 'bolson', animo: '4', sala: '', profes: '' },
+    { sede: 'puelo', animo: '3', sala: '3', profes: '3' },
+  ]);
+  assert.equal(r.total.respuestas, 3);
+  assert.equal(r.total.dia, 4);
+  assert.equal(r.sedes[0].sede, 'bolson');
+  assert.equal(r.sedes[0].sala, 2);
+  assert.equal(r.bajas, 1);
+});
+
+test('avisos nuevos: medalla, lunes, prioritarias, los que volvieron y el equipo', () => {
+  const medalla = { clave: 'puente', emoji: '🤝', nombre: 'Puente', como: '10 tareas' };
+  assert.equal(L.proximoAviso(ctxAviso({ nuevaMedalla: medalla })).clave, 'medalla-puente');
+  assert.equal(L.proximoAviso(ctxAviso({ diaSemana: 1, minuto: 8 * 60 + 10 })).clave, 'lunes');
+  assert.equal(L.proximoAviso(ctxAviso({ prioritarias: 3, minuto: 10 * 60 })).clave, 'prioritarias');
+  assert.equal(L.proximoAviso(ctxAviso({ volvieron: 2 })).clave, 'volvieron-2');
+  assert.equal(L.proximoAviso(ctxAviso({ equipoHechas: 24, equipoFaltan: 5, minuto: 12 * 60 })).clave, 'equipo-2');
 });

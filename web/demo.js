@@ -81,6 +81,8 @@
       t(R, 'Completar ficha', 88, 'Bruno Cáceres', '', 'Falta en su ficha: contacto de emergencia', 'Pedirle el dato cuando venga y cargarlo en MOVE'),
       t(R, 'Le vence el plan esta semana', 2, 'Elena Ruiz', 'Profe Leo', 'Vence el viernes', 'Mensaje personal y renovar con turnos reservados', { fecha: diaHabilDespues(hoy, 1), pendiente_desde: diaHabilDespues(hoy, 1) }),
       t(R, 'Le vence el plan esta semana', 2, 'Omar Díaz', 'Profe Sol', 'Vence el sábado', 'Mensaje personal y renovar con turnos reservados', { fecha: diaHabilDespues(hoy, 1), pendiente_desde: diaHabilDespues(hoy, 1) }),
+      t(R, 'Entrena en otra sede', 93, 'Lucía Vera', 'Profe Sol', 'Registrado en Lago Puelo · 5 de sus últimas 6 asistencias fueron en El Bolsón', 'Hablar con Profe Sol para saber si le sigue haciendo el seguimiento y corregir en MOVE la sede o el profe si hace falta', { intro: 'El cartel te dice dónde está atendido. Hablá con su profe a cargo para saber si le sigue haciendo el seguimiento. Si corregís sede o profe en MOVE, se cierra sola a la mañana siguiente.' }),
+      t(R, 'Revisar plan con el profe', 94, 'Bruno Sosa', 'Profe Leo', 'Tiene el mismo plan desde hace 94 días (desde el 01/08)', 'Hablar con Profe Leo para ver si le cambia el plan. Si lo ve bien, escribirle al socio para ver si le gustaría una modificación', { intro: 'Primero hablalo con el profe. Si lo ve bien, escribile vos al socio, con tus palabras, para ver si le gustaría modificar el plan. Se cierra sola cuando MOVE muestra un plan nuevo.' }),
       t(R, 'Socio antiguo: invitarlo a volver', 80, 'Mariano Luna', 'Profe Sol', 'Entrenó 9 meses con Profe Sol · hace 2 meses que no viene', 'Mandarle un audio: cómo anda, si está entrenando, qué está haciendo', { intro: 'Son los que más chances tienen de volver. Lo primero es saber cómo está: la invitación viene después.' }),
       t(R, 'Riesgo alto', 6, 'Sergio Molina', 'Profe Ana', '21 días sin venir · bajó 60%', 'Hablar en persona o llamar; cerrar con turno o fecha'),
       t(R, 'Vence en 7 días', 2, 'Inés Duarte', 'Profe Leo', 'Vence en 3 días', 'Llamar y reservarle el turno', { estado: 'hecha', hecha_en: new Date().toISOString() }),
@@ -100,7 +102,10 @@
       { mes, dni: T, datos: venta({ nuevos: 13, planes_largos: 7, mostrador_monto: 512000, retencion_logradas: 11, retencion_pct: 11 / 16, aperturas_bien: 7, apertura_pct: 7 / 12 }), actualizado: new Date().toISOString() },
       { mes, dni: C, datos: venta({ nuevos: 6, planes_largos: 2, mostrador_monto: 214000, retencion_logradas: 5, retencion_pct: 5 / 16 }), actualizado: new Date().toISOString() },
     ];
-    return { usuarios, tareas, registro: [], garantia, rendimiento, actividad: [], objetivos: [], cierres: [] };
+    return { usuarios, tareas, registro: [], garantia, rendimiento, actividad: [], objetivos: [], cierres: [
+      { fecha: hoy, ts: hoy + 'T17:30:00.000Z', dni: T, nombre: 'Tomás (práctica)', sede: 'bolson', animo: '5', respuestas: '{}', comentario: '', hechas: '18', pendientes: '0', mensajes: '9', consultas: '2', sala: '4', profes: '5', lo_mejor: 'Un socio me contó que volvió a correr sin dolor.' },
+      { fecha: hoy, ts: hoy + 'T13:30:00.000Z', dni: C, nombre: 'Responsable de sede (práctica)', sede: 'bolson', animo: '3', respuestas: '{}', comentario: 'A la tarde se llenó la sala de golpe.', hechas: '12', pendientes: '4', mensajes: '6', consultas: '1', sala: '2', profes: '4', lo_mejor: '' },
+    ] };
   }
 
   function crearFetchDemo() {

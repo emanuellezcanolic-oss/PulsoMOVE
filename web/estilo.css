@@ -332,3 +332,43 @@ dialog h3 { margin: 0; font: 800 21px/1 var(--display); text-transform: uppercas
   .filtros select { margin-left: 0; max-width: 100%; width: 100%; }
 }
 @media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation: none !important; transition: none !important; } }
+
+/* Prioridad */
+.nivel { margin-top: 22px; }
+.nivel-titulo { font: 800 17px/1.2 var(--display); margin: 0 0 2px; display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 10px; }
+.nivel-titulo small { font: 500 12.5px/1.3 var(--texto); color: var(--gris); }
+.nivel .grupo { margin-top: 12px; }
+.empeza { display: flex; flex-direction: column; gap: 3px; width: 100%; text-align: left; margin-top: 14px; padding: 12px 14px; background: var(--tinta); color: var(--hoja); border: 0; border-radius: var(--radio); font: inherit; cursor: pointer; }
+.empeza b { font-size: 14px; }
+.empeza span { font-size: 13px; opacity: .85; }
+.cartel-sede { display: block; margin: 6px 0; padding: 8px 10px; background: var(--naranja-claro); border-left: 3px solid var(--naranja); border-radius: 6px; font-weight: 600; font-size: 13.5px; }
+
+/* Gamificación */
+.impacto { margin-top: 12px; padding: 10px 12px; background: var(--verde-claro); border-radius: var(--radio); font-size: 13.5px; }
+.equipo { margin-top: 12px; font-size: 13px; }
+.equipo span { color: var(--gris); font-size: 12.5px; }
+.barrita { height: 8px; margin: 6px 0 4px; background: var(--suave); border-radius: 4px; overflow: hidden; }
+.barrita i { display: block; height: 100%; background: var(--verde); border-radius: 4px; transition: width .6s; }
+.medallas { margin-top: 12px; font-size: 13px; }
+.medallas p { margin: 6px 0 0; color: var(--gris); font-size: 12.5px; }
+.medallas-lista { display: flex; flex-wrap: wrap; gap: 5px; margin-top: 6px; }
+.medallas-lista span { padding: 3px 8px; background: var(--hoja); border: 1px solid var(--linea); border-radius: 999px; font-size: 12px; }
+
+/* Encuesta de cierre */
+.estrellas-campo { border: 0; padding: 0; margin: 10px 0; }
+.estrellas-campo legend { font-weight: 700; font-size: 14px; padding: 0; }
+.estrellas { display: inline-flex; flex-direction: row-reverse; justify-content: flex-end; }
+.estrellas input { position: absolute; opacity: 0; width: 1px; height: 1px; }
+.estrellas label { font-size: 34px; line-height: 1.1; padding: 0 3px; color: var(--linea); cursor: pointer; }
+.estrellas input:checked ~ label, .estrellas label:hover, .estrellas label:hover ~ label { color: var(--naranja); }
+.estrellas input:focus-visible + label { outline: 3px solid var(--verde); outline-offset: 2px; border-radius: 4px; }
+.estrellas-pie { display: flex; justify-content: space-between; max-width: 215px; font-size: 11.5px; color: var(--gris); }
+
+/* Coordinación */
+.alerta-pulso { margin: 10px 0 0; padding: 8px 10px; background: var(--rojo-claro); border-radius: 6px; font-size: 13px; }
+.sub-pulso { font: 700 14px/1.2 var(--display); margin: 16px 0 6px; }
+.lo-mejor { margin: 6px 0; font-size: 13.5px; }
+.lo-mejor em { color: var(--gris); font-size: 12px; font-style: normal; white-space: nowrap; }
+.notas-cierre { font-size: 12px; }
+.catalogo { margin-top: 14px; font-size: 13px; }
+.catalogo summary { cursor: pointer; font-weight: 600; }

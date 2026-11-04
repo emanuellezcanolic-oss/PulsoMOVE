@@ -607,3 +607,17 @@ test('a quien le dieron más permisos con la sesión abierta no le falla nada', 
   assert.ok(pedir(d, { accion: 'profes_ver', token }).ok);
   assert.deepEqual(pedir(d, { accion: 'mi_dia', token }).data.roles, ['recepcion', 'coordinador', 'admin']);
 });
+
+test('cierre con estrellas: guarda sala, profes y lo mejor, y coordinación ve el resumen', () => {
+  const d = equipo({ tareas: [], actividad: [], cierres: [], objetivos: [], rendimiento: [] });
+  const token = entrar(d);
+  assert.equal(pedir(d, { accion: 'cierre_guardar', token, animo: 4, sala: 9 }).error, 'datos_invalidos');
+  assert.ok(pedir(d, { accion: 'cierre_guardar', token, animo: 4, sala: 2, profes: 5, lo_mejor: 'Fui a la montaña' }).ok);
+  const f = d.repo.leer('cierres')[0];
+  assert.equal(f.sala, '2');
+  assert.equal(f.profes, '5');
+  assert.equal(f.lo_mejor, 'Fui a la montaña');
+  const r = pedir(d, { accion: 'cierres_ver', token: entrar(d, '25111222', '0907') }).data;
+  assert.equal(r.resumen.bajas, 1);
+  assert.equal(r.resumen.total.sala, 2);
+});

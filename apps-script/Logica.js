@@ -83,7 +83,7 @@ function leerToken(token, ahoraMs, secreto, hmac) {
 const CANALES = ['MP', 'AU', 'MG', 'LL', 'PR', 'SIN CONTACTO'];
 const RESULTADOS = ['VOLVIÓ', 'VUELVE', 'RESERVA', 'PAGÓ', 'PAGA', 'VACACIONES', 'PAUSA', 'SALUD', 'HORARIOS',
                     'PRECIO', 'BAJA', 'NO CONTESTA', 'TEL MAL', 'NOTIFICADO', 'ENCUESTA ENVIADA', 'SALUDADO', 'SIN CAMBIO', 'SEGUIDO', 'HECHO',
-                    'AGENDADA', 'REPROGRAMADA', 'SE HIZO', 'NO SE HACE'];
+                    'AGENDADA', 'REPROGRAMADA', 'SE HIZO', 'NO SE HACE', 'CORREGIDO', 'LO SIGUE EL PROFE', 'LO CAMBIA EL PROFE', 'NO HACE FALTA'];
 const PIDEN_FECHA = ['VUELVE', 'PAGA', 'VACACIONES', 'AGENDADA', 'REPROGRAMADA'];   // la fecha se pide solo en estos: en los demás no aparece
 const PREGUNTA_FECHA = { VUELVE: '¿Qué día vuelve?', PAGA: '¿Qué día paga?', VACACIONES: '¿Qué día vuelve de vacaciones?', AGENDADA: '¿Qué día es la evaluación?', REPROGRAMADA: '¿Para qué día quedó?' };
 // El desplegable de resultados, por categoría
@@ -253,6 +253,25 @@ function puntuar(valores, objetivos) {
   return { total: puntaje(filas), grupos: grupos, filas: filas, incentivo: cumplimiento == null ? null : cumplimiento >= UMBRAL_INCENTIVO };
 }
 
+// ---------- Prioridad ----------
+// Qué se hace primero. Arriba, lo que se pierde si se deja pasar: en las rondas de octubre, contactar antes del vencimiento rindió 78% contra 62%.
+const NIVELES = [
+  { n: 1, emoji: '🔴', titulo: 'Primero esto', ayuda: 'Si se deja pasar, se puede perder el socio.' },
+  { n: 2, emoji: '🟠', titulo: 'Después', ayuda: 'Cuidan al socio y ordenan su seguimiento.' },
+  { n: 3, emoji: '🟢', titulo: 'Cuando tengas un rato', ayuda: 'Suman, pero pueden esperar.' },
+];
+const TIPOS_NIVEL_1 = ['Apertura', 'Pagó y no viene', 'Le vence el plan', 'Vence', 'Socio nuevo', 'Vencieron'];   // el orden de urgencia de Emanuel (03/11/2026)
+const TIPOS_NIVEL_3 = ['Socio antiguo', 'Revisar profesor', 'Completar ficha', 'Asignarle profesor', 'Cierre'];
+
+// Lo que quedó de 2 días o más sube un escalón: lo no hecho no se pierde al fondo de la lista. El cierre siempre va al final.
+function nivelDeTarea(t) {
+  const tipo = String(t.tipo);
+  const es = lista => lista.some(x => tipo.indexOf(x) === 0);
+  if (tipo.indexOf('Cierre') === 0) return 3;
+  const base = es(TIPOS_NIVEL_1) ? 1 : es(TIPOS_NIVEL_3) ? 3 : 2;
+  return Number(t.dias_pendiente) >= 2 && base > 1 ? base - 1 : base;
+}
+
 // ---------- Motivación ----------
 // Metas cercanas, avance visible y reconocimiento inmediato. Nada de textos para mandarles a los socios: eso lo escribe cada persona.
 
@@ -308,6 +327,41 @@ function mensajesCoach(v, objetivos, c) {
   return out.slice(0, 3);
 }
 
+// Medallas del mes, personales y sin ranking: lo que suman es avance propio, no ganarle a otro. Empiezan de cero cada mes.
+// c: {tareas, racha, adelantadas, puente, corregidos, encuestas, redondos, volvieron}
+function medallasDelMes(c) {
+  const M = [
+    ['primera', '🌱', 'Arrancaste', 'Tu primera tarea del mes', 'tareas', 1],
+    ['constancia', '🔥', 'Constancia', '5 días seguidos con tareas hechas', 'racha', 5],
+    ['redondo', '🎯', 'Día redondo', 'Cerrar un turno sin pendientes', 'redondos', 1],
+    ['adelantada', '🚀', 'Un paso adelante', '5 tareas adelantadas', 'adelantadas', 5],
+    ['puente', '🤝', 'Puente con los profes', '10 tareas resueltas con un profe', 'puente', 10],
+    ['brujula', '🧭', 'Brújula', '3 socios bien ubicados en MOVE', 'corregidos', 3],
+    ['volvieron', '🙌', 'Volvieron por vos', '3 socios que volvieron después de tu contacto', 'volvieron', 3],
+    ['voz', '💬', 'Voz del equipo', 'Contar cómo fue tu día 10 veces', 'encuestas', 10],
+  ];
+  return M.map(m => {
+    const actual = Number(c[m[4]]) || 0;
+    return { clave: m[0], emoji: m[1], nombre: m[2], como: m[3], actual: Math.min(actual, m[5]), meta: m[5], ganada: actual >= m[5] };
+  });
+}
+
+// Lo que contestan al cerrar el turno, resumido para coordinación. Baja: alguna nota de 2 o menos.
+function resumenCierres(cierres) {
+  const prom = (filas, k) => {
+    const v = filas.map(c => Number(c[k])).filter(x => x >= 1 && x <= 5);
+    return v.length ? Math.round(10 * v.reduce((a, b) => a + b, 0) / v.length) / 10 : null;
+  };
+  const de = filas => ({ respuestas: filas.length, dia: prom(filas, 'animo'), sala: prom(filas, 'sala'), profes: prom(filas, 'profes') });
+  const sedes = {};
+  cierres.forEach(c => { (sedes[c.sede] = sedes[c.sede] || []).push(c); });
+  return {
+    total: de(cierres),
+    sedes: Object.keys(sedes).sort().map(s => Object.assign({ sede: s }, de(sedes[s]))),
+    bajas: cierres.filter(c => ['animo', 'sala', 'profes'].some(k => Number(c[k]) >= 1 && Number(c[k]) <= 2)).length,
+  };
+}
+
 // Contactos delicados: un audio obliga a abrirlo y el tono de voz cambia cómo llega el mensaje.
 const TIPOS_AUDIO = ['Socio antiguo', 'Pagó y no viene', 'Vencieron', 'Riesgo alto', 'Encuesta de baja', 'Faltó', 'Viene menos', 'De vacaciones'];
 
@@ -327,17 +381,22 @@ function proximoAviso(c) {
   const total = c.hechas + c.pendientes;
   const falta = c.fin - c.minuto;
   const candidatos = [];
-  if (c.hechas === 0 && c.pendientes > 0 && c.minuto - c.inicio <= 30) candidatos.push(dale('arranque', '¡Buen arranque, ' + pila + '!', 'Hoy tenés ' + c.pendientes + ' tareas.' + (sig ? ' Podés empezar por ' + sig + '.' : '')));
-  if (c.pendientes > 0 && c.hechas > 0 && falta <= 60) candidatos.push(dale('ultima-hora', pila + ', última hora de tu turno', 'Te ' + (c.pendientes === 1 ? 'queda 1 tarea' : 'quedan ' + c.pendientes + ' tareas') + '.' + (sig ? ' La próxima: ' + sig + '.' : '')));
-  if (c.ayer > 0 && c.hechas > c.ayer) candidatos.push(dale('supero-ayer', '¡Superaste a tu yo de ayer, ' + pila + '!', c.hechas + ' tareas hoy contra ' + c.ayer + ' ayer. Excelente.'));
-  if (c.pendientes === 0 && c.adelantar > 0) candidatos.push(dale('adelantar', pila + ', estás al día', 'Hay ' + c.adelantar + ' tareas para adelantar, y cada una suma un punto extra. ¿Sumamos unas más?'));
-  if (c.hechas > 0 && c.hechas % 5 === 0) candidatos.push(dale('cuenta-' + c.hechas, '¡Ya van ' + c.hechas + ', ' + pila + '!', c.pendientes ? 'Cada contacto cuenta. ' + (sig ? 'Seguí con ' + sig + '.' : '') : 'Vas al día.'));
-  if (transcurrido >= 0.5 && total > 0 && c.hechas / total < 0.4) candidatos.push(dale('ritmo', pila + ', ya pasó la mitad de tu turno', 'Llevás ' + c.hechas + ' de ' + total + '. Con unos minutos ahora, llegás bien.' + (sig ? ' Seguí con ' + sig + '.' : '')));
-  if (c.diasSinPlan >= 3) candidatos.push(dale('plan', 'Hoy va un plan de 3 meses, ' + pila, 'Van ' + c.diasSinPlan + ' días sin venderlo, y vale el doble de puntos. Al próximo que renueve, ofrecéselo.'));
-  if (c.racha >= 3) candidatos.push(dale('racha', '¡' + c.racha + ' días seguidos, ' + pila + '!', 'Esa constancia es la que hace que los socios se queden.'));
+  if (c.nuevaMedalla) candidatos.push(dale('medalla-' + c.nuevaMedalla.clave, c.nuevaMedalla.emoji + ' ¡Nueva medalla, ' + pila + '!', c.nuevaMedalla.nombre + ': ' + c.nuevaMedalla.como + '.'));
+  if (c.diaSemana === 1 && c.minuto - c.inicio <= 60) candidatos.push(dale('lunes', '👋 ¡Buena semana, ' + pila + '!', 'Qué bueno tenerte de vuelta. Al cerrar el turno te vamos a preguntar qué fue lo mejor de tu finde.'));
+  if (c.hechas === 0 && c.pendientes > 0 && c.minuto - c.inicio <= 30) candidatos.push(dale('arranque', '☀️ ¡Buen arranque, ' + pila + '!', 'Hoy tenés ' + c.pendientes + ' tareas.' + (sig ? ' Podés empezar por ' + sig + '.' : '')));
+  if (c.prioritarias > 0 && transcurrido >= 0.25 && transcurrido < 0.75) candidatos.push(dale('prioritarias', '🔴 ' + pila + ', quedan ' + c.prioritarias + ' de las primeras', 'Son las que no conviene dejar pasar.' + (sig ? ' Seguí con ' + sig + '.' : '')));
+  if (c.volvieron > 0) candidatos.push(dale('volvieron-' + c.volvieron, '🙌 ' + (c.volvieron === 1 ? 'Un socio volvió' : c.volvieron + ' socios volvieron') + ' después de tu contacto', 'Este mes, ' + pila + '. Eso es lo que hace tu mensaje.'));
+  if (c.equipoHechas >= 10 && c.equipoFaltan > 0 && transcurrido >= 0.5) candidatos.push(dale('equipo-' + Math.floor(c.equipoHechas / 10), '🤝 Entre todos ya van ' + c.equipoHechas, 'En tu sede hoy quedan ' + c.equipoFaltan + '. ¡Se nota cuando tiramos para el mismo lado!'));
+  if (c.pendientes > 0 && c.hechas > 0 && falta <= 60) candidatos.push(dale('ultima-hora', '⏳ ' + pila + ', última hora de tu turno', 'Te ' + (c.pendientes === 1 ? 'queda 1 tarea' : 'quedan ' + c.pendientes + ' tareas') + '.' + (sig ? ' La próxima: ' + sig + '.' : '')));
+  if (c.ayer > 0 && c.hechas > c.ayer) candidatos.push(dale('supero-ayer', '🏆 ¡Superaste a tu yo de ayer, ' + pila + '!', c.hechas + ' tareas hoy contra ' + c.ayer + ' ayer. Excelente.'));
+  if (c.pendientes === 0 && c.adelantar > 0) candidatos.push(dale('adelantar', '✅ ' + pila + ', estás al día', 'Hay ' + c.adelantar + ' tareas para adelantar, y cada una suma un punto extra. ¿Sumamos unas más?'));
+  if (c.hechas > 0 && c.hechas % 5 === 0) candidatos.push(dale('cuenta-' + c.hechas, '💪 ¡Ya van ' + c.hechas + ', ' + pila + '!', c.pendientes ? 'Cada contacto cuenta. ' + (sig ? 'Seguí con ' + sig + '.' : '') : 'Vas al día.'));
+  if (transcurrido >= 0.5 && total > 0 && c.hechas / total < 0.4) candidatos.push(dale('ritmo', '⏱️ ' + pila + ', ya pasó la mitad de tu turno', 'Llevás ' + c.hechas + ' de ' + total + '. Con unos minutos ahora, llegás bien.' + (sig ? ' Seguí con ' + sig + '.' : '')));
+  if (c.diasSinPlan >= 3) candidatos.push(dale('plan', '🎁 Hoy va un plan de 3 meses, ' + pila, 'Van ' + c.diasSinPlan + ' días sin venderlo, y vale el doble de puntos. Al próximo que renueve, ofrecéselo.'));
+  if (c.racha >= 3) candidatos.push(dale('racha', '🔥 ¡' + c.racha + ' días seguidos, ' + pila + '!', 'Esa constancia es la que hace que los socios se queden.'));
   if (c.pendientes > 0 && c.minutosSinMarcar >= 40) {
     const tanda = Math.floor(c.minuto / 40);
-    candidatos.push(dale('sin-marcar-' + tanda, '¿Seguimos, ' + pila + '?', 'Si tenés un momento libre, te esperan ' + c.pendientes + ' tareas.' + (sig ? ' La próxima: ' + sig + '.' : '')));
+    candidatos.push(dale('sin-marcar-' + tanda, '👀 ¿Seguimos, ' + pila + '?', 'Si tenés un momento libre, te esperan ' + c.pendientes + ' tareas.' + (sig ? ' La próxima: ' + sig + '.' : '')));
   }
   return candidatos.find(x => x) || null;
 }

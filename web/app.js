@@ -33,6 +33,8 @@
     if (t.indexOf('Seguimiento de consulta') === 0) return { resultado: 'SEGUIDO', conCanal: true, detalle: 'Qué respondió', boton: 'Seguimiento hecho' };
     if (t.indexOf('Coordinar') === 0) return { resultado: 'AGENDADA', conCanal: false, conFecha: true, consejo: 'Marcala recién cuando la evaluación ya esté agendada, con la fecha del turno. Después de esa fecha miramos en MOVE que se haya cargado.', detalle: 'Con quién y a qué hora', boton: 'Quedó agendada' };
     if (t.indexOf('Evaluación sin cargar') === 0) return { conCanal: false, etiqueta: 'Qué pasó', opciones: [['REPROGRAMADA', 'Faltó o no se hizo: la reprogramé'], ['SE HIZO', 'Se hizo: falta que el profe la cargue'], ['NO SE HACE', 'No se va a hacer']], detalle: 'Contá qué pasó', boton: 'Guardar' };
+    if (t.indexOf('Entrena en otra sede') === 0) return { conCanal: false, etiqueta: 'Qué hablaste con el profe', opciones: [['CORREGIDO', 'Corregí la sede o el profe en MOVE'], ['LO SIGUE EL PROFE', 'Su profe lo sigue igual: queda como está']], consejo: 'Hablá primero con el profe a cargo y preguntale si le sigue haciendo el seguimiento. Si todavía no pudiste hablar, dejala pendiente.', detalle: 'Qué te dijo', boton: 'Guardar' };
+    if (t.indexOf('Revisar plan') === 0) return { conCanal: false, etiqueta: 'Qué dijo el profe', opciones: [['LO CAMBIA EL PROFE', 'Se lo va a cambiar'], ['NOTIFICADO', 'Lo ve bien: ya le escribí al socio para ver si le gustaría un cambio'], ['NO HACE FALTA', 'No hace falta cambiarlo por ahora']], consejo: 'Primero hablalo con el profe. Si lo ve bien, escribile vos al socio, con tus palabras, para ver si le gustaría una modificación.', detalle: 'Qué te dijo', boton: 'Guardar' };
     if (t.indexOf('Revisar profesor') === 0) return { resultado: 'SIN CAMBIO', conCanal: false, detalle: 'Por qué se deja como está', obligatorio: true, boton: 'Dejarlo como está' };
     return null;
   }
@@ -247,7 +249,7 @@
       <button class="cabeza" data-accion="abrir" data-id="${esc(t.id)}" aria-expanded="${abierta}">
         <span class="socio">${esc(t.socio_nombre)}</span>${etiquetaEstado(t)}
         ${t.profe ? `<span class="profe">Profe: ${esc(t.profe)}</span>` : ''}
-        <span class="situacion">${esc(t.situacion)}</span>
+        ${String(t.tipo).indexOf('Entrena en otra sede') === 0 ? `<span class="cartel-sede">🏠 ${esc(t.situacion)}</span>` : `<span class="situacion">${esc(t.situacion)}</span>`}
         <span class="accion">${esc(t.accion)}</span>
         ${t.ultima_anotacion ? `<span class="nota">Última anotación: “${esc(t.ultima_anotacion)}”</span>` : ''}
       </button>
@@ -272,6 +274,7 @@
         <div class="logro"><strong>${D ? D.hoy.mensajes : 0}</strong><span>mensajes hoy</span></div>
       </section>
       <p class="aclara">Plan de 3 meses: 10 puntos, el doble que un socio nuevo. Cada tarea adelantada suma uno extra.</p>
+      ${D ? bloqueMotivacion(D) : ''}
       ${D && D.coach.length ? `<section class="coach">${D.coach.map(m => `<p class="${esc(m.tono)}">${m.tono === 'logro' ? '★' : '→'} ${esc(m.texto)}</p>`).join('')}</section>` : ''}
       ${profes.length ? `<section class="profes-hoy"><b>Profes de hoy en tu turno</b><p>Recordales que fichen con el QR al ingresar.</p>${profes.map(p => `<div><span>${esc(p.socio_nombre)}</span><em>${esc(String(p.situacion).replace('Primera clase a las ', ''))}</em></div>`).join('')}</section>` : ''}
       ${E.paraAdelantar ? `<button class="boton adelantar ancho" data-accion="adelantar">${E.adelantar ? 'Ocultar las de los próximos días' : `⏩ Adelantar tareas (${E.paraAdelantar})`}</button>` : ''}
@@ -280,6 +283,20 @@
       ${avisosPendientes() ? '<button class="boton claro ancho" data-accion="activar-avisos">🔔 Activar avisos en esta PC</button>' : ''}
       ${DEMO ? '<button class="boton claro ancho" data-accion="probar-cierre">Probar la pregunta de cierre</button>' : ''}
       <div class="recordatorio">Todo contacto termina con un turno reservado o una fecha.</div>`;
+  }
+
+  // Lo propio y lo del equipo: competencia y pertenencia, sin ranking entre compañeros
+  function bloqueMotivacion(D) {
+    const ganadas = (D.medallas || []).filter(m => m.ganada);
+    const siguiente = (D.medallas || []).filter(m => !m.ganada).sort((a, b) => b.actual / b.meta - a.actual / a.meta)[0];
+    const eq = D.equipo || { hechas: 0, faltan: 0 };
+    const totalEq = eq.hechas + eq.faltan;
+    return `${D.volvieron ? `<section class="impacto">🙌 <b>${D.volvieron === 1 ? '1 socio volvió' : D.volvieron + ' socios volvieron'}</b> este mes después de tu contacto.</section>` : ''}
+      ${totalEq ? `<section class="equipo"><b>🤝 Tu sede hoy</b><div class="barrita"><i style="width:${Math.round(100 * eq.hechas / totalEq)}%"></i></div><span>Entre todos: ${eq.hechas} ${eq.hechas === 1 ? "hecha" : "hechas"}, ${eq.faltan} por hacer</span></section>` : ''}
+      <section class="medallas"><b>Tus medallas del mes</b>
+        ${ganadas.length ? `<div class="medallas-lista">${ganadas.map(m => `<span title="${esc(m.como)}">${m.emoji} ${esc(m.nombre)}</span>`).join('')}</div>` : ''}
+        ${siguiente ? `<p>Próxima: ${siguiente.emoji} <b>${esc(siguiente.nombre)}</b> · ${esc(siguiente.como)} (${siguiente.actual}/${siguiente.meta})</p>` : '<p>¡Las ganaste todas este mes! 🎉</p>'}
+      </section>`;
   }
 
   function vistaHoy() {
@@ -291,16 +308,19 @@
     const tipos = [];
     todas.forEach(t => { if (tipos.indexOf(t.tipo) < 0) tipos.push(t.tipo); });
     const visibles = todas.filter(t => (E.filtro === 'todas' || (E.filtro === 'hechas') === (t.estado === 'hecha')) && (!E.tipo || t.tipo === E.tipo));
-    const grupos = tipos.map(tipo => [tipo, visibles.filter(t => t.tipo === tipo)]).filter(g => g[1].length);
+    const porNivel = NIVELES.map(n => [n, tipos.map(tipo => [tipo, visibles.filter(t => t.tipo === tipo && nivelDeTarea(t) === n.n)]).filter(g => g[1].length)]).filter(x => x[1].length);
+    const primera = E.filtro === 'pendientes' ? visibles.find(t => t.estado === 'pendiente' && deHoy(t) && !String(t.tipo).startsWith('Cierre')) : null;
+    const grupoHtml = ([tipo, lista]) => `<section class="grupo"><h2>${esc(tipo)} <span class="cuenta">${lista.length}</span></h2>${lista[0].intro ? `<p class="intro-grupo">${esc(lista[0].intro)}</p>` : ''}${lista.map(t => tarjeta(t, i++)).join('')}</section>`;
     let i = 0;
     const chip = (k, txt) => `<button class="chip" data-accion="filtro" data-f="${k}" aria-pressed="${E.filtro === k}">${txt}</button>`;
     return `<div class="dos-columnas"><aside class="lado">${panelDia(hechas, delDia.length, profes)}</aside><div class="principal">
       <h1 class="titulo">${esc(tituloDia(E.hoy))} <span>·</span> hoy</h1>
-      <p class="bajada">Tocá una tarea para marcarla.</p>
+      <p class="bajada">Ordenadas por prioridad. Tocá una tarea para marcarla.</p>
       <div class="filtros">${chip('pendientes', 'Pendientes')}${chip('hechas', 'Hechas')}${chip('todas', 'Todas')}
         <select data-accion="tipo" aria-label="Tipo de tarea"><option value="">Todos los tipos</option>${tipos.map(t => `<option ${E.tipo === t ? 'selected' : ''}>${esc(t)}</option>`).join('')}</select>
       </div>
-      ${grupos.length ? grupos.map(([tipo, lista]) => `<section class="grupo"><h2>${esc(tipo)} <span class="cuenta">${lista.length}</span></h2>${lista[0].intro ? `<p class="intro-grupo">${esc(lista[0].intro)}</p>` : ''}${lista.map(t => tarjeta(t, i++)).join('')}</section>`).join('')
+      ${primera ? `<button class="empeza" data-accion="abrir" data-id="${esc(primera.id)}"><b>👉 Empezá por acá</b><span>${esc(primera.socio_nombre)} · ${esc(primera.tipo)}</span></button>` : ''}
+      ${porNivel.length ? porNivel.map(([n, grupos]) => `<section class="nivel nivel-${n.n}"><h2 class="nivel-titulo">${n.emoji} ${esc(n.titulo)}<small>${esc(n.ayuda)}</small></h2>${grupos.map(grupoHtml).join('')}</section>`).join('')
         : `<div class="vacio">${E.filtro === 'pendientes' ? '¡No te quedan tareas pendientes! Si querés sumar, adelantá las de mañana.' : 'No hay tareas para mostrar.'}</div>`}
     </div></div>`;
   }
@@ -474,13 +494,37 @@
       <p class="aclara">Se mide solo, con el QR de entrada y la primera clase de cada día. "Sin QR" no quiere decir que no vino, y un reemplazo puede figurar a nombre del profe titular: conviene hablarlo antes de sacar conclusiones.</p></section>`;
   }
 
-  const ANIMOS = { 1: '😞 Muy mal', 2: '😕 Mal', 3: '😐 Normal', 4: '🙂 Bien', 5: '😄 Muy bien' };
+  const estrellasTexto = n => (Number(n) >= 1 ? '★'.repeat(Number(n)) + '☆'.repeat(5 - Number(n)) : '—');
+  const notaSede = v => (v == null ? '—' : String(v).replace('.', ',') + ' ★');
+  // Los avisos que reciben y por qué están. "Probado" dice de dónde sale cada idea, no que ya sepamos que acá funciona: eso lo va a decir el uso.
+  const CATALOGO_AVISOS = [
+    ['☀️ ¡Buen arranque, Ara!', 'Al empezar el turno, con el primer socio', 'Da un primer paso claro. Metas cercanas'],
+    ['👋 ¡Buena semana, Ara!', 'Los lunes', 'Pertenencia: alguien nota que volviste'],
+    ['🔴 Ara, quedan 3 de las primeras', 'Entre el 25% y el 75% del turno', 'Prioridad: lo que se pierde si se deja pasar'],
+    ['💪 ¡Ya van 10, Ara!', 'Cada 5 tareas', 'Competencia: avance visible'],
+    ['🏆 ¡Superaste a tu yo de ayer!', 'Cuando hace más que el último día', 'Se compara con ella misma, no con otras personas'],
+    ['🔥 ¡5 días seguidos!', 'Desde 3 días seguidos', 'Constancia'],
+    ['🌱 ¡Nueva medalla!', 'Al ganar una medalla', 'Competencia: las medallas son personales, sin ranking'],
+    ['🙌 2 socios volvieron después de tu contacto', 'Cuando vuelve un socio que contactó', 'Sentido: ver a quién le sirvió el trabajo'],
+    ['🤝 Entre todos ya van 20', 'Desde la mitad del turno', 'Pertenencia: una meta del equipo de la sede'],
+    ['⏳ Ara, última hora de tu turno', 'Última hora, si queda algo', 'Cierre del día'],
+    ['⭐ Antes de irte: ¿cómo estuvo hoy?', '30 minutos antes de terminar', 'Escucha: lo que responde le llega a coordinación'],
+  ];
 
   function bloqueCierres() {
-    if (!E.cierres || !E.cierres.length) return '';
-    return `<section class="bloque"><div class="bloque-cab"><h2>Cierres de turno</h2></div>${E.cierres.slice(0, 20).map(c => {
+    if (!E.cierres) return '';
+    const Z = E.cierresResumen;
+    const catalogo = `<details class="catalogo"><summary>🔔 Ver los avisos que recibe recepción y para qué está cada uno</summary><div class="envoltura-tabla"><table class="tabla compacta"><thead><tr><th>Aviso</th><th>Cuándo</th><th>Para qué</th></tr></thead><tbody>${CATALOGO_AVISOS.map(a => `<tr><td>${esc(a[0])}</td><td>${esc(a[1])}</td><td>${esc(a[2])}</td></tr>`).join('')}</tbody></table></div><p class="aclara">Salen como mucho cada 20 minutos y solo con PulsoMOVE abierta en esa PC.</p></details>`;
+    if (!E.cierres.length) return `<section class="bloque"><div class="bloque-cab"><h2>Cómo vivió el día el equipo</h2></div><p class="aclara">Todavía nadie respondió la encuesta del cierre.</p>${catalogo}</section>`;
+    const mejores = E.cierres.filter(c => c.lo_mejor).slice(0, 8);
+    return `<section class="bloque"><div class="bloque-cab"><h2>Cómo vivió el día el equipo</h2><span class="sello">Últimos 14 días</span></div>
+      ${Z ? `<div class="envoltura-tabla"><table class="tabla compacta"><thead><tr><th>Sede</th><th>Respuestas</th><th>Su día</th><th>La sala</th><th>Los profes</th></tr></thead><tbody>${Z.sedes.map(s => `<tr><td>${esc(SEDES[s.sede] || s.sede)}</td><td class="num">${s.respuestas}</td><td class="num">${notaSede(s.dia)}</td><td class="num">${notaSede(s.sala)}</td><td class="num">${notaSede(s.profes)}</td></tr>`).join('')}</tbody></table></div>
+      ${Z.bajas ? `<p class="alerta-pulso">⚠️ ${Z.bajas === 1 ? '1 respuesta tiene' : Z.bajas + ' respuestas tienen'} alguna nota de 2 estrellas o menos: conviene hablarlo.</p>` : ''}` : ''}
+      ${mejores.length ? `<h3 class="sub-pulso">✨ Lo mejor que contaron</h3>${mejores.map(c => `<p class="lo-mejor">“${esc(c.lo_mejor)}” <em>${esc(c.nombre)} · ${ddmm(c.fecha)}</em></p>`).join('')}` : ''}
+      ${catalogo}
+      <h3 class="sub-pulso">Cierres de turno</h3>${E.cierres.slice(0, 20).map(c => {
       const r = Object.values(c.respuestas || {}).filter(Boolean);
-      return `<div class="metrica"><div class="metrica-fila"><span class="metrica-nombre">${esc(c.nombre)} · ${ddmm(c.fecha)}</span><span>${esc(ANIMOS[c.animo] || '')}</span></div>
+      return `<div class="metrica"><div class="metrica-fila"><span class="metrica-nombre">${esc(c.nombre)} · ${ddmm(c.fecha)}</span><span class="notas-cierre">Día ${estrellasTexto(c.animo)}${c.sala ? ` · Sala ${estrellasTexto(c.sala)}` : ''}${c.profes ? ` · Profes ${estrellasTexto(c.profes)}` : ''}</span></div>
         <div class="metrica-pie"><span>${esc(c.hechas)} hechas · ${esc(c.pendientes)} pendientes · ${esc(c.mensajes)} mensajes · ${esc(c.consultas)} consultas</span></div>
         ${r.map(x => `<p class="aclara">“${esc(x)}”</p>`).join('')}${c.comentario ? `<p class="aclara">“${esc(c.comentario)}”</p>` : ''}</div>`;
     }).join('')}</section>`;
@@ -491,7 +535,9 @@
     if (document.querySelector('dialog')) return;
     const D = E.dia;
     if (!D) return;
-    push('Se acerca el cierre de tu turno', '¿Cómo estuvo hoy? Contanos en PulsoMOVE antes de irte.');
+    push('⭐ Antes de irte: ¿cómo estuvo hoy?', 'Son unas pocas estrellas en PulsoMOVE.');
+    const esLunes = new Date(E.hoy + 'T12:00:00').getDay() === 1;
+    const estrellas = (nombre, titulo, bajo, alto) => `<fieldset class="estrellas-campo"><legend>${esc(titulo)}</legend><div class="estrellas">${[5, 4, 3, 2, 1].map(n => `<input type="radio" id="${nombre}${n}" name="${nombre}" value="${n}" required><label for="${nombre}${n}" aria-label="${n} de 5">★</label>`).join('')}</div><div class="estrellas-pie"><span>${esc(bajo)}</span><span>${esc(alto)}</span></div></fieldset>`;
     const tareaCierre = (E.tareas || []).find(t => String(t.tipo).indexOf('Cierre del turno') === 0 && t.estado !== 'hecha');
     const items = tareaCierre ? itemsDe(tareaCierre) : CIERRE_BASE;
     const preguntas = [];
@@ -502,11 +548,13 @@
       <form class="marca-form" style="border:0;padding:0">
         <div class="campo-titulo">Antes de irte, tildá lo que ya hiciste</div>
         ${checklistHtml(items)}
-        <div class="campo-titulo">¿Cómo terminaste hoy?</div>
-        <div class="animos">${Object.keys(ANIMOS).map(k => `<label><input type="radio" name="animo" value="${k}" required><span>${esc(ANIMOS[k])}</span></label>`).join('')}</div>
+        ${estrellas('animo', '¿Cómo te sentiste en tu día?', 'Muy mal', 'Muy bien')}
+        ${estrellas('sala', '¿Cómo viste la sala?', 'Con mucho caos', 'Muy organizada')}
+        ${estrellas('profes', '¿Cómo viste a los profes?', 'Poco presentes', 'Muy presentes')}
+        <label class="campo">${esLunes ? '🌤️ ¿Qué fue lo mejor que te pasó este finde?' : '✨ ¿Qué fue lo mejor de hoy?'} <span class="opcional">(opcional)</span><textarea name="lo_mejor" maxlength="300"></textarea></label>
         ${preguntas.map(([k, t]) => `<label class="campo pregunta">${esc(t)}<textarea name="r_${k}" maxlength="300" required></textarea></label>`).join('')}
         <label class="campo">Algo más que quieras contar <span class="opcional">(opcional)</span><textarea name="comentario" maxlength="400"></textarea></label>
-        <p class="aclara" style="margin:0">Lo lee tu responsable: sirve para ayudarte, no para retarte.</p>
+        <p class="aclara" style="margin:0">Lo lee coordinación: sirve para ayudarte y para mejorar el club, no para retarte.</p>
         <div class="botones"><button class="boton verde">Enviar</button><button type="button" class="boton claro" data-ir>Primero completo lo que falta</button></div>
       </form>`, d => {
       d.querySelector('[data-ir]').onclick = () => { E.cierrePospuesto = Date.now() + 10 * 60000; d.close(); };
@@ -522,7 +570,7 @@
         const btn = ev.target.querySelector('button');
         btn.disabled = true;
         try {
-          await cliente.llamar('cierre_guardar', { animo: Number(f.get('animo')), respuestas, comentario: String(f.get('comentario') || '').trim() });
+          await cliente.llamar('cierre_guardar', { animo: Number(f.get('animo')), sala: Number(f.get('sala')), profes: Number(f.get('profes')), lo_mejor: String(f.get('lo_mejor') || '').trim(), respuestas, comentario: String(f.get('comentario') || '').trim() });
           D.cierre_hecho = true;
           if (tareaCierre) {
             await cliente.marcar({ tarea_id: tareaCierre.id, abierta_en: new Date().toISOString(), canal: 'PR', resultado: 'HECHO', fecha: '', detalle: respuestas.checklist || '' });
@@ -532,7 +580,10 @@
           d.close();
           render();
           revisarLogros();
-          aviso('¡Gracias! Que descanses.');
+          const dia = Number(f.get('animo'));
+          if (dia >= 4) celebrar('¡Gracias por contarlo! 🙌', 'Qué bueno que fue un buen día. Que descanses.');
+          else if (dia <= 2) aviso('Gracias por contarlo. Coordinación lo va a ver para ayudarte.');
+          else aviso('¡Gracias! Que descanses.');
         } catch (e) { btn.disabled = false; falla(e); }
       };
     });
@@ -552,14 +603,22 @@
     try { enviados = JSON.parse(alm.getItem(clave) || '{}'); } catch (e) { enviados = {}; }
     const a = proximoAviso({
       nombre: cliente.sesion().nombre, minuto: ahora.getHours() * 60 + ahora.getMinutes(), inicio: min(D.hora_inicio), fin: min(D.hora_fin), hechas: D.hoy.hechas, pendientes: D.hoy.pendientes,
+      nuevaMedalla: medallaNueva(D), diaSemana: ahora.getDay(), prioritarias: D.prioritarias, volvieron: D.volvieron, equipoHechas: D.equipo ? D.equipo.hechas : 0, equipoFaltan: D.equipo ? D.equipo.faltan : 0,
       minutosSinMarcar: E.ultimaMarca ? (Date.now() - E.ultimaMarca) / 60000 : 0, enviados: enviados, siguiente: D.siguiente, ayer: D.ayer, racha: D.racha, adelantar: D.para_adelantar, diasSinPlan: D.dias_sin_plan,
     });
     if (!a) return;
     enviados[a.clave] = 1;
+    if (a.clave.indexOf('medalla-') === 0) alm.setItem('pulso_medalla_' + E.hoy.slice(0, 7) + '_' + a.clave.slice(8), '1');
     alm.setItem(clave, JSON.stringify(enviados));
     E.ultimoAviso = Date.now();
     push(a.titulo, a.cuerpo);
     aviso(a.titulo);
+  }
+
+  // Medalla ganada que todavía no se le avisó en esta PC
+  function medallaNueva(D) {
+    const alm = almacenSeguro();
+    return (D.medallas || []).find(m => m.ganada && !alm.getItem('pulso_medalla_' + E.hoy.slice(0, 7) + '_' + m.clave)) || null;
   }
 
   function revisarCierre() {
@@ -755,7 +814,7 @@
       } else if (E.vista === 'mes') {
         E.rend = await cliente.llamar('rendimiento', Object.assign(E.rendMes ? { mes: E.rendMes } : {}, tiene('admin') ? { sede: cliente.sesion().sede } : {}));
       } else if (E.vista === 'rend') {
-        cliente.llamar('cierres_ver').then(c => { E.cierres = c.cierres; if (E.vista === 'rend' && !E.rendDni) render(); }).catch(() => {});
+        cliente.llamar('cierres_ver').then(c => { E.cierres = c.cierres; E.cierresResumen = c.resumen; if (E.vista === 'rend' && !E.rendDni) render(); }).catch(() => {});
         cliente.llamar('profes_ver', tiene('admin') ? { sede: E.sedeElegida } : {}).then(c => { E.profes = c.filas; if (E.vista === 'rend' && !E.rendDni) render(); }).catch(() => {});
         E.rend = await cliente.llamar('rendimiento', Object.assign(E.rendMes ? { mes: E.rendMes } : {}, tiene('admin') ? { sede: E.sedeElegida } : {}));
       } else if (E.vista === 'admin') {
