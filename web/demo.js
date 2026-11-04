@@ -70,6 +70,8 @@
       t(R, 'Cumpleaños del socio', 0, 'Paula Ibáñez', 'Profe Sol', 'Cumple el sábado, en 3 días', 'Pensar algo con su profe: un saludo o un detalle en su próximo turno'),
       t(R, 'Encuesta de baja', 85, 'Ramiro Núñez', '', 'Su plan terminó hace 16 días y no renovó', 'Enviarle la encuesta de baja', { intro: 'Saber por qué se va e invitarlo a volver. Mensaje personal, sin presión.' }),
       t(R, 'Revisar profesor', 91, 'Clara Gómez', 'Profe Leo', 'Tiene asignado a Profe Leo, pero 7 de sus últimas 8 asistencias fueron en horarios de Profe Sol', 'Hablarlo con los dos profes y, si corresponde, pasarla a Profe Sol en MOVE', { intro: 'Quien lo evalúa y le arma el plan tiene que ser quien le hace el seguimiento. Se cierra sola si MOVE muestra otro profesor; si hay un motivo para dejarlo, anotalo.' }),
+      t(R, 'Coordinar reevaluación', 92, 'Lía Benítez', 'Profe Sol', 'Riesgo moderado de baja · última evaluación hace 120 días', 'Hablar con Profe Sol para coordinarle una reevaluación'),
+      t(R, 'Coordinar evaluación inicial', 92, 'Tomás Rey', 'Profe Leo', 'No tiene ninguna evaluación cargada en MOVE', 'Hablar con Profe Leo para coordinarle la evaluación inicial y que se la cargue en MOVE'),
       t(R, 'Corregir calendario', 1, 'Calendario: Profe Ana', '', 'Ya no trabaja y hoy figura a las 13:00, 14:00', 'Cambiarlo en el calendario de MOVE por el profe que esté hoy'),
       t(R, 'Profes de hoy', 0, 'Profe Sol', '', 'Primera clase a las 08:00', 'Recordarle que fiche con el QR al ingresar'),
       t(R, 'Profes de hoy', 0, 'Profe Leo', '', 'Primera clase a las 09:00', 'Recordarle que fiche con el QR al ingresar'),

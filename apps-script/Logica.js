@@ -87,7 +87,7 @@ const PIDEN_FECHA = ['VUELVE', 'PAGA', 'VACACIONES'];
 const PIDEN_DETALLE = ['BAJA', 'SIN CAMBIO'];
 
 // Tareas que no se marcan a mano: se dan por hechas solo cuando MOVE muestra el dato cargado.
-const SE_VERIFICAN_EN_MOVE = ['Asignarle profesor', 'Completar ficha', 'Corregir calendario'];
+const SE_VERIFICAN_EN_MOVE = ['Asignarle profesor', 'Completar ficha', 'Corregir calendario', 'Coordinar evaluación inicial', 'Coordinar reevaluación'];
 
 // Avisos para el turno: se leen, no se marcan ni cuentan como tarea. La llegada de los profes se mide sola con el QR.
 function esRecordatorio(tipo) {

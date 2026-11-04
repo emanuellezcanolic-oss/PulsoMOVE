@@ -136,6 +136,8 @@ test('fusionarCarga: cerrar con hecha=true la deja hecha, verificada', () => {
 test('seVerificaEnMove', () => {
   assert.ok(L.seVerificaEnMove('Asignarle profesor'));
   assert.ok(L.seVerificaEnMove('Corregir calendario'));
+  assert.ok(L.seVerificaEnMove('Coordinar reevaluación'));
+  assert.ok(L.seVerificaEnMove('Coordinar evaluación inicial'));
   assert.ok(!L.seVerificaEnMove('Riesgo alto'));
 });
 
