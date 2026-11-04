@@ -95,7 +95,7 @@ button { cursor: pointer; }
 
 .tarjeta {
   background: var(--hoja); border: 1px solid var(--linea); border-radius: var(--radio); margin-bottom: 8px; box-shadow: var(--sombra);
-  animation: entra .35s both cubic-bezier(.2, .8, .2, 1); animation-delay: calc(var(--i, 0) * 30ms);
+  animation: entra .35s both cubic-bezier(.2, .8, .2, 1); animation-delay: calc(min(var(--i, 0), 6) * 30ms);
 }
 @keyframes entra { from { opacity: 0; transform: translateY(6px); } }
 .tarjeta > button.cabeza {
