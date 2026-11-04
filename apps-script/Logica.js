@@ -346,19 +346,58 @@ function medallasDelMes(c) {
   });
 }
 
+// Media hora antes del fin del turno: una recomendación para ir cerrando, que cambia cada día (Emanuel, 04/11/2026).
+const IDEAS_CIERRE = [
+  'empezás a revisar los baños y a acomodar tu área de trabajo',
+  'acomodás tu área de trabajo y das una vuelta por los baños',
+  'dejás lista la recepción y revisás los baños y las bolsas',
+  'vas ordenando la recepción y anotás las novedades para el inbox',
+];
+
+function avisoMediaHora(nombre, pendientes, semilla) {
+  const pila = String(nombre || '').trim().split(/\s+/)[0];
+  const idea = IDEAS_CIERRE[Math.abs(Number(semilla) || 0) % IDEAS_CIERRE.length];
+  const resto = pendientes > 0 ? ' Te ' + (pendientes === 1 ? 'queda 1 tarea' : 'quedan ' + pendientes + ' tareas') + ': si no llegás, al cerrar vas a contar por qué.' : ' Tus tareas están al día. ¡Bien ahí!';
+  return { titulo: '⏰ ' + pila + ', falta media hora para tu cierre', cuerpo: '¿Qué te parece si ' + idea + '?' + resto };
+}
+
+// La encuesta del cierre cambia cada día para no volverse monótona (Emanuel, 04/11/2026): siempre cómo fue su día,
+// más una nota y una pregunta abierta que van rotando. Los lunes, lo mejor del finde. Dos días seguidos nunca repite.
+const PREGUNTAS_NOTA = [
+  { clave: 'sala', titulo: '¿Cómo viste la sala?', bajo: 'Con mucho caos', alto: 'Muy organizada' },
+  { clave: 'profes', titulo: '¿Cómo viste a los profes?', bajo: 'Poco presentes', alto: 'Muy presentes' },
+  { clave: 'equipo', titulo: '¿Cómo te sentiste con tus compañeros?', bajo: 'Con poco apoyo', alto: 'Con mucho apoyo' },
+  { clave: 'socios', titulo: '¿Cómo viste a los socios hoy?', bajo: 'Con pocas ganas', alto: 'Con muchas ganas' },
+];
+const PREGUNTAS_ABIERTAS = [
+  '✨ ¿Qué fue lo mejor de hoy?',
+  '🙏 ¿A quién del equipo le agradecerías algo hoy, y por qué?',
+  '💡 ¿Qué cambiarías para que mañana salga mejor?',
+  '😊 ¿Algún socio te alegró el día? Contanos.',
+  '🏅 ¿Qué te salió bien hoy?',
+];
+const PREGUNTA_FINDE = '🌤️ ¿Qué fue lo mejor que te pasó este finde?';
+
+function preguntasDelDia(fecha, semilla) {
+  const dia = Math.floor(Date.parse(fecha + 'T12:00:00Z') / 86400000);
+  const n = dia + Math.abs(Number(semilla) || 0);
+  const lunes = new Date(fecha + 'T12:00:00Z').getUTCDay() === 1;
+  return { nota: PREGUNTAS_NOTA[n % PREGUNTAS_NOTA.length], abierta: lunes ? PREGUNTA_FINDE : PREGUNTAS_ABIERTAS[n % PREGUNTAS_ABIERTAS.length] };
+}
+
 // Lo que contestan al cerrar el turno, resumido para coordinación. Baja: alguna nota de 2 o menos.
 function resumenCierres(cierres) {
   const prom = (filas, k) => {
     const v = filas.map(c => Number(c[k])).filter(x => x >= 1 && x <= 5);
     return v.length ? Math.round(10 * v.reduce((a, b) => a + b, 0) / v.length) / 10 : null;
   };
-  const de = filas => ({ respuestas: filas.length, dia: prom(filas, 'animo'), sala: prom(filas, 'sala'), profes: prom(filas, 'profes') });
+  const de = filas => ({ respuestas: filas.length, dia: prom(filas, 'animo'), sala: prom(filas, 'sala'), profes: prom(filas, 'profes'), equipo: prom(filas, 'equipo'), socios: prom(filas, 'socios') });
   const sedes = {};
   cierres.forEach(c => { (sedes[c.sede] = sedes[c.sede] || []).push(c); });
   return {
     total: de(cierres),
     sedes: Object.keys(sedes).sort().map(s => Object.assign({ sede: s }, de(sedes[s]))),
-    bajas: cierres.filter(c => ['animo', 'sala', 'profes'].some(k => Number(c[k]) >= 1 && Number(c[k]) <= 2)).length,
+    bajas: cierres.filter(c => ['animo', 'sala', 'profes', 'equipo', 'socios'].some(k => Number(c[k]) >= 1 && Number(c[k]) <= 2)).length,
   };
 }
 
@@ -387,7 +426,7 @@ function proximoAviso(c) {
   if (c.prioritarias > 0 && transcurrido >= 0.25 && transcurrido < 0.75) candidatos.push(dale('prioritarias', '🔴 ' + pila + ', quedan ' + c.prioritarias + ' de las primeras', 'Son las que no conviene dejar pasar.' + (sig ? ' Seguí con ' + sig + '.' : '')));
   if (c.volvieron > 0) candidatos.push(dale('volvieron-' + c.volvieron, '🙌 ' + (c.volvieron === 1 ? 'Un socio volvió' : c.volvieron + ' socios volvieron') + ' después de tu contacto', 'Este mes, ' + pila + '. Eso es lo que hace tu mensaje.'));
   if (c.equipoHechas >= 10 && c.equipoFaltan > 0 && transcurrido >= 0.5) candidatos.push(dale('equipo-' + Math.floor(c.equipoHechas / 10), '🤝 Entre todos ya van ' + c.equipoHechas, 'En tu sede hoy quedan ' + c.equipoFaltan + '. ¡Se nota cuando tiramos para el mismo lado!'));
-  if (c.pendientes > 0 && c.hechas > 0 && falta <= 60) candidatos.push(dale('ultima-hora', '⏳ ' + pila + ', última hora de tu turno', 'Te ' + (c.pendientes === 1 ? 'queda 1 tarea' : 'quedan ' + c.pendientes + ' tareas') + '.' + (sig ? ' La próxima: ' + sig + '.' : '')));
+  if (c.pendientes > 0 && c.hechas > 0 && falta <= 60 && falta > 30) candidatos.push(dale('ultima-hora', '⏳ ' + pila + ', última hora de tu turno', 'Te ' + (c.pendientes === 1 ? 'queda 1 tarea' : 'quedan ' + c.pendientes + ' tareas') + '.' + (sig ? ' La próxima: ' + sig + '.' : '')));
   if (c.ayer > 0 && c.hechas > c.ayer) candidatos.push(dale('supero-ayer', '🏆 ¡Superaste a tu yo de ayer, ' + pila + '!', c.hechas + ' tareas hoy contra ' + c.ayer + ' ayer. Excelente.'));
   if (c.pendientes === 0 && c.adelantar > 0) candidatos.push(dale('adelantar', '✅ ' + pila + ', estás al día', 'Hay ' + c.adelantar + ' tareas para adelantar, y cada una suma un punto extra. ¿Sumamos unas más?'));
   if (c.hechas > 0 && c.hechas % 5 === 0) candidatos.push(dale('cuenta-' + c.hechas, '💪 ¡Ya van ' + c.hechas + ', ' + pila + '!', c.pendientes ? 'Cada contacto cuenta. ' + (sig ? 'Seguí con ' + sig + '.' : '') : 'Vas al día.'));

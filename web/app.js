@@ -109,7 +109,7 @@
       <form data-form="login" autocomplete="off">
         <label class="campo">DNI<input name="dni" inputmode="numeric" autocomplete="username" required placeholder="Sin puntos"></label>
         <label class="campo pin">PIN<input name="pin" type="password" inputmode="numeric" maxlength="4" pattern="\\d{4}" autocomplete="current-password" required></label>
-        ${E.mensajeLogin ? `<div class="error-form">${esc(E.mensajeLogin)}</div>` : ''}
+        ${E.mensajeLogin ? `<div class="${E.mensajeLogin.startsWith("✅") ? "aviso-ok" : "error-form"}">${esc(E.mensajeLogin)}</div>` : ''}
         <button class="boton ancho">Entrar</button>
       </form>${practica}${DEMO ? '' : '<p class="bajada" style="margin:16px 0 0"><a href="?demo=1">Probar el modo práctica</a>, con datos inventados.</p>'}
     </div></main>`;
@@ -124,7 +124,7 @@
       <form data-form="pin" autocomplete="off">
         <label class="campo pin">PIN nuevo<input name="a" type="password" inputmode="numeric" maxlength="4" required></label>
         <label class="campo pin">Repetilo<input name="b" type="password" inputmode="numeric" maxlength="4" required></label>
-        ${E.mensajeLogin ? `<div class="error-form">${esc(E.mensajeLogin)}</div>` : ''}
+        ${E.mensajeLogin ? `<div class="${E.mensajeLogin.startsWith("✅") ? "aviso-ok" : "error-form"}">${esc(E.mensajeLogin)}</div>` : ''}
         <button class="boton ancho verde">Guardar PIN</button>
       </form>
     </div></main>`;
@@ -498,6 +498,8 @@
   const notaSede = v => (v == null ? '—' : String(v).replace('.', ',') + ' ★');
   // Los avisos que reciben y por qué están. "Probado" dice de dónde sale cada idea, no que ya sepamos que acá funciona: eso lo va a decir el uso.
   const CATALOGO_AVISOS = [
+    ['⏰ Ara, falta media hora para tu cierre', '30 minutos antes de terminar. La recomendación cambia cada día', 'Le da tiempo de ordenar y de terminar lo que falta'],
+    ['🚪 Terminó tu turno: cerrá PulsoMOVE', 'Al terminar el turno', 'Que nadie quede con el usuario de otra persona'],
     ['☀️ ¡Buen arranque, Ara!', 'Al empezar el turno, con el primer socio', 'Da un primer paso claro. Metas cercanas'],
     ['👋 ¡Buena semana, Ara!', 'Los lunes', 'Pertenencia: alguien nota que volviste'],
     ['🔴 Ara, quedan 3 de las primeras', 'Entre el 25% y el 75% del turno', 'Prioridad: lo que se pierde si se deja pasar'],
@@ -508,7 +510,7 @@
     ['🙌 2 socios volvieron después de tu contacto', 'Cuando vuelve un socio que contactó', 'Sentido: ver a quién le sirvió el trabajo'],
     ['🤝 Entre todos ya van 20', 'Desde la mitad del turno', 'Pertenencia: una meta del equipo de la sede'],
     ['⏳ Ara, última hora de tu turno', 'Última hora, si queda algo', 'Cierre del día'],
-    ['⭐ Antes de irte: ¿cómo estuvo hoy?', '30 minutos antes de terminar', 'Escucha: lo que responde le llega a coordinación'],
+    ['⭐ Antes de irte: ¿cómo estuvo hoy?', '15 minutos antes de terminar. La pregunta cambia cada día', 'Escucha: lo que responde le llega a coordinación'],
   ];
 
   function bloqueCierres() {
@@ -518,40 +520,41 @@
     if (!E.cierres.length) return `<section class="bloque"><div class="bloque-cab"><h2>Cómo vivió el día el equipo</h2></div><p class="aclara">Todavía nadie respondió la encuesta del cierre.</p>${catalogo}</section>`;
     const mejores = E.cierres.filter(c => c.lo_mejor).slice(0, 8);
     return `<section class="bloque"><div class="bloque-cab"><h2>Cómo vivió el día el equipo</h2><span class="sello">Últimos 14 días</span></div>
-      ${Z ? `<div class="envoltura-tabla"><table class="tabla compacta"><thead><tr><th>Sede</th><th>Respuestas</th><th>Su día</th><th>La sala</th><th>Los profes</th></tr></thead><tbody>${Z.sedes.map(s => `<tr><td>${esc(SEDES[s.sede] || s.sede)}</td><td class="num">${s.respuestas}</td><td class="num">${notaSede(s.dia)}</td><td class="num">${notaSede(s.sala)}</td><td class="num">${notaSede(s.profes)}</td></tr>`).join('')}</tbody></table></div>
+      ${Z ? `<div class="envoltura-tabla"><table class="tabla compacta"><thead><tr><th>Sede</th><th>Respuestas</th><th>Su día</th><th>La sala</th><th>Los profes</th><th>Compañeros</th><th>Los socios</th></tr></thead><tbody>${Z.sedes.map(s => `<tr><td>${esc(SEDES[s.sede] || s.sede)}</td><td class="num">${s.respuestas}</td><td class="num">${notaSede(s.dia)}</td><td class="num">${notaSede(s.sala)}</td><td class="num">${notaSede(s.profes)}</td><td class="num">${notaSede(s.equipo)}</td><td class="num">${notaSede(s.socios)}</td></tr>`).join('')}</tbody></table></div>
       ${Z.bajas ? `<p class="alerta-pulso">⚠️ ${Z.bajas === 1 ? '1 respuesta tiene' : Z.bajas + ' respuestas tienen'} alguna nota de 2 estrellas o menos: conviene hablarlo.</p>` : ''}` : ''}
-      ${mejores.length ? `<h3 class="sub-pulso">✨ Lo mejor que contaron</h3>${mejores.map(c => `<p class="lo-mejor">“${esc(c.lo_mejor)}” <em>${esc(c.nombre)} · ${ddmm(c.fecha)}</em></p>`).join('')}` : ''}
+      ${mejores.length ? `<h3 class="sub-pulso">✨ Lo que contaron</h3>${mejores.map(c => `<p class="lo-mejor">${c.pregunta ? `<small>${esc(c.pregunta)}</small>` : ''}“${esc(c.lo_mejor)}” <em>${esc(c.nombre)} · ${ddmm(c.fecha)}</em></p>`).join('')}` : ''}
       ${catalogo}
       <h3 class="sub-pulso">Cierres de turno</h3>${E.cierres.slice(0, 20).map(c => {
       const r = Object.values(c.respuestas || {}).filter(Boolean);
-      return `<div class="metrica"><div class="metrica-fila"><span class="metrica-nombre">${esc(c.nombre)} · ${ddmm(c.fecha)}</span><span class="notas-cierre">Día ${estrellasTexto(c.animo)}${c.sala ? ` · Sala ${estrellasTexto(c.sala)}` : ''}${c.profes ? ` · Profes ${estrellasTexto(c.profes)}` : ''}</span></div>
+      return `<div class="metrica"><div class="metrica-fila"><span class="metrica-nombre">${esc(c.nombre)} · ${ddmm(c.fecha)}</span><span class="notas-cierre">Día ${estrellasTexto(c.animo)}${c.sala ? ` · Sala ${estrellasTexto(c.sala)}` : ''}${c.profes ? ` · Profes ${estrellasTexto(c.profes)}` : ''}${c.equipo ? ` · Compañeros ${estrellasTexto(c.equipo)}` : ''}${c.socios ? ` · Socios ${estrellasTexto(c.socios)}` : ''}</span></div>
         <div class="metrica-pie"><span>${esc(c.hechas)} hechas · ${esc(c.pendientes)} pendientes · ${esc(c.mensajes)} mensajes · ${esc(c.consultas)} consultas</span></div>
         ${r.map(x => `<p class="aclara">“${esc(x)}”</p>`).join('')}${c.comentario ? `<p class="aclara">“${esc(c.comentario)}”</p>` : ''}</div>`;
     }).join('')}</section>`;
   }
 
-  // Cierre de turno: 30 minutos antes de terminar, unas preguntas según lo que pasó en el día
+  // Cierre de turno: 15 minutos antes de terminar, unas preguntas según lo que pasó en el día
   function dialogoCierre(prueba) {
     if (document.querySelector('dialog')) return;
     const D = E.dia;
     if (!D) return;
     push('⭐ Antes de irte: ¿cómo estuvo hoy?', 'Son unas pocas estrellas en PulsoMOVE.');
-    const esLunes = new Date(E.hoy + 'T12:00:00').getDay() === 1;
+    const delDia = preguntasDelDia(E.hoy, [...String(cliente.sesion().nombre || '')].reduce((a, c) => a + c.charCodeAt(0), 0));
     const estrellas = (nombre, titulo, bajo, alto) => `<fieldset class="estrellas-campo"><legend>${esc(titulo)}</legend><div class="estrellas">${[5, 4, 3, 2, 1].map(n => `<input type="radio" id="${nombre}${n}" name="${nombre}" value="${n}" required><label for="${nombre}${n}" aria-label="${n} de 5">★</label>`).join('')}</div><div class="estrellas-pie"><span>${esc(bajo)}</span><span>${esc(alto)}</span></div></fieldset>`;
     const tareaCierre = (E.tareas || []).find(t => String(t.tipo).indexOf('Cierre del turno') === 0 && t.estado !== 'hecha');
     const items = tareaCierre ? itemsDe(tareaCierre) : CIERRE_BASE;
-    const preguntas = [];
+    // Solo una pregunta de lo que faltó, la más importante: que el cierre siga siendo corto
+    let preguntas = [];
     if (!D.hoy.consultas) preguntas.push(['consultas', 'Hoy no registraste consultas. ¿No vino nadie a averiguar por los servicios?']);
     if (!D.hoy.mensajes) preguntas.push(['mensajes', 'Hoy no registraste mensajes. ¿Qué pasó?']);
     if (D.hoy.pendientes) preguntas.push(['pendientes', `Te ${D.hoy.pendientes === 1 ? 'quedó 1 tarea pendiente' : `quedaron ${D.hoy.pendientes} tareas pendientes`}. ¿Por qué motivo?`]);
+    preguntas = preguntas.slice(-1);
     dialogo(`<h3>Cierre de turno</h3>
       <form class="marca-form" style="border:0;padding:0">
         <div class="campo-titulo">Antes de irte, tildá lo que ya hiciste</div>
         ${checklistHtml(items)}
         ${estrellas('animo', '¿Cómo te sentiste en tu día?', 'Muy mal', 'Muy bien')}
-        ${estrellas('sala', '¿Cómo viste la sala?', 'Con mucho caos', 'Muy organizada')}
-        ${estrellas('profes', '¿Cómo viste a los profes?', 'Poco presentes', 'Muy presentes')}
-        <label class="campo">${esLunes ? '🌤️ ¿Qué fue lo mejor que te pasó este finde?' : '✨ ¿Qué fue lo mejor de hoy?'} <span class="opcional">(opcional)</span><textarea name="lo_mejor" maxlength="300"></textarea></label>
+        ${estrellas(delDia.nota.clave, delDia.nota.titulo, delDia.nota.bajo, delDia.nota.alto)}
+        <label class="campo">${esc(delDia.abierta)} <span class="opcional">(opcional)</span><textarea name="lo_mejor" maxlength="300"></textarea></label>
         ${preguntas.map(([k, t]) => `<label class="campo pregunta">${esc(t)}<textarea name="r_${k}" maxlength="300" required></textarea></label>`).join('')}
         <label class="campo">Algo más que quieras contar <span class="opcional">(opcional)</span><textarea name="comentario" maxlength="400"></textarea></label>
         <p class="aclara" style="margin:0">Lo lee coordinación: sirve para ayudarte y para mejorar el club, no para retarte.</p>
@@ -570,7 +573,7 @@
         const btn = ev.target.querySelector('button');
         btn.disabled = true;
         try {
-          await cliente.llamar('cierre_guardar', { animo: Number(f.get('animo')), sala: Number(f.get('sala')), profes: Number(f.get('profes')), lo_mejor: String(f.get('lo_mejor') || '').trim(), respuestas, comentario: String(f.get('comentario') || '').trim() });
+          await cliente.llamar('cierre_guardar', { animo: Number(f.get('animo')), [delDia.nota.clave]: Number(f.get(delDia.nota.clave)), lo_mejor: String(f.get('lo_mejor') || '').trim(), pregunta: delDia.abierta, respuestas, comentario: String(f.get('comentario') || '').trim() });
           D.cierre_hecho = true;
           if (tareaCierre) {
             await cliente.marcar({ tarea_id: tareaCierre.id, abierta_en: new Date().toISOString(), canal: 'PR', resultado: 'HECHO', fecha: '', detalle: respuestas.checklist || '' });
@@ -581,9 +584,7 @@
           render();
           revisarLogros();
           const dia = Number(f.get('animo'));
-          if (dia >= 4) celebrar('¡Gracias por contarlo! 🙌', 'Qué bueno que fue un buen día. Que descanses.');
-          else if (dia <= 2) aviso('Gracias por contarlo. Coordinación lo va a ver para ayudarte.');
-          else aviso('¡Gracias! Que descanses.');
+          dialogoCerrarApp(dia >= 4 ? '¡Gracias por contarlo! 🙌 Qué bueno que fue un buen día.' : dia <= 2 ? 'Gracias por contarlo. Coordinación lo va a ver para ayudarte.' : '¡Gracias por contarlo!');
         } catch (e) { btn.disabled = false; falla(e); }
       };
     });
@@ -615,6 +616,39 @@
     aviso(a.titulo);
   }
 
+  // Al irse hay que cerrar la app: la PC es compartida y la sesión no puede quedar abierta con su usuario
+  function turnoTerminando() {
+    const D = E.dia;
+    if (!D || !tiene('recepcion') || !D.hora_fin) return !!(D && D.cierre_hecho);
+    const ahora = new Date();
+    const [h, m] = D.hora_fin.split(':').map(Number);
+    return D.cierre_hecho || h * 60 + m - (ahora.getHours() * 60 + ahora.getMinutes()) <= 30;
+  }
+
+  function dialogoCerrarApp(mensaje) {
+    dialogo(`<h3>Antes de irte 🚪</h3><p>${esc(mensaje)}</p><p>Cerrá la app para que nadie quede con tu usuario.</p>
+      <button class="boton-cerrar-app" data-cerrar>🚪 Cerrar la app</button>
+      <button type="button" class="boton claro ancho" data-sigo style="margin-top:8px">Todavía sigo acá</button>`, d => {
+      d.querySelector('[data-cerrar]').onclick = () => { d.close(); cerrarApp(); };
+      d.querySelector('[data-sigo]').onclick = () => { d.close(); render(); };
+    });
+  }
+
+  function salirDeLaApp() {
+    if (cliente.pendientesDeEnvio() && !confirm('Hay marcas que todavía no se enviaron. Si salís, se pierden. ¿Salir igual?')) return false;
+    cliente.cerrarSesion();
+      Object.assign(E, { vista: null, tareas: null, sede: null, usuarios: null, abierta: null, personaDni: null, persona: null, rend: null, rendMes: null, rendDni: null, dia: null, adelantar: false, cierres: null, celebrado: {} });
+    return true;
+  }
+
+  // El navegador solo deja cerrar solas algunas pestañas: si no se cierra, la sesión igual queda cerrada y se lo decimos
+  function cerrarApp() {
+    if (!salirDeLaApp()) return;
+    E.mensajeLogin = '✅ Listo, cerraste tu turno. Ya podés cerrar esta pestaña. ¡Que descanses!';
+    render();
+    try { window.close(); } catch (e) { /* la pestaña sigue abierta */ }
+  }
+
   // Medalla ganada que todavía no se le avisó en esta PC
   function medallaNueva(D) {
     const alm = almacenSeguro();
@@ -623,11 +657,25 @@
 
   function revisarCierre() {
     const D = E.dia;
-    if (!D || !D.hora_fin || D.cierre_hecho || !cliente.sesion() || !tiene('recepcion') || Date.now() < E.cierrePospuesto) return;
+    if (!D || !D.hora_fin || !cliente.sesion() || !tiene('recepcion')) return;
     const ahora = new Date();
     const [h, m] = D.hora_fin.split(':').map(Number);
     const falta = h * 60 + m - (ahora.getHours() * 60 + ahora.getMinutes());
-    if (falta <= 30 && falta > -60) dialogoCierre();
+    if (falta <= 0 && falta > -120) {
+      const alm = almacenSeguro(), c = 'pulso_fin_' + E.hoy;
+      if (!alm.getItem(c)) { alm.setItem(c, '1'); push('🚪 Terminó tu turno', 'Acordate de cerrar PulsoMOVE antes de irte.'); render(); }
+    }
+    if (falta <= 30 && falta > 15) {
+      const alm = almacenSeguro(), c = 'pulso_media_hora_' + E.hoy;
+      if (!alm.getItem(c)) {
+        alm.setItem(c, '1');
+        const a = avisoMediaHora(cliente.sesion().nombre, D.hoy.pendientes, Number(E.hoy.slice(8, 10)));
+        push(a.titulo, a.cuerpo);
+        aviso(a.titulo + '. ' + a.cuerpo);
+      }
+    }
+    if (D.cierre_hecho || Date.now() < E.cierrePospuesto) return;
+    if (falta <= 15 && falta > -60) dialogoCierre();
   }
 
   function dialogoRegistrar() {
@@ -859,7 +907,7 @@
       : '<div class="vacio">Tu usuario no tiene ninguna vista asignada. Avisale a Emanuel.</div>';
     const sinDatos = { hoy: !E.tareas, sede: E.personaDni ? !E.persona : !E.sede, mes: !E.rend, rend: !E.rend, admin: !E.usuarios }[E.vista];
     const mostrar = E.errorCarga && sinDatos ? `<div class="vacio" style="margin-top:18px"><p>${esc(E.errorCarga)}</p><button class="boton" data-accion="reintentar">Reintentar</button></div>` : cuerpo;
-    app.innerHTML = encabezado() + `<main class="contenedor">${mostrar}</main>` + (DEMO ? '<div class="cinta-practica">Modo práctica · datos inventados</div>' : '');
+    app.innerHTML = encabezado() + `<main class="contenedor">${mostrar}</main>` + (E.vista === 'hoy' && turnoTerminando() ? `<button class="cerrar-app-fijo${DEMO ? ' con-cinta' : ''}" data-accion="cerrar-app">🚪 ${E.dia && E.dia.cierre_hecho ? 'Listo por hoy' : 'Se termina tu turno'}: cerrá la app antes de irte</button>` : '') + (DEMO ? '<div class="cinta-practica">Modo práctica · datos inventados</div>' : '');
     const abierto = app.querySelector('.marca-form select');
     if (abierto && !E.errorForm) abierto.focus({ preventScroll: true });
   }
@@ -965,11 +1013,9 @@
     if (!el || el.tagName === 'SELECT') return;
     const a = el.dataset.accion;
     if (a === 'salir') {
-      if (cliente.pendientesDeEnvio() && !confirm('Hay marcas que todavía no se enviaron. Si salís, se pierden. ¿Salir igual?')) return;
-      cliente.cerrarSesion();
-      Object.assign(E, { vista: null, tareas: null, sede: null, usuarios: null, abierta: null, personaDni: null, persona: null, rend: null, rendMes: null, rendDni: null, dia: null, adelantar: false, cierres: null, celebrado: {} });
-      render();
-    } else if (a === 'vista') irA(el.dataset.v);
+      if (salirDeLaApp()) render();
+    } else if (a === 'cerrar-app') cerrarApp();
+    else if (a === 'vista') irA(el.dataset.v);
     else if (a === 'filtro') { E.filtro = el.dataset.f; E.abierta = null; render(); }
     else if (a === 'abrir') { E.abierta = E.abierta === el.dataset.id ? null : el.dataset.id; E.abiertaEn = new Date().toISOString(); E.errorForm = ''; render(); }
     else if (a === 'adelantar') { E.adelantar = !E.adelantar; cargarVista(); }

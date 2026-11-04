@@ -10,7 +10,7 @@ const COLUMNAS = {
   rendimiento: ['mes', 'dni', 'datos', 'actualizado'],
   objetivos: ['dni', 'clave', 'valor'],
   profes: ['fecha', 'sede', 'profe_id', 'profe', 'clase', 'qr', 'estado'],
-  cierres: ['fecha', 'ts', 'dni', 'nombre', 'sede', 'animo', 'respuestas', 'comentario', 'hechas', 'pendientes', 'mensajes', 'consultas', 'sala', 'profes', 'lo_mejor'],
+  cierres: ['fecha', 'ts', 'dni', 'nombre', 'sede', 'animo', 'respuestas', 'comentario', 'hechas', 'pendientes', 'mensajes', 'consultas', 'sala', 'profes', 'lo_mejor', 'equipo', 'socios', 'pregunta'],
   garantia: ['id', 'ts', 'sede', 'socio_id', 'socio_nombre', 'profe', 'motivo', 'registra_dni', 'estado', 'decide_dni',
              'comentario', 'decidido_en'],
 };

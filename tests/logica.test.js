@@ -323,6 +323,27 @@ test('resumen de cierres: promedia lo respondido y cuenta las notas bajas', () =
   assert.equal(r.bajas, 1);
 });
 
+test('aviso de media hora: recomienda y recuerda lo pendiente', () => {
+  const a = L.avisoMediaHora('Ara Stettler', 3, 0);
+  assert.match(a.titulo, /Ara, falta media hora/);
+  assert.match(a.cuerpo, /baños/);
+  assert.match(a.cuerpo, /quedan 3 tareas/);
+  assert.match(a.cuerpo, /contar por qué/);
+  assert.match(L.avisoMediaHora('Ara', 0, 1).cuerpo, /al día/);
+  assert.notEqual(L.avisoMediaHora('Ara', 0, 0).cuerpo, L.avisoMediaHora('Ara', 0, 1).cuerpo);
+});
+
+test('encuesta: cambia de un día al otro y los lunes pregunta por el finde', () => {
+  const a = L.preguntasDelDia('2026-11-03', 7), b = L.preguntasDelDia('2026-11-04', 7);
+  assert.notEqual(a.nota.clave, b.nota.clave);
+  assert.notEqual(a.abierta, b.abierta);
+  assert.match(L.preguntasDelDia('2026-11-09', 7).abierta, /finde/);
+  assert.doesNotMatch(a.abierta, /finde/);
+  assert.deepEqual(L.preguntasDelDia('2026-11-04', 7), b);
+  const claves = new Set(['2026-11-03', '2026-11-04', '2026-11-05', '2026-11-06'].map(f => L.preguntasDelDia(f, 7).nota.clave));
+  assert.equal(claves.size, 4);
+});
+
 test('avisos nuevos: medalla, lunes, prioritarias, los que volvieron y el equipo', () => {
   const medalla = { clave: 'puente', emoji: '🤝', nombre: 'Puente', como: '10 tareas' };
   assert.equal(L.proximoAviso(ctxAviso({ nuevaMedalla: medalla })).clave, 'medalla-puente');

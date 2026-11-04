@@ -620,4 +620,8 @@ test('cierre con estrellas: guarda sala, profes y lo mejor, y coordinación ve e
   const r = pedir(d, { accion: 'cierres_ver', token: entrar(d, '25111222', '0907') }).data;
   assert.equal(r.resumen.bajas, 1);
   assert.equal(r.resumen.total.sala, 2);
+  assert.ok(pedir(d, { accion: 'cierre_guardar', token, animo: 5, equipo: 4, pregunta: '¿Qué te salió bien hoy?', lo_mejor: 'La caja' }).ok);
+  const g = d.repo.leer('cierres')[0];
+  assert.equal(g.equipo, '4');
+  assert.equal(g.pregunta, '¿Qué te salió bien hoy?');
 });

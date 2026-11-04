@@ -475,7 +475,7 @@ function cierreGuardar(req, deps) {
     if (!(n >= 1 && n <= 5)) falla('datos_invalidos');
     return String(n);
   };
-  const sala = nota(req.sala), profes = nota(req.profes);
+  const sala = nota(req.sala), profes = nota(req.profes), equipo = nota(req.equipo), socios = nota(req.socios);
   const hoy = deps.hoy();
   const tareas = deps.repo.leer('tareas');
   const d = valoresEnAppDia(usuario.dni, hoy, tareas, deps.repo.leer('registro'), deps.repo.leer('actividad'));
@@ -484,7 +484,7 @@ function cierreGuardar(req, deps) {
   filas.push({
     fecha: hoy, ts: new Date(deps.ahora()).toISOString(), dni: usuario.dni, nombre: usuario.nombre, sede: usuario.sede, animo: String(animo),
     respuestas: JSON.stringify(req.respuestas || {}), comentario: texto(req.comentario), hechas: String(d.hechas), pendientes: String(pendientes),
-    mensajes: String(d.mensajes), consultas: String(d.consultas), sala: sala, profes: profes, lo_mejor: texto(req.lo_mejor).slice(0, 300),
+    mensajes: String(d.mensajes), consultas: String(d.consultas), sala: sala, profes: profes, equipo: equipo, socios: socios, lo_mejor: texto(req.lo_mejor).slice(0, 300), pregunta: texto(req.pregunta).slice(0, 120),
   });
   deps.repo.escribir('cierres', filas);
   return {};

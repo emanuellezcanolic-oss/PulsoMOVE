@@ -372,3 +372,11 @@ dialog h3 { margin: 0; font: 800 21px/1 var(--display); text-transform: uppercas
 .notas-cierre { font-size: 12px; }
 .catalogo { margin-top: 14px; font-size: 13px; }
 .catalogo summary { cursor: pointer; font-weight: 600; }
+
+/* Cerrar la app al irse */
+.boton-cerrar-app { display: block; width: 100%; padding: 16px; border: 0; border-radius: var(--radio); background: var(--rojo); color: #fff; font: 800 18px/1.2 var(--display); cursor: pointer; }
+.cerrar-app-fijo { position: fixed; z-index: 30; left: 50%; bottom: 14px; transform: translateX(-50%); width: min(560px, calc(100% - 32px)); padding: 15px 18px; border: 0; border-radius: 999px; background: var(--rojo); color: #fff; font: 800 15px/1.2 var(--display); cursor: pointer; box-shadow: 0 8px 22px -6px rgba(29, 29, 27, .55); }
+.cerrar-app-fijo.con-cinta { bottom: 44px; }
+.lo-mejor small { display: block; color: var(--gris); font-size: 12px; }
+
+.aviso-ok { padding: 12px 14px; background: var(--verde-claro); border-radius: var(--radio); font-weight: 600; font-size: 14px; }
