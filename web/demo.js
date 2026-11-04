@@ -70,6 +70,7 @@
       t(R, 'Cumpleaños del socio', 0, 'Paula Ibáñez', 'Profe Sol', 'Cumple el sábado, en 3 días', 'Pensar algo con su profe: un saludo o un detalle en su próximo turno'),
       t(R, 'Encuesta de baja', 85, 'Ramiro Núñez', '', 'Su plan terminó hace 16 días y no renovó', 'Enviarle la encuesta de baja', { intro: 'Saber por qué se va e invitarlo a volver. Mensaje personal, sin presión.' }),
       t(R, 'Revisar profesor', 91, 'Clara Gómez', 'Profe Leo', 'Tiene asignado a Profe Leo, pero 7 de sus últimas 8 asistencias fueron en horarios de Profe Sol', 'Hablarlo con los dos profes y, si corresponde, pasarla a Profe Sol en MOVE', { intro: 'Quien lo evalúa y le arma el plan tiene que ser quien le hace el seguimiento. Se cierra sola si MOVE muestra otro profesor; si hay un motivo para dejarlo, anotalo.' }),
+      t(R, 'Corregir calendario', 1, 'Calendario: Profe Ana', '', 'Ya no trabaja y hoy figura a las 13:00, 14:00', 'Cambiarlo en el calendario de MOVE por el profe que esté hoy'),
       t(R, 'Profes de hoy', 0, 'Profe Sol', '', 'Primera clase a las 08:00', 'Recordarle que fiche con el QR al ingresar'),
       t(R, 'Profes de hoy', 0, 'Profe Leo', '', 'Primera clase a las 09:00', 'Recordarle que fiche con el QR al ingresar'),
       t(R, 'Cierre del turno', 95, 'Cierre de mi turno', '', 'Cerrar la caja · Baños y bolsas · Recepción ordenada · Dejar las novedades en el inbox', 'Hacerlo antes de irte'),

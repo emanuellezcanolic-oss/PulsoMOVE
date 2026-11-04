@@ -216,7 +216,7 @@
         <span class="socio">${esc(t.socio_nombre)}</span>${etiquetaEstado(t)}
         <span class="situacion">${esc(t.situacion)}</span>
         <span class="accion">${esc(t.accion)}</span>
-        ${t.estado === 'hecha' ? '' : '<span class="nota">No se marca acá: cuando MOVE lo muestre cargado, se cierra sola a la mañana siguiente.</span>'}
+        ${t.estado === 'hecha' ? '' : '<span class="nota">No se marca acá: cuando esté cargado en MOVE, se cierra sola a la mañana siguiente.</span>'}
       </div></article>`;
   }
 
