@@ -336,7 +336,7 @@ function vistaRendimiento(req, deps) {
     const fila = calculado.find(r => r.dni === u.dni);
     if (fila && fila.actualizado > actualizado) actualizado = fila.actualizado;
     const valores = Object.assign({}, fila ? JSON.parse(fila.datos) : {}, valoresEnApp(u.dni, mes, tareas, registro, actividad));
-    if (valores.consultas && valores.nuevos != null) valores.conversion = valores.nuevos / valores.consultas;
+    if (valores.consultas && valores.nuevos != null) valores.conversion = Math.min(1, valores.nuevos / valores.consultas);   // hay nuevos que no pasaron por una consulta registrada
     const propios = {};
     objetivos.filter(o => o.dni === u.dni).forEach(o => { propios[o.clave] = Number(o.valor); });
     return { dni: u.dni, nombre: u.nombre, turno: u.turno, sede: u.sede, valores: valores, puntaje: puntuar(valores, propios) };

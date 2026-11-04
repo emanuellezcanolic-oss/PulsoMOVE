@@ -393,7 +393,7 @@ test('rendimiento: mezcla lo calculado con lo que pasa en la app', () => {
   assert.equal(v.mensajes, 3);          // dos de tareas y uno suelto; SIN CONTACTO no cuenta
   assert.equal(v.contacto_pct, 1 / 3);
   assert.equal(v.consultas, 1);
-  assert.equal(v.conversion, 2);
+  assert.equal(v.conversion, 1);
   assert.equal(v.resenas, 1);
   assert.equal(v.nuevos, 2);
   assert.ok(r.data.personas[0].puntaje.total > 0);
