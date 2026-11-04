@@ -82,7 +82,7 @@ function leerToken(token, ahoraMs, secreto, hmac) {
 
 const CANALES = ['MP', 'MG', 'LL', 'PR', 'SIN CONTACTO'];
 const RESULTADOS = ['VOLVIÓ', 'VUELVE', 'RESERVA', 'PAGÓ', 'PAGA', 'VACACIONES', 'PAUSA', 'SALUD', 'HORARIOS',
-                    'PRECIO', 'BAJA', 'NO CONTESTA', 'TEL MAL', 'ENCUESTA ENVIADA', 'SALUDADO', 'SIN CAMBIO'];
+                    'PRECIO', 'BAJA', 'NO CONTESTA', 'TEL MAL', 'ENCUESTA ENVIADA', 'SALUDADO', 'SIN CAMBIO', 'SEGUIDO'];
 const PIDEN_FECHA = ['VUELVE', 'PAGA', 'VACACIONES'];
 const PIDEN_DETALLE = ['BAJA', 'SIN CAMBIO'];
 
@@ -194,4 +194,44 @@ function fechaArgentina(iso) {
 function lunesDe(iso) {
   const d = new Date(iso + 'T12:00:00Z');
   return sumarDias(iso, -((d.getUTCDay() + 6) % 7));
+}
+
+// ---------- Rendimiento ----------
+// Objetivos base: los de CONTROL DE VENTAS de la planilla de recepción (nuevos, planes, tienda, mensajes, días de prueba, conversión).
+// Los demás objetivos y los pesos los propuso Claude siguiendo "Cómo se mide" de MAN-REC-02; el admin los puede cambiar por persona.
+
+const METRICAS = [
+  { clave: 'tareas_pct', nombre: 'Tareas hechas', grupo: 'Cumplimiento', objetivo: 0.9, peso: 15, formato: 'pct' },
+  { clave: 'a_tiempo_pct', nombre: 'Hechas el día que tocaba', grupo: 'Cumplimiento', objetivo: 0.8, peso: 10, formato: 'pct' },
+  { clave: 'apertura_pct', nombre: 'Caja abierta a horario', grupo: 'Cumplimiento', objetivo: 0.9, peso: 5, formato: 'pct' },
+  { clave: 'retencion_pct', nombre: 'Socios retenidos de sus tareas', grupo: 'Retención', objetivo: 0.5, peso: 15, formato: 'pct' },
+  { clave: 'contacto_pct', nombre: 'Contactos con turno o fecha', grupo: 'Retención', objetivo: 0.7, peso: 10, formato: 'pct' },
+  { clave: 'promesas_pct', nombre: 'Promesas cumplidas', grupo: 'Retención', objetivo: 0.6, peso: 5, formato: 'pct' },
+  { clave: 'nuevos', nombre: 'Socios nuevos', grupo: 'Ventas', objetivo: 20, peso: 8, formato: 'num' },
+  { clave: 'planes_largos', nombre: 'Planes de 3 meses o más', grupo: 'Ventas', objetivo: 10, peso: 5, formato: 'num' },
+  { clave: 'conversion', nombre: 'Conversión de consultas', grupo: 'Ventas', objetivo: 0.6, peso: 4, formato: 'pct' },
+  { clave: 'tienda', nombre: 'Indumentaria y suplementos', grupo: 'Ventas', objetivo: 5, peso: 4, formato: 'num' },
+  { clave: 'mensajes', nombre: 'Mensajes enviados', grupo: 'Ventas', objetivo: 100, peso: 4, formato: 'num' },
+  { clave: 'encuestas_pct', nombre: 'Encuestas de baja enviadas', grupo: 'Experiencia', objetivo: 0.9, peso: 5, formato: 'pct' },
+  { clave: 'resenas', nombre: 'Reseñas de Google pedidas', grupo: 'Experiencia', objetivo: 8, peso: 5, formato: 'num' },
+  { clave: 'referidos', nombre: 'Referidos conseguidos', grupo: 'Experiencia', objetivo: 4, peso: 5, formato: 'num' },
+];
+const GRUPOS_METRICAS = ['Cumplimiento', 'Retención', 'Ventas', 'Experiencia'];
+const UMBRAL_INCENTIVO = 90;
+
+function puntuar(valores, objetivos) {
+  const filas = METRICAS.map(m => {
+    const objetivo = objetivos && objetivos[m.clave] != null ? Number(objetivos[m.clave]) : m.objetivo;
+    const valor = valores[m.clave];
+    const conDato = valor != null && !isNaN(valor) && objetivo > 0;
+    return { clave: m.clave, nombre: m.nombre, grupo: m.grupo, peso: m.peso, formato: m.formato, objetivo: objetivo,
+             valor: valor == null ? null : valor, cumple: conDato ? Math.min(1, valor / objetivo) : null };
+  });
+  const puntaje = lista => {
+    const pesos = lista.reduce((a, f) => a + (f.cumple == null ? 0 : f.peso), 0);
+    return pesos ? Math.round(lista.reduce((a, f) => a + (f.cumple == null ? 0 : f.cumple * f.peso), 0) / pesos * 100) : null;
+  };
+  const grupos = GRUPOS_METRICAS.map(nombre => ({ nombre: nombre, puntaje: puntaje(filas.filter(f => f.grupo === nombre)) }));
+  const cumplimiento = grupos[0].puntaje;
+  return { total: puntaje(filas), grupos: grupos, filas: filas, incentivo: cumplimiento == null ? null : cumplimiento >= UMBRAL_INCENTIVO };
 }

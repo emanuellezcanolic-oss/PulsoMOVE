@@ -179,6 +179,55 @@ label.campo .opcional { text-transform: none; letter-spacing: 0; font-weight: 50
 .tabla td .boton { padding: 7px 10px; font-size: 12px; }
 .envoltura-tabla { overflow-x: auto; }
 
+/* ---------- Rendimiento ---------- */
+.tablero { display: grid; grid-template-columns: auto 1fr; gap: 18px; align-items: center; background: var(--tinta); color: var(--papel); border-radius: var(--radio); padding: 18px; }
+.puntaje { display: grid; justify-items: start; gap: 4px; }
+.puntaje-n { font: 800 58px/1 var(--display); }
+.puntaje-de { font-size: 12px; opacity: .75; }
+.grupos { display: grid; grid-template-columns: repeat(2, 1fr); gap: 8px; }
+.grupo-mini { background: rgba(244, 243, 242, .1); border-radius: 8px; padding: 8px 10px; display: grid; }
+.grupo-mini strong { font: 800 22px/1 var(--display); }
+.grupo-mini span { font-size: 11.5px; opacity: .85; margin-top: 3px; }
+.sello { display: inline-block; font-size: 12px; font-weight: 700; padding: 3px 9px; border-radius: 999px; white-space: nowrap; background: var(--suave); color: var(--tinta); }
+.sello.bien { background: var(--verde-claro); color: var(--verde-texto); }
+.sello.cerca { background: var(--naranja-claro); color: #8a4a0c; }
+.sello.lejos { background: var(--rojo-claro); color: var(--rojo); }
+.incentivo { margin: 10px 0 0; padding: 9px 12px; border-radius: 8px; font-weight: 600; font-size: 13.5px; }
+.incentivo.si { background: var(--verde-claro); color: var(--verde-texto); }
+.incentivo.no { background: var(--naranja-claro); color: #8a4a0c; }
+.bloque { background: var(--hoja); border: 1px solid var(--linea); border-radius: var(--radio); padding: 14px; margin-top: 12px; box-shadow: var(--sombra); }
+.bloque-cab { display: flex; justify-content: space-between; align-items: center; gap: 10px; margin-bottom: 10px; }
+.bloque-cab h2 { margin: 0; font: 800 14px/1.1 var(--display); text-transform: uppercase; letter-spacing: .05em; }
+.metrica { padding: 9px 0; border-top: 1px solid var(--suave); }
+.metrica-fila { display: flex; justify-content: space-between; gap: 10px; font-size: 14px; }
+.metrica-nombre { font-weight: 600; }
+.metrica-valor { color: var(--gris); white-space: nowrap; }
+.metrica-valor b { color: var(--tinta); font-size: 15px; }
+.medidor { height: 7px; background: var(--suave); border-radius: 4px; margin: 6px 0 5px; overflow: hidden; }
+.medidor i { display: block; height: 100%; border-radius: 4px; background: var(--gris); min-width: 0; transition: width .5s; }
+.medidor i.bien { background: var(--verde); }
+.medidor i.cerca { background: var(--naranja); }
+.medidor i.lejos { background: var(--rojo); }
+.metrica-pie { display: flex; flex-wrap: wrap; gap: 4px 12px; font-size: 12px; color: var(--gris); align-items: center; }
+.estado-txt { font-weight: 700; }
+.estado-txt.bien { color: var(--verde-texto); }
+.estado-txt.cerca { color: #8a4a0c; }
+.estado-txt.lejos { color: var(--rojo); }
+.objetivo-edit { margin-left: auto; display: inline-flex; align-items: center; gap: 4px; }
+.objetivo-edit input { width: 68px; padding: 4px 6px; border: 1px solid var(--linea); border-radius: 6px; font-size: 13px; }
+.datos { display: grid; grid-template-columns: repeat(auto-fill, minmax(118px, 1fr)); gap: 12px 10px; }
+.dato { display: grid; }
+.dato strong { font: 800 17px/1.15 var(--display); overflow-wrap: anywhere; }
+.dato span { font-size: 12px; color: var(--gris); }
+.dato em { font-style: normal; font-size: 11.5px; color: var(--gris); }
+.aclara { color: var(--gris); font-size: 12.5px; margin: 10px 0 0; }
+.fila-tocable { cursor: pointer; }
+.fila-tocable:hover td { background: var(--suave); }
+.tabla .num { text-align: right; white-space: nowrap; }
+.tabla .pos { color: var(--gris); }
+.botones-pie { display: grid; gap: 8px; }
+[hidden] { display: none !important; }
+
 /* ---------- Avisos y diálogos ---------- */
 #aviso {
   position: fixed; left: 50%; bottom: 40px; transform: translate(-50%, 20px); opacity: 0; pointer-events: none; z-index: 30;
@@ -196,6 +245,8 @@ dialog h3 { margin: 0; font: 800 21px/1 var(--display); text-transform: uppercas
 .cargando { padding: 40px 0; text-align: center; color: var(--gris); }
 
 @media (max-width: 520px) {
+  .tablero { grid-template-columns: 1fr; }
+  .puntaje-n { font-size: 50px; }
   .campos { grid-template-columns: 1fr; }
   
   .quien { font-size: 11.5px; }

@@ -70,7 +70,14 @@
       id: 'G-demo', ts: new Date().toISOString(), sede: 'bolson', socio_id: 'D20', socio_nombre: 'Rosa Medina', profe: 'Profe Leo',
       motivo: 'Dice que nadie le armó la rutina en 3 semanas', registra_dni: R, estado: 'pendiente', decide_dni: '', comentario: '', decidido_en: '',
     }];
-    return { usuarios, tareas, registro: [], garantia };
+    const mes = hoy.slice(0, 7);
+    const venta = (o) => JSON.stringify(Object.assign({ cajas: 12, cobros_plan: 31, cobros_plan_monto: 2150000, mostrador: 24, mostrador_monto: 386000, bar: 18, recovery: 3, indumentaria: 1, suplementos: 2, otros: 0, tienda: 3, renovaciones: 22, retencion_total: 16, retencion_logradas: 9, retencion_pct: 9 / 16, promesas_total: 5, promesas_cumplidas: 4, promesas_pct: 0.8, aperturas: 12, aperturas_bien: 10, apertura_pct: 10 / 12 }, o));
+    const rendimiento = [
+      { mes, dni: R, datos: venta({ nuevos: 9, planes_largos: 4 }), actualizado: new Date().toISOString() },
+      { mes, dni: T, datos: venta({ nuevos: 13, planes_largos: 7, mostrador_monto: 512000, retencion_logradas: 11, retencion_pct: 11 / 16, aperturas_bien: 7, apertura_pct: 7 / 12 }), actualizado: new Date().toISOString() },
+      { mes, dni: C, datos: venta({ nuevos: 6, planes_largos: 2, mostrador_monto: 214000, retencion_logradas: 5, retencion_pct: 5 / 16 }), actualizado: new Date().toISOString() },
+    ];
+    return { usuarios, tareas, registro: [], garantia, rendimiento, actividad: [], objetivos: [] };
   }
 
   function crearFetchDemo() {

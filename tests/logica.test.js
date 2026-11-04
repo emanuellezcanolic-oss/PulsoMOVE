@@ -136,3 +136,38 @@ test('seVerificaEnMove', () => {
   assert.ok(L.seVerificaEnMove('Asignarle profesor'));
   assert.ok(!L.seVerificaEnMove('Riesgo alto'));
 });
+
+// ---------- Rendimiento ----------
+
+test('puntuar: pondera, tope 100% por métrica y reparte el peso de lo que no tiene datos', () => {
+  const v = { tareas_pct: 0.9, a_tiempo_pct: 0.4, nuevos: 40 };
+  const r = L.puntuar(v, {});
+  const fila = k => r.filas.find(x => x.clave === k);
+  assert.equal(fila('tareas_pct').cumple, 1);
+  assert.equal(fila('a_tiempo_pct').cumple, 0.5);
+  assert.equal(fila('nuevos').cumple, 1);        // 40 de 20: no suma más de 100%
+  assert.equal(fila('referidos').cumple, null);  // sin dato: no castiga
+  const pesos = 15 + 10 + 8;
+  assert.equal(r.total, Math.round((15 + 5 + 8) / pesos * 100));
+  assert.equal(r.grupos.find(g => g.nombre === 'Cumplimiento').puntaje, 80);
+  assert.equal(r.grupos.find(g => g.nombre === 'Retención').puntaje, null);
+});
+
+test('puntuar: usa el objetivo de la persona y un objetivo 0 no cuenta', () => {
+  const a = L.puntuar({ nuevos: 5 }, { nuevos: 10 });
+  assert.equal(a.filas.find(x => x.clave === 'nuevos').objetivo, 10);
+  assert.equal(a.total, 50);
+  const b = L.puntuar({ nuevos: 5, tienda: 1 }, { tienda: 0 });
+  assert.equal(b.filas.find(x => x.clave === 'tienda').cumple, null);
+});
+
+test('puntuar: el incentivo se habilita solo con el cumplimiento al día', () => {
+  assert.equal(L.puntuar({ tareas_pct: 1, a_tiempo_pct: 1 }, {}).incentivo, true);
+  assert.equal(L.puntuar({ tareas_pct: 0.5, nuevos: 40 }, {}).incentivo, false);
+  assert.equal(L.puntuar({ nuevos: 40 }, {}).incentivo, null);
+});
+
+test('puntuar: sin ningún dato no hay puntaje', () => {
+  const r = L.puntuar({}, {});
+  assert.equal(r.total, null);
+});

@@ -22,11 +22,12 @@
   const FRASE_GARANTIA = 'Si un profe no te saluda, no te arma tu rutina o no te hace seguimiento, te regalamos el mes siguiente, para darnos la oportunidad de mejorar.';
   const DIAS = ['Domingo', 'Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado'];
 
-  const SOLO_FORMULARIO_SIMPLE = ['SALUDADO', 'SIN CAMBIO'];
+  const SOLO_FORMULARIO_SIMPLE = ['SALUDADO', 'SIN CAMBIO', 'SEGUIDO'];
   function formularioDe(tipo) {
     const t = String(tipo);
     if (t.indexOf('Cumpleaños') === 0) return { resultado: 'SALUDADO', conCanal: true, detalle: 'Qué se hizo', boton: 'Listo, saludado' };
     if (t.indexOf('Encuesta de baja') === 0) return { resultado: 'ENCUESTA ENVIADA', conCanal: true, detalle: 'Qué respondió', boton: 'Encuesta enviada' };
+    if (t.indexOf('Seguimiento de consulta') === 0) return { resultado: 'SEGUIDO', conCanal: true, detalle: 'Qué respondió', boton: 'Seguimiento hecho' };
     if (t.indexOf('Revisar profesor') === 0) return { resultado: 'SIN CAMBIO', conCanal: false, detalle: 'Por qué se deja como está', obligatorio: true, boton: 'Dejarlo como está' };
     return null;
   }
@@ -36,7 +37,7 @@
 
   const E = {
     vista: null, hoy: '', tareas: null, filtro: 'pendientes', tipo: '', abierta: null, errorForm: '',
-    sede: null, sedeElegida: 'bolson', usuarios: null, mensajeLogin: '', personaDni: null, persona: null,
+    sede: null, sedeElegida: 'bolson', usuarios: null, mensajeLogin: '', personaDni: null, persona: null, rend: null, rendMes: null, rendDni: null,
   };
 
   const app = document.getElementById('app');
@@ -97,8 +98,9 @@
 
   function pestanasDisponibles() {
     const p = [];
-    if (tiene('recepcion')) p.push(['hoy', 'Mis tareas']);
+    if (tiene('recepcion')) p.push(['hoy', 'Mis tareas'], ['mes', 'Mi mes']);
     if (tiene('coordinador') || tiene('admin')) p.push(['sede', 'Sede']);
+    if (tiene('coordinador') || tiene('admin')) p.push(['rend', 'Rendimiento']);
     if (tiene('admin')) p.push(['admin', 'Equipo']);
     return p;
   }
@@ -222,7 +224,171 @@
       </div>
       ${grupos.length ? grupos.map(([tipo, lista]) => `<section class="grupo"><h2>${esc(tipo)} <span class="cuenta">${lista.length}</span></h2>${lista[0].intro ? `<p class="intro-grupo">${esc(lista[0].intro)}</p>` : ''}${lista.map(t => tarjeta(t, i++)).join('')}</section>`).join('')
         : `<div class="vacio">${E.filtro === 'pendientes' ? 'No te quedan tareas pendientes. ¡Bien!' : 'No hay tareas para mostrar.'}</div>`}
-      <div class="grupo"><button class="boton claro ancho" data-accion="garantia">Registrar pedido de garantía</button></div>`;
+      <div class="grupo botones-pie"><button class="boton ancho" data-accion="registrar">Registrar mensaje, consulta o venta</button>
+        <button class="boton claro ancho" data-accion="garantia">Registrar pedido de garantía</button></div>`;
+  }
+
+  // ---------- Rendimiento ----------
+
+  const MESES = ['enero', 'febrero', 'marzo', 'abril', 'mayo', 'junio', 'julio', 'agosto', 'septiembre', 'octubre', 'noviembre', 'diciembre'];
+  const nombreMes = m => MESES[Number(m.slice(5, 7)) - 1];
+  const plata = n => '$' + Math.round(n || 0).toLocaleString('es-AR');
+  const formato = (v, f) => (v == null ? '—' : f === 'pct' ? Math.round(v * 100) + '%' : Math.round(v * 10) / 10);
+
+  function estadoDe(c) {
+    if (c == null) return ['sin', '·', 'Sin datos'];
+    if (c >= 0.9) return ['bien', '✓', 'En objetivo'];
+    if (c >= 0.6) return ['cerca', '~', 'Cerca'];
+    return ['lejos', '!', 'Lejos'];
+  }
+
+  function nota(n) {
+    return n == null ? '—' : String(n);
+  }
+
+  const DETALLE = {
+    tareas_pct: v => v.tareas_total ? `${v.tareas_hechas} de ${v.tareas_total}` : '',
+    apertura_pct: v => v.aperturas ? `${v.aperturas_bien} de ${v.aperturas} días` : '',
+    retencion_pct: v => v.retencion_total ? `${v.retencion_logradas} de ${v.retencion_total}` : '',
+    promesas_pct: v => v.promesas_total ? `${v.promesas_cumplidas} de ${v.promesas_total}` : '',
+    conversion: v => v.consultas ? `${v.nuevos || 0} nuevos con ${v.consultas} consultas` : '',
+  };
+
+  function selectorMes(data) {
+    const actual = data.hoy.slice(0, 7);
+    const d = new Date(actual + '-15T12:00:00');
+    d.setMonth(d.getMonth() - 1);
+    const anterior = d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0');
+    return [anterior, actual].map(m => `<button class="chip" data-accion="rend-mes" data-m="${m}" aria-pressed="${data.mes === m}">${nombreMes(m)}</button>`).join('');
+  }
+
+  function detallePersona(p, editable) {
+    const P = p.puntaje, v = p.valores;
+    const [cls, ico, txt] = estadoDe(P.total == null ? null : P.total / 100);
+    const incentivo = P.incentivo == null ? '' : P.incentivo
+      ? '<div class="incentivo si">✓ Incentivos habilitados: el cumplimiento está al día.</div>'
+      : `<div class="incentivo no">! Incentivos en pausa: el cumplimiento está en ${P.grupos[0].puntaje}% y hace falta 90%.</div>`;
+    const grupos = P.grupos.map(g => {
+      const filas = P.filas.filter(f => f.grupo === g.nombre);
+      const [c2, i2, t2] = estadoDe(g.puntaje == null ? null : g.puntaje / 100);
+      return `<section class="bloque"><div class="bloque-cab"><h2>${esc(g.nombre)}</h2><span class="sello ${c2}">${i2} ${nota(g.puntaje)}${g.puntaje == null ? '' : '%'} · ${t2}</span></div>
+        ${filas.map(f => {
+          const [c3, i3, t3] = estadoDe(f.cumple);
+          const det = DETALLE[f.clave] ? DETALLE[f.clave](v) : '';
+          return `<div class="metrica"><div class="metrica-fila"><span class="metrica-nombre">${esc(f.nombre)}</span>
+              <span class="metrica-valor"><b>${formato(f.valor, f.formato)}</b> / ${formato(f.objetivo, f.formato)}</span></div>
+            <div class="medidor" title="${esc(f.nombre)}: ${formato(f.valor, f.formato)} de ${formato(f.objetivo, f.formato)}${det ? ' (' + esc(det) + ')' : ''}"><i class="${c3}" style="width:${Math.round((f.cumple || 0) * 100)}%"></i></div>
+            <div class="metrica-pie"><span class="estado-txt ${c3}">${i3} ${t3}</span>${det ? `<span>${esc(det)}</span>` : ''}
+              ${editable ? `<label class="objetivo-edit">Objetivo <input type="number" min="0" step="any" data-objetivo="${f.clave}" data-pct="${f.formato === 'pct' ? 1 : 0}" value="${f.formato === 'pct' ? Math.round(f.objetivo * 100) : f.objetivo}">${f.formato === 'pct' ? '%' : ''}</label>` : ''}</div></div>`;
+        }).join('')}</section>`;
+    }).join('');
+    const dato = (t, val, sub) => `<div class="dato"><strong>${val}</strong><span>${esc(t)}</span>${sub ? `<em>${esc(sub)}</em>` : ''}</div>`;
+    const ventas = v.cajas != null ? `<section class="bloque"><div class="bloque-cab"><h2>Lo que pasó por su caja</h2></div><div class="datos">
+        ${dato('Cobros de planes', plata(v.cobros_plan_monto), (v.cobros_plan || 0) + ' cobros')}
+        ${dato('Mostrador', plata(v.mostrador_monto), (v.mostrador || 0) + ' ventas')}
+        ${dato('Renovaciones', v.renovaciones || 0)}
+        ${dato('Bar y snacks', v.bar || 0)}
+        ${dato('Recovery', v.recovery || 0)}
+        ${dato('Indumentaria', v.indumentaria || 0)}
+        ${dato('Suplementos', v.suplementos || 0)}
+        ${dato('Sin clasificar', v.otros || 0)}
+        ${dato('Días de caja', v.cajas)}
+      </div><p class="aclara">Lo cobrado es de quien abrió esa caja, no siempre de quien hizo la venta.</p></section>` : '';
+    const actividad = `<section class="bloque"><div class="bloque-cab"><h2>Cargado a mano</h2></div><div class="datos">
+        ${dato('Consultas', v.consultas || 0)}${dato('Días de prueba', v.dias_prueba || 0, 'objetivo 2')}${dato('Reseñas pedidas', v.resenas || 0)}${dato('Referidos', v.referidos || 0)}
+      </div></section>`;
+    return `<section class="tablero">
+        <div class="puntaje"><span class="puntaje-n">${nota(P.total)}</span><span class="puntaje-de">${P.total == null ? '' : 'de 100'}</span>
+          <span class="sello ${cls}">${ico} ${txt}</span></div>
+        <div class="grupos">${P.grupos.map(g => `<div class="grupo-mini"><strong>${nota(g.puntaje)}</strong><span>${esc(g.nombre)}</span></div>`).join('')}</div>
+      </section>${incentivo}${grupos}${ventas}${actividad}
+      ${editable ? `<div class="botones"><button class="boton verde" data-accion="objetivos-guardar" data-dni="${esc(p.dni)}">Guardar objetivos</button></div>` : ''}`;
+  }
+
+  function aclaracionDatos(d) {
+    const fecha = d.actualizado ? new Date(d.actualizado).toLocaleString('es-AR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' }) : '';
+    return `<p class="aclara">Las tareas y lo que cargás se actualizan al momento. Ventas, caja y retención se calculan cada mañana${fecha ? ' (última: ' + esc(fecha) + ')' : ''}. Lo que todavía no tiene datos no resta puntos.</p>`;
+  }
+
+  function vistaMes() {
+    if (!E.rend) return '<div class="cargando">Calculando tu mes…</div>';
+    const s = cliente.sesion();
+    const p = E.rend.personas.find(x => x.nombre === s.nombre) || E.rend.personas[0];
+    if (!p) return '<div class="vacio">Todavía no hay datos.</div>';
+    return `<div class="filtros">${selectorMes(E.rend)}</div>
+      <h1 class="titulo">Mi ${nombreMes(E.rend.mes)}</h1><p class="bajada">Cómo vas contra tus objetivos del mes.</p>
+      ${detallePersona(p, false)}${aclaracionDatos(E.rend)}
+      <div class="grupo"><button class="boton ancho" data-accion="registrar">Registrar mensaje, consulta o venta</button></div>`;
+  }
+
+  function vistaRendimiento() {
+    const selector = tiene('admin') ? Object.keys(SEDES).map(k => `<button class="chip" data-accion="rend-sede" data-s="${k}" aria-pressed="${E.sedeElegida === k}">${SEDES[k]}</button>`).join('') : '';
+    if (!E.rend) return `<div class="filtros">${selector}</div><div class="cargando">Calculando…</div>`;
+    const R = E.rend;
+    const p = E.rendDni && R.personas.find(x => x.dni === E.rendDni);
+    if (p) {
+      return `<div class="filtros"><button class="chip" data-accion="rend-volver">← Volver al equipo</button>${selectorMes(R)}</div>
+        <h1 class="titulo">${esc(p.nombre)}</h1><p class="bajada">${esc(SEDES[p.sede] || '')} · ${esc(TURNOS[p.turno] || '')} · ${nombreMes(R.mes)}</p>
+        ${detallePersona(p, tiene('admin'))}${aclaracionDatos(R)}`;
+    }
+    const filas = R.personas.map((x, i) => {
+      const P = x.puntaje, v = x.valores;
+      const [c] = estadoDe(P.total == null ? null : P.total / 100);
+      return `<tr class="fila-tocable" data-accion="rend-persona" data-dni="${esc(x.dni)}" tabindex="0">
+        <td class="pos">${i + 1}</td><td><b>${esc(x.nombre)}</b><br><span class="profe">${esc(TURNOS[x.turno] || '')}</span></td>
+        <td><span class="sello ${c}">${nota(P.total)}</span></td>
+        ${P.grupos.map(g => `<td class="num">${nota(g.puntaje)}</td>`).join('')}
+        <td class="num">${v.nuevos || 0}</td><td class="num">${plata(v.mostrador_monto)}</td><td class="num">${v.tareas_total ? Math.round((v.tareas_pct || 0) * 100) + '%' : '—'}</td></tr>`;
+    }).join('');
+    return `<div class="filtros">${selector}</div><div class="filtros">${selectorMes(R)}</div>
+      <h1 class="titulo">Rendimiento <span>·</span> ${nombreMes(R.mes)}</h1>
+      <p class="bajada">Tocá una persona para ver el detalle${tiene('admin') ? ' y ajustar sus objetivos' : ''}.</p>
+      ${R.personas.length ? `<div class="envoltura-tabla"><table class="tabla"><thead><tr><th>#</th><th>Persona</th><th>Puntaje</th><th>Cumpl.</th><th>Reten.</th><th>Ventas</th><th>Exper.</th><th>Nuevos</th><th>Mostrador</th><th>Tareas</th></tr></thead><tbody>${filas}</tbody></table></div>`
+        : '<div class="vacio">No hay recepcionistas cargados en esta sede.</div>'}
+      ${aclaracionDatos(R)}`;
+  }
+
+  function dialogoRegistrar() {
+    const opciones = (lista) => lista.map(v => `<option>${esc(v)}</option>`).join('');
+    const ORIGEN = ['Local', 'WhatsApp', 'Instagram', 'Recomendación', 'Ex socio'];
+    const CATEGORIA = ['Bienvenida', 'Recordatorio de pago', 'Deuda', 'Promoción', 'Seguimiento', 'Encuesta', 'Felicitación', 'Información general'];
+    dialogo(`<h3>Registrar</h3>
+      <form class="marca-form" style="border:0;padding:0">
+        <label class="campo">Qué hiciste<select name="tipo" required>
+          <option value="mensaje">Mensaje a un socio, fuera de mis tareas</option><option value="consulta">Consulta de alguien interesado</option>
+          <option value="prueba">Día de prueba</option><option value="resena">Pedí una reseña de Google</option><option value="referido">Me pasaron un referido</option></select></label>
+        <label class="campo">Nombre de la persona<input name="nombre" required></label>
+        <label class="campo" data-solo="mensaje">Categoría<select name="categoria">${opciones(CATEGORIA)}</select></label>
+        <label class="campo" data-solo="mensaje">Canal<select name="canal"><option value="MP">Mensaje personal</option><option value="LL">Llamada</option><option value="PR">En persona</option></select></label>
+        <label class="campo" data-solo="consulta">Interés<select name="interes"><option value="alto">Alto: seguimiento hoy</option><option value="medio">Medio: seguimiento en 48 horas</option><option value="exploratorio">Exploratorio: seguimiento en una semana</option></select></label>
+        <label class="campo" data-solo="consulta prueba referido">Cómo llegó<select name="origen">${opciones(ORIGEN)}</select></label>
+        <label class="campo">Detalle <span class="opcional">(opcional)</span><textarea name="detalle" maxlength="300"></textarea></label>
+        <p class="aclara" style="margin:0">Solo el nombre: el teléfono queda en el celular laboral.</p>
+        <div class="botones"><button class="boton verde">Guardar</button><button type="button" class="boton claro" data-cerrar>Cancelar</button></div>
+      </form>`, d => {
+      const form = d.querySelector('form');
+      const mostrar = () => d.querySelectorAll('[data-solo]').forEach(l => { l.hidden = l.dataset.solo.split(' ').indexOf(form.tipo.value) < 0; });
+      form.tipo.onchange = mostrar;
+      mostrar();
+      d.querySelector('[data-cerrar]').onclick = () => d.close();
+      form.onsubmit = async ev => {
+        ev.preventDefault();
+        const f = new FormData(form);
+        const datos = { id: (crypto.randomUUID ? crypto.randomUUID() : Date.now() + '-' + Math.random()), tipo: f.get('tipo'), nombre: String(f.get('nombre')).trim(), detalle: String(f.get('detalle') || '').trim() };
+        if (datos.tipo === 'mensaje') { datos.categoria = f.get('categoria'); datos.canal = f.get('canal'); }
+        if (datos.tipo === 'consulta') datos.interes = f.get('interes');
+        if (['consulta', 'prueba', 'referido'].indexOf(datos.tipo) >= 0) datos.origen = f.get('origen');
+        const btn = form.querySelector('button');
+        btn.disabled = true;
+        try {
+          await cliente.llamar('registrar', datos);
+          d.close();
+          aviso(datos.tipo === 'consulta' ? 'Guardado. El seguimiento aparece en tus tareas cuando le toque.' : 'Guardado.');
+          E.rend = null;
+          if (E.vista === 'mes') cargarVista();
+        } catch (e) { btn.disabled = false; falla(e); }
+      };
+    });
   }
 
   // ---------- Lista de una persona, solo lectura ----------
@@ -349,6 +515,10 @@
         E.persona = await cliente.llamar('tareas_de', { dni: E.personaDni });
       } else if (E.vista === 'sede') {
         E.sede = await cliente.llamar('sede', tiene('admin') ? { sede: E.sedeElegida } : {});
+      } else if (E.vista === 'mes') {
+        E.rend = await cliente.llamar('rendimiento', E.rendMes ? { mes: E.rendMes } : {});
+      } else if (E.vista === 'rend') {
+        E.rend = await cliente.llamar('rendimiento', Object.assign(E.rendMes ? { mes: E.rendMes } : {}, tiene('admin') ? { sede: E.sedeElegida } : {}));
       } else if (E.vista === 'admin') {
         E.usuarios = await cliente.llamar('usuarios_listar');
       }
@@ -361,6 +531,8 @@
     E.abierta = null;
     E.personaDni = null;
     E.persona = null;
+    E.rend = null;
+    E.rendDni = null;
     render();
     cargarVista();
   }
@@ -373,7 +545,7 @@
     if (s.debe_cambiar_pin) { app.innerHTML = vistaCambiarPin(); return; }
     const disponibles = pestanasDisponibles().map(p => p[0]);
     if (disponibles.indexOf(E.vista) < 0) { E.vista = disponibles[0] || null; setTimeout(cargarVista); }
-    const cuerpo = E.vista === 'hoy' ? vistaHoy() : E.vista === 'sede' ? vistaSede() : E.vista === 'admin' ? vistaAdmin()
+    const cuerpo = E.vista === 'hoy' ? vistaHoy() : E.vista === 'sede' ? vistaSede() : E.vista === 'admin' ? vistaAdmin() : E.vista === 'mes' ? vistaMes() : E.vista === 'rend' ? vistaRendimiento()
       : '<div class="vacio">Tu usuario no tiene ninguna vista asignada. Avisale a Emanuel.</div>';
     app.innerHTML = encabezado() + `<main class="contenedor">${cuerpo}</main>` + (DEMO ? '<div class="cinta-practica">Modo práctica · datos inventados</div>' : '');
     const abierto = app.querySelector('.marca-form select');
@@ -461,13 +633,24 @@
     if (a === 'salir') {
       if (cliente.pendientesDeEnvio() && !confirm('Hay marcas que todavía no se enviaron. Si salís, se pierden. ¿Salir igual?')) return;
       cliente.cerrarSesion();
-      Object.assign(E, { vista: null, tareas: null, sede: null, usuarios: null, abierta: null, personaDni: null, persona: null });
+      Object.assign(E, { vista: null, tareas: null, sede: null, usuarios: null, abierta: null, personaDni: null, persona: null, rend: null, rendMes: null, rendDni: null });
       render();
     } else if (a === 'vista') irA(el.dataset.v);
     else if (a === 'filtro') { E.filtro = el.dataset.f; E.abierta = null; render(); }
     else if (a === 'abrir') { E.abierta = E.abierta === el.dataset.id ? null : el.dataset.id; E.errorForm = ''; render(); }
     else if (a === 'cerrar') { E.abierta = null; E.errorForm = ''; render(); }
     else if (a === 'garantia') dialogoGarantia();
+    else if (a === 'registrar') dialogoRegistrar();
+    else if (a === 'rend-mes') { E.rendMes = el.dataset.m; E.rend = null; render(); cargarVista(); }
+    else if (a === 'rend-sede') { E.sedeElegida = el.dataset.s; E.rend = null; E.rendDni = null; render(); cargarVista(); }
+    else if (a === 'rend-persona') { E.rendDni = el.dataset.dni; render(); window.scrollTo(0, 0); }
+    else if (a === 'rend-volver') { E.rendDni = null; render(); }
+    else if (a === 'objetivos-guardar') {
+      const valores = {};
+      app.querySelectorAll('[data-objetivo]').forEach(i => { if (i.value !== '') valores[i.dataset.objetivo] = Number(i.value) / (i.dataset.pct === '1' ? 100 : 1); });
+      el.disabled = true;
+      try { await cliente.llamar('objetivos_guardar', { dni: el.dataset.dni, valores }); aviso('Objetivos guardados.'); cargarVista(); } catch (e) { el.disabled = false; falla(e); }
+    }
     else if (a === 'ver-persona') { E.personaDni = el.dataset.dni; E.persona = null; render(); cargarVista(); }
     else if (a === 'persona-volver') { E.personaDni = null; E.persona = null; render(); cargarVista(); }
     else if (a === 'sede-elegir') { E.sedeElegida = el.dataset.s; E.sede = null; render(); cargarVista(); }

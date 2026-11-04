@@ -6,6 +6,9 @@ const COLUMNAS = {
            'ultima_anotacion', 'asignado_dni', 'pendiente_desde', 'estado', 'hecha_en', 'intro'],
   registro: ['id_marca', 'ts', 'tarea_id', 'fecha_tarea', 'sede', 'socio_id', 'socio_nombre', 'tipo', 'dni', 'canal',
              'resultado', 'fecha_resultado', 'detalle'],
+  actividad: ['id', 'ts', 'dni', 'sede', 'tipo', 'nombre', 'categoria', 'canal', 'origen', 'interes', 'detalle'],
+  rendimiento: ['mes', 'dni', 'datos', 'actualizado'],
+  objetivos: ['dni', 'clave', 'valor'],
   garantia: ['id', 'ts', 'sede', 'socio_id', 'socio_nombre', 'profe', 'motivo', 'registra_dni', 'estado', 'decide_dni',
              'comentario', 'decidido_en'],
 };
@@ -23,8 +26,14 @@ function planilla() {
 function repoHojas() {
   const libro = planilla();
   const hoja = nombre => {
-    const h = libro.getSheetByName(nombre);
-    if (!h || !COLUMNAS[nombre]) throw new Error('Hoja desconocida: ' + nombre);
+    if (!COLUMNAS[nombre]) throw new Error('Hoja desconocida: ' + nombre);
+    let h = libro.getSheetByName(nombre);
+    if (!h) {   // hojas agregadas después de la instalación
+      h = libro.insertSheet(nombre);
+      h.getRange(1, 1, 1, COLUMNAS[nombre].length).setValues([COLUMNAS[nombre]]).setFontWeight('bold');
+      h.getRange(1, 1, h.getMaxRows(), COLUMNAS[nombre].length).setNumberFormat('@');
+      h.setFrozenRows(1);
+    }
     return h;
   };
   const aFilas = (nombre, objetos) => objetos.map(o => COLUMNAS[nombre].map(c => (o[c] == null ? '' : String(o[c]))));

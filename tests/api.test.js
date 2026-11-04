@@ -343,3 +343,84 @@ test('marcar rechaza tareas que se verifican en MOVE', () => {
   assert.equal(pedir(d, { accion: 'marcar', token: entrar(d), tarea_id: 'T1', id_marca: 'x', canal: 'PR', resultado: 'RESERVA' }).error, 'datos_invalidos');
   assert.equal(d.repo.hojas.tareas[0].estado, 'pendiente');
 });
+
+// ---------- Rendimiento y registro manual ----------
+
+test('registrar: valida, no duplica y una consulta crea su seguimiento', () => {
+  const d = equipo({ tareas: [], actividad: [] });
+  const token = entrar(d);
+  assert.equal(pedir(d, { accion: 'registrar', token, id: 'a', tipo: 'otra', nombre: 'X' }).error, 'datos_invalidos');
+  assert.equal(pedir(d, { accion: 'registrar', token, id: 'a', tipo: 'mensaje' }).error, 'datos_invalidos');
+  assert.ok(pedir(d, { accion: 'registrar', token, id: 'm1', tipo: 'mensaje', nombre: 'Socio', categoria: 'Deuda', canal: 'MP' }).ok);
+  assert.ok(pedir(d, { accion: 'registrar', token, id: 'm1', tipo: 'mensaje', nombre: 'Socio', categoria: 'Deuda', canal: 'MP' }).ok);
+  assert.equal(d.repo.hojas.actividad.length, 1);
+  assert.equal(pedir(d, { accion: 'registrar', token, id: 'c0', tipo: 'consulta', nombre: 'Ana' }).error, 'datos_invalidos');
+  assert.ok(pedir(d, { accion: 'registrar', token, id: 'c1', tipo: 'consulta', nombre: 'Ana', interes: 'medio', origen: 'Instagram', detalle: 'Kine' }).ok);
+  const t = d.repo.hojas.tareas[0];
+  assert.equal(t.tipo, 'Seguimiento de consulta');
+  assert.equal(t.fecha, '2026-11-11');          // medio: a las 48 horas
+  assert.equal(t.asignado_dni, '30123456');
+  assert.equal(t.socio_id, 'consulta-c1');
+  assert.equal(pedir(d, { accion: 'mis_tareas', token }).data.tareas.length, 0);   // todavía no le toca
+  d.dia = '2026-11-11';
+  assert.equal(pedir(d, { accion: 'mis_tareas', token }).data.tareas.length, 1);
+});
+
+test('rendimiento: mezcla lo calculado con lo que pasa en la app', () => {
+  const d = equipo({
+    tareas: [
+      tarea({ id: 'a', estado: 'hecha', pendiente_desde: '2026-11-09', hecha_en: '2026-11-09T15:00:00.000Z' }),
+      tarea({ id: 'b', estado: 'hecha', pendiente_desde: '2026-11-05', fecha: '2026-11-05', hecha_en: '2026-11-09T15:00:00.000Z' }),
+      tarea({ id: 'c' }), tarea({ id: 'd', estado: 'cerrada' }), tarea({ id: 'x', asignado_dni: '28999888' }),
+    ],
+    registro: [
+      { ts: '2026-11-09T15:00:00.000Z', dni: '30123456', tipo: 'Riesgo alto', canal: 'LL', resultado: 'RESERVA' },
+      { ts: '2026-11-09T15:00:00.000Z', dni: '30123456', tipo: 'Riesgo alto', canal: 'MP', resultado: 'NO CONTESTA' },
+      { ts: '2026-11-09T15:00:00.000Z', dni: '30123456', tipo: 'Riesgo alto', canal: 'SIN CONTACTO', resultado: 'NO CONTESTA' },
+      { ts: '2026-10-09T15:00:00.000Z', dni: '30123456', tipo: 'Riesgo alto', canal: 'LL', resultado: 'RESERVA' },
+    ],
+    actividad: [{ id: '1', ts: '2026-11-09T15:00:00.000Z', dni: '30123456', tipo: 'mensaje' }, { id: '2', ts: '2026-11-09T15:00:00.000Z', dni: '30123456', tipo: 'consulta' },
+                { id: '3', ts: '2026-11-09T15:00:00.000Z', dni: '30123456', tipo: 'resena' }],
+    rendimiento: [{ mes: '2026-11', dni: '30123456', datos: JSON.stringify({ nuevos: 2, mostrador_monto: 5000 }), actualizado: '2026-11-09' }],
+    objetivos: [],
+  });
+  const r = pedir(d, { accion: 'rendimiento', token: entrar(d), mes: '2026-11' });
+  assert.ok(r.ok, JSON.stringify(r));
+  assert.equal(r.data.personas.length, 1);
+  const v = r.data.personas[0].valores;
+  assert.equal(v.tareas_pct, 2 / 3);
+  assert.equal(v.a_tiempo_pct, 1 / 2);
+  assert.equal(v.mensajes, 3);          // dos de tareas y uno suelto; SIN CONTACTO no cuenta
+  assert.equal(v.contacto_pct, 1 / 3);
+  assert.equal(v.consultas, 1);
+  assert.equal(v.conversion, 2);
+  assert.equal(v.resenas, 1);
+  assert.equal(v.nuevos, 2);
+  assert.ok(r.data.personas[0].puntaje.total > 0);
+});
+
+test('rendimiento: permisos y objetivos por persona', () => {
+  const d = equipo({ tareas: [], actividad: [], rendimiento: [], objetivos: [] });
+  const rec = entrar(d);
+  assert.equal(pedir(d, { accion: 'rendimiento', token: rec, dni: '28999888' }).error, 'prohibido');
+  const coord = pedir(d, { accion: 'rendimiento', token: entrar(d, '25111222', '0907') });
+  assert.deepEqual(coord.data.personas.map(p => p.dni).sort(), ['25111222', '28999888', '30123456']);
+  assert.equal(pedir(d, { accion: 'rendimiento', token: entrar(d, '25111222', '0907'), sede: 'puelo' }).error, 'prohibido');
+  const adm = entrar(d, '20000001', '0907');
+  assert.deepEqual(pedir(d, { accion: 'rendimiento', token: adm, sede: 'puelo' }).data.personas.map(p => p.dni), ['26555666']);
+  assert.equal(pedir(d, { accion: 'objetivos_guardar', token: rec, dni: '30123456', valores: { nuevos: 5 } }).error, 'prohibido');
+  assert.equal(pedir(d, { accion: 'objetivos_guardar', token: adm, dni: '30123456', valores: { inventado: 5 } }).error, 'datos_invalidos');
+  assert.ok(pedir(d, { accion: 'objetivos_guardar', token: adm, dni: '30123456', valores: { nuevos: 5 } }).ok);
+  assert.ok(pedir(d, { accion: 'objetivos_guardar', token: adm, dni: '30123456', valores: { nuevos: 7 } }).ok);
+  assert.equal(d.repo.hojas.objetivos.length, 1);
+  const f = pedir(d, { accion: 'rendimiento', token: rec }).data.personas[0].puntaje.filas.find(x => x.clave === 'nuevos');
+  assert.equal(f.objetivo, 7);
+});
+
+test('cargar_rendimiento reemplaza el mes de esa persona', () => {
+  const d = equipo({ rendimiento: [{ mes: '2026-11', dni: '1', datos: '{}', actualizado: 'x' }, { mes: '2026-10', dni: '1', datos: '{}', actualizado: 'x' }] });
+  assert.equal(pedir(d, { accion: 'cargar_rendimiento', clave: 'mala', mes: '2026-11', filas: [] }).error, 'clave');
+  assert.ok(pedir(d, { accion: 'cargar_rendimiento', clave: 'clave-prueba', mes: '2026-11', filas: [{ dni: '1', datos: { nuevos: 3 } }] }).ok);
+  assert.equal(d.repo.hojas.rendimiento.length, 2);
+  assert.equal(JSON.parse(d.repo.hojas.rendimiento.find(x => x.mes === '2026-11').datos).nuevos, 3);
+});

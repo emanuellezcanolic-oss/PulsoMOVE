@@ -98,7 +98,7 @@ function misTareas(req, deps) {
   const { usuario } = sesion(req, deps);
   const hoy = deps.hoy();
   const tareas = deps.repo.leer('tareas')
-    .filter(t => t.asignado_dni === usuario.dni && (t.estado === 'pendiente' || (t.fecha === hoy && t.estado === 'hecha')))
+    .filter(t => t.asignado_dni === usuario.dni && String(t.fecha) <= hoy && (t.estado === 'pendiente' || (t.fecha === hoy && t.estado === 'hecha')))
     .sort(ordenTareas)
     .map(t => conDias(t, hoy));
   return { hoy: hoy, tareas: tareas };
@@ -258,6 +258,118 @@ function usuariosResumen(req, deps) {
     .map(u => ({ dni: u.dni, nombre: u.nombre, sede: u.sede, turno: u.turno, roles: u.roles }));
 }
 
+// ---------- Registro manual: lo que MOVE no ve ----------
+
+const TIPOS_ACTIVIDAD = ['mensaje', 'consulta', 'prueba', 'resena', 'referido'];
+const DIAS_SEGUIMIENTO = { alto: 0, medio: 2, exploratorio: 7 };   // MAN-REC-02: alto en el momento, medio a las 48 horas, exploratorio a la semana
+
+function registrar(req, deps) {
+  const { usuario } = sesion(req, deps);
+  const id = texto(req.id), tipo = texto(req.tipo), nombre = texto(req.nombre), interes = texto(req.interes);
+  if (!id || TIPOS_ACTIVIDAD.indexOf(tipo) < 0 || !nombre) falla('datos_invalidos');
+  if (tipo === 'consulta' && !Object.prototype.hasOwnProperty.call(DIAS_SEGUIMIENTO, interes)) falla('datos_invalidos');
+  if (deps.repo.leer('actividad').some(a => a.id === id)) return {};
+  const hoy = deps.hoy();
+  deps.repo.agregar('actividad', {
+    id: id, ts: new Date(deps.ahora()).toISOString(), dni: usuario.dni, sede: usuario.sede, tipo: tipo, nombre: nombre,
+    categoria: texto(req.categoria), canal: texto(req.canal), origen: texto(req.origen), interes: interes, detalle: texto(req.detalle),
+  });
+  if (tipo === 'consulta') {
+    const fecha = sumarDias(hoy, DIAS_SEGUIMIENTO[interes]);
+    deps.repo.agregar('tareas', {
+      id: 'consulta-' + id, fecha: fecha, sede: usuario.sede, socio_id: 'consulta-' + id, socio_nombre: nombre, profe: '', tipo: 'Seguimiento de consulta',
+      prioridad: '2', situacion: 'Consultó' + (texto(req.detalle) ? ': ' + texto(req.detalle) : '') + ' · interés ' + interes, accion: 'Hacer el seguimiento y proponerle la visita',
+      ultima_anotacion: '', asignado_dni: usuario.dni, pendiente_desde: fecha, estado: 'pendiente', hecha_en: '', intro: '',
+    });
+  }
+  return {};
+}
+
+// ---------- Rendimiento ----------
+
+function delMes(iso, mes) {
+  return fechaArgentina(iso).indexOf(mes) === 0;
+}
+
+// Lo que se mide en la app, en vivo. Lo que viene de MOVE (cajas, renovaciones) lo carga el pipeline cada mañana.
+function valoresEnApp(dni, mes, tareas, registro, actividad) {
+  const suyas = tareas.filter(t => t.asignado_dni === dni && t.estado !== 'cerrada' && String(t.pendiente_desde).indexOf(mes) === 0);
+  const hechas = suyas.filter(t => t.estado === 'hecha');
+  const aTiempo = hechas.filter(t => diasHabiles(t.pendiente_desde, fechaArgentina(t.hecha_en)) === 0);
+  const marcas = registro.filter(r => r.dni === dni && delMes(r.ts, mes));
+  const contactos = marcas.filter(r => r.canal !== 'SIN CONTACTO');
+  const CON_FECHA = ['RESERVA', 'VUELVE', 'PAGA', 'PAGÓ', 'VOLVIÓ', 'VACACIONES'];
+  const reten = marcas.filter(r => !/^(Cumpleaños|Encuesta de baja|Revisar profesor|Seguimiento de consulta)/.test(r.tipo));
+  const act = actividad.filter(a => a.dni === dni && delMes(a.ts, mes));
+  const cuenta = t => act.filter(a => a.tipo === t).length;
+  const encuestas = suyas.filter(t => String(t.tipo).indexOf('Encuesta de baja') === 0);
+  const v = {
+    mensajes: contactos.length + cuenta('mensaje'), consultas: cuenta('consulta'), dias_prueba: cuenta('prueba'), resenas: cuenta('resena'), referidos: cuenta('referido'),
+    tareas_total: suyas.length, tareas_hechas: hechas.length,
+  };
+  if (suyas.length) v.tareas_pct = hechas.length / suyas.length;
+  if (hechas.length) v.a_tiempo_pct = aTiempo.length / hechas.length;
+  if (reten.length) v.contacto_pct = reten.filter(r => CON_FECHA.indexOf(r.resultado) >= 0).length / reten.length;
+  if (encuestas.length) v.encuestas_pct = encuestas.filter(t => t.estado === 'hecha').length / encuestas.length;
+  if (!cuenta('resena')) delete v.resenas;
+  if (!cuenta('referido')) delete v.referidos;
+  return v;
+}
+
+function vistaRendimiento(req, deps) {
+  const { usuario, usuarios } = sesion(req, deps);
+  const mes = /^\d{4}-\d{2}$/.test(texto(req.mes)) ? texto(req.mes) : deps.hoy().slice(0, 7);
+  let equipo;
+  if (tieneRol(usuario, 'admin') || tieneRol(usuario, 'coordinador')) {
+    if (texto(req.dni)) falla('prohibido');
+    const sede = sedePermitida(usuario, texto(req.sede));
+    equipo = usuarios.filter(u => u.sede === sede && esVerdad(u.activo) && tieneRol(u, 'recepcion'));
+  } else {
+    if (texto(req.dni) && normalizarDni(req.dni) !== usuario.dni) falla('prohibido');
+    equipo = [usuario];
+  }
+  const tareas = deps.repo.leer('tareas'), registro = deps.repo.leer('registro'), actividad = deps.repo.leer('actividad');
+  const calculado = deps.repo.leer('rendimiento').filter(r => r.mes === mes);
+  const objetivos = deps.repo.leer('objetivos');
+  let actualizado = '';
+  const personas = equipo.map(u => {
+    const fila = calculado.find(r => r.dni === u.dni);
+    if (fila && fila.actualizado > actualizado) actualizado = fila.actualizado;
+    const valores = Object.assign({}, fila ? JSON.parse(fila.datos) : {}, valoresEnApp(u.dni, mes, tareas, registro, actividad));
+    if (valores.consultas && valores.nuevos != null) valores.conversion = valores.nuevos / valores.consultas;
+    const propios = {};
+    objetivos.filter(o => o.dni === u.dni).forEach(o => { propios[o.clave] = Number(o.valor); });
+    return { dni: u.dni, nombre: u.nombre, turno: u.turno, sede: u.sede, valores: valores, puntaje: puntuar(valores, propios) };
+  }).sort((a, b) => (b.puntaje.total == null ? -1 : b.puntaje.total) - (a.puntaje.total == null ? -1 : a.puntaje.total));
+  return { mes: mes, hoy: deps.hoy(), actualizado: actualizado, personas: personas, metricas: METRICAS };
+}
+
+function objetivosGuardar(req, deps) {
+  const { usuarios } = exigirAdmin(req, deps);
+  const dni = normalizarDni(req.dni);
+  const valores = req.valores;
+  if (!usuarios.some(u => u.dni === dni) || !valores || typeof valores !== 'object') falla('datos_invalidos');
+  const claves = Object.keys(valores);
+  if (!claves.length || !claves.every(k => METRICAS.some(m => m.clave === k) && Number(valores[k]) >= 0)) falla('datos_invalidos');
+  const filas = deps.repo.leer('objetivos').filter(o => !(o.dni === dni && claves.indexOf(o.clave) >= 0));
+  claves.forEach(k => filas.push({ dni: dni, clave: k, valor: String(Number(valores[k])) }));
+  deps.repo.escribir('objetivos', filas);
+  return {};
+}
+
+function cargarRendimiento(req, deps) {
+  exigirClave(req, deps);
+  const mes = texto(req.mes);
+  if (!/^\d{4}-\d{2}$/.test(mes) || !Array.isArray(req.filas)) falla('datos_invalidos');
+  const dnis = req.filas.map(f => texto(f && f.dni));
+  if (dnis.some(d => !d)) falla('datos_invalidos');
+  const ts = new Date(deps.ahora()).toISOString();
+  const filas = deps.repo.leer('rendimiento').filter(r => !(r.mes === mes && dnis.indexOf(r.dni) >= 0));
+  req.filas.forEach(f => filas.push({ mes: mes, dni: texto(f.dni), datos: JSON.stringify(f.datos || {}), actualizado: ts }));
+  deps.repo.escribir('rendimiento', filas);
+  return { filas: req.filas.length };
+}
+
 // ---------- Administración ----------
 
 const ROLES = ['recepcion', 'coordinador', 'admin'];
@@ -344,6 +456,10 @@ const ACCIONES = {
   sede: vistaSede,
   reasignar: reasignar,
   tareas_de: tareasDe,
+  registrar: registrar,
+  rendimiento: vistaRendimiento,
+  objetivos_guardar: objetivosGuardar,
+  cargar_rendimiento: cargarRendimiento,
   garantia_crear: garantiaCrear,
   garantia_decidir: garantiaDecidir,
   usuarios_cargar: usuariosCargar,
