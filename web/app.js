@@ -369,7 +369,7 @@
     return `<section class="bloque"><div class="bloque-cab"><h2>Tiempo en su turno</h2><span class="sello">Solo coordinación</span></div>
       <div class="envoltura-tabla"><table class="tabla compacta"><thead><tr><th>Día</th><th>Usando la app</th><th>Abierta sin tocar</th><th>En otra ventana</th><th>Cerrada</th><th>Completando</th><th>Huecos de 40 min o más</th></tr></thead><tbody>${ult.map(d => `<tr><td>${ddmm(d.fecha)}</td>${d.con_senal ? `<td class="num">${horas(d.activo)}</td><td class="num">${horas(d.quieta)}</td><td class="num">${horas(d.otra)}</td><td class="num">${horas(d.cerrada)}</td>` : '<td colspan="4">Sin medir: solo hay marcas de tareas</td>'}<td class="num">${horas(d.completando)}</td><td>${d.huecos.length ? d.huecos.map(h => `<span class="hueco">${hm(h.desde)} a ${hm(h.hasta)}</span>`).join(' ') : '—'}</td></tr>`).join('')}</tbody></table></div>
       <h3 class="sub-bloque">Minutos completando tareas, por hora</h3>${barras(barrasHora, 90)}
-      <p class="aclara">Mide la app, no a la persona. Puede estar atendiendo el mostrador, en MOVE o en WhatsApp: "sin tocar", "otra ventana" y "cerrada" no significan que no esté trabajando. Sirve para preguntar, no para concluir.</p></section>`;
+      <p class="aclara">Mide la app, no a la persona. Puede estar atendiendo el mostrador, en MOVE o en WhatsApp: "sin tocar", "otra ventana" y "cerrada" no significan que no esté trabajando. No es una medida de rendimiento y no entra en el puntaje: sirve para ver cuándo hay más y menos movimiento y repartir mejor las tareas.</p></section>`;
   }
 
   function bloqueTiempos(p) {
