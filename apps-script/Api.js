@@ -384,7 +384,7 @@ function ventasLargasDe(usuario, usuarios, deps) {
   if (!tieneRol(usuario, 'recepcion')) return null;
   const hoy = deps.hoy(), desde = sumarDias(hoy, -DIAS_PARA_REASIGNAR);
   const nombre = dni => (usuarios.find(u => u.dni === dni) || {}).nombre || '';
-  const ver = v => ({ id: v.id, fecha: v.fecha, socio_nombre: v.socio_nombre, plan: v.plan, nombre_cobro: v.nombre_cobro, sugerido_dni: v.sugerido_dni === usuario.dni ? '' : v.sugerido_dni, sugerido: v.sugerido_dni === usuario.dni ? '' : nombre(v.sugerido_dni), pide: nombre(v.pide_dni), cobro_pide: v.pide_dni === v.dni_cobro, responde: nombre(v.responde_dni), te_sugiere: v.sugerido_dni === usuario.dni });
+  const ver = v => ({ id: v.id, estado: v.estado, fecha: v.fecha, socio_nombre: v.socio_nombre, plan: v.plan, nombre_cobro: v.nombre_cobro, sugerido_dni: v.sugerido_dni === usuario.dni ? '' : v.sugerido_dni, sugerido: v.sugerido_dni === usuario.dni ? '' : nombre(v.sugerido_dni), pide: nombre(v.pide_dni), cobro_pide: v.pide_dni === v.dni_cobro, responde: nombre(v.responde_dni), te_sugiere: v.sugerido_dni === usuario.dni });
   const filas = deps.repo.leer('ventas_largas').filter(v => v.sede === usuario.sede);
   const abierta = v => v.estado === 'cobro' && String(v.fecha) >= desde;
   return {

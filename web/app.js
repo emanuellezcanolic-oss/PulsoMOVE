@@ -823,7 +823,7 @@
       `${esc(v.nombre_cobro)} cobró el ${esc(v.plan)} de <b>${esc(v.socio_nombre)}</b> el ${ddmm(v.fecha)}.`,
       v.te_sugiere ? '💡 Hablaste con este socio hace poco.' : '',
       `<button class="boton claro" data-accion="venta-pedir" data-id="${esc(v.id)}">La vendí yo</button>`)).join('');
-    const espera = V.espera.map(v => `<p class="aclara">⏳ ${esc(v.plan)} de ${esc(v.socio_nombre)}: ${v.responde ? 'falta que responda ' + esc(v.responde) : 'lo deciden Lucía y Emanuel'}.</p>`).join('');
+    const espera = V.espera.map(v => `<p class="aclara">⏳ ${esc(v.plan)} de ${esc(v.socio_nombre)}: ${v.estado === 'pedida' ? 'falta que responda ' + esc(v.responde) : 'lo deciden Lucía y Emanuel'}.</p>`).join('');
     return `<section class="ventas-largas"><b>🏆 Planes de 3 meses o más</b>${pedidos}${cobradas}${sede}${espera}</section>`;
   }
 
