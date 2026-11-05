@@ -387,6 +387,11 @@ dialog h3 { margin: 0; font: 800 21px/1 var(--display); text-transform: uppercas
 .alerta-roja { margin: 8px 0 12px; padding: 10px 12px; border-radius: 8px; border: 1px solid var(--rojo); color: var(--rojo); font-weight: 700; }
 .hueco { display: inline-block; margin: 1px 4px 1px 0; color: var(--rojo); font-size: 12px; white-space: nowrap; }
 .sub-bloque { margin: 14px 0 6px; font-size: 13px; }
+.ventas-largas { display: grid; gap: 10px; margin-top: 12px; padding: 12px 14px; background: var(--hoja); border: 1.5px solid var(--tinta); border-radius: 12px; }
+.venta-larga { display: grid; gap: 6px; border-top: 1px solid var(--linea); padding-top: 10px; font-size: 13.5px; }
+.venta-larga p { margin: 0; }
+.venta-larga .botones { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin: 0; }
+.venta-larga select { border: 1px solid var(--linea); border-radius: 8px; padding: 6px 8px; font-size: 13px; }
 .ranking-ventas { display: grid; gap: 7px; margin-top: 10px; }
 .fila-venta { display: grid; grid-template-columns: minmax(110px, 170px) 1fr 34px; gap: 10px; align-items: center; font-size: 13px; }
 .fila-venta b { text-align: right; }

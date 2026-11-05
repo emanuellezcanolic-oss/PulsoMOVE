@@ -194,7 +194,7 @@ function vistaSede(req, deps) {
     .filter(t => t.dias_pendiente >= DIAS_ALERTA)
     .sort((a, b) => b.dias_pendiente - a.dias_pendiente || ordenTareas(a, b));
   const garantias = deps.repo.leer('garantia').filter(g => g.sede === sede && g.estado === 'pendiente');
-  return { hoy: hoy, sede: sede, personas: personas, alertas: alertas, garantias: garantias, beneficios: beneficiosParaAutorizar(usuario, deps), stock: ultimoStock(usuario, sede, deps), ventas: ventasDeSede(usuario, sede, deps) };
+  return { hoy: hoy, sede: sede, personas: personas, alertas: alertas, garantias: garantias, beneficios: beneficiosParaAutorizar(usuario, deps), stock: ultimoStock(usuario, sede, deps), ventas: ventasDeSede(usuario, sede, deps), ventas_largas: ventasLargasDeSede(usuario, usuarios, sede, deps) };
 }
 
 // Lista de una persona tal como la ve ella, con lo que marcó en cada tarea. Admin: cualquiera; coordinador: su sede.
@@ -293,6 +293,114 @@ function ventasDePersona(dni, mes, coordina, filas) {
     if (!coordina) CAMPOS_PLATA_VENTAS.forEach(k => { delete o[k]; });
     return o;
   });
+}
+
+// ---------- Planes de 3 meses o más: la venta es de quien vendió, aunque otro haya cobrado (Emanuel, 05/11/2026) ----------
+// Si nadie dice nada, queda para quien cobró. Quien cobró se la da a otro, o el otro la pide; el otro lado acepta o rechaza.
+// Si quien cobró rechaza un pedido, deciden Lucía y Emanuel. Cambia a quién se le cuenta la venta, nunca la caja.
+
+const DIAS_PARA_REASIGNAR = 7;
+
+function cargarVentasLargas(req, deps) {
+  exigirClave(req, deps);
+  if (!Array.isArray(req.filas) || req.filas.some(f => !f || !texto(f.id) || !/^\d{4}-\d{2}-\d{2}$/.test(texto(f.fecha)))) falla('datos_invalidos');
+  const filas = deps.repo.leer('ventas_largas');
+  const ya = {};
+  filas.forEach(f => { ya[f.id] = f; });
+  let nuevas = 0;
+  req.filas.forEach(f => {
+    const v = ya[texto(f.id)];
+    if (v) { if (!v.sugerido_dni) v.sugerido_dni = texto(f.sugerido_dni); return; }
+    nuevas++;
+    filas.push({ id: texto(f.id), fecha: texto(f.fecha), sede: texto(f.sede), dni_cobro: texto(f.dni_cobro), nombre_cobro: texto(f.nombre_cobro), socio_id: texto(f.socio_id), socio_nombre: texto(f.socio_nombre), plan: texto(f.plan), tipo: texto(f.tipo), sugerido_dni: texto(f.sugerido_dni), estado: 'cobro', pide_dni: '', responde_dni: '', hacia_dni: '', dni_vendio: '', ts_pedido: '', ts_decidido: '', decide_dni: '' });
+  });
+  deps.repo.escribir('ventas_largas', filas);
+  return { nuevas: nuevas };
+}
+
+function ventaLargaBuscar(filas, id) {
+  const v = filas.find(f => f.id === texto(id));
+  if (!v) falla('no_existe');
+  return v;
+}
+
+// Quien cobró se la da a otra persona de la sede, o alguien de la sede la pide
+function ventaLargaPedir(req, deps) {
+  const { usuario, usuarios } = sesion(req, deps);
+  if (!tieneRol(usuario, 'recepcion')) falla('prohibido');
+  const filas = deps.repo.leer('ventas_largas');
+  const v = ventaLargaBuscar(filas, req.id);
+  if (v.estado !== 'cobro' || v.sede !== usuario.sede || String(v.fecha) < sumarDias(deps.hoy(), -DIAS_PARA_REASIGNAR)) falla('datos_invalidos');
+  const ts = new Date(deps.ahora()).toISOString();
+  if (usuario.dni === v.dni_cobro) {
+    const otro = usuarios.find(u => u.dni === normalizarDni(req.dni) && esVerdad(u.activo) && tieneRol(u, 'recepcion') && u.sede === v.sede && u.dni !== usuario.dni);
+    if (!otro) falla('datos_invalidos');
+    Object.assign(v, { estado: 'pedida', pide_dni: usuario.dni, responde_dni: otro.dni, hacia_dni: otro.dni, ts_pedido: ts });
+  } else {
+    // Si cobró alguien que no usa la app, no hay a quién preguntarle: deciden Lucía y Emanuel
+    Object.assign(v, { estado: v.dni_cobro ? 'pedida' : 'disputa', pide_dni: usuario.dni, responde_dni: v.dni_cobro, hacia_dni: usuario.dni, ts_pedido: ts });
+  }
+  deps.repo.escribir('ventas_largas', filas);
+  return {};
+}
+
+function ventaLargaResponder(req, deps) {
+  const { usuario } = sesion(req, deps);
+  const filas = deps.repo.leer('ventas_largas');
+  const v = ventaLargaBuscar(filas, req.id);
+  if (v.estado !== 'pedida' || v.responde_dni !== usuario.dni) falla('prohibido');
+  const ts = new Date(deps.ahora()).toISOString();
+  if (req.acepta === true) Object.assign(v, { estado: 'asignada', dni_vendio: v.hacia_dni, ts_decidido: ts, decide_dni: usuario.dni });
+  else if (v.pide_dni === v.dni_cobro) Object.assign(v, { estado: 'cobro', pide_dni: '', responde_dni: '', hacia_dni: '', ts_pedido: '' });
+  else Object.assign(v, { estado: 'disputa', ts_decidido: '' });
+  deps.repo.escribir('ventas_largas', filas);
+  return {};
+}
+
+function ventaLargaDecidir(req, deps) {
+  const { usuario } = exigirAdmin(req, deps);
+  const filas = deps.repo.leer('ventas_largas');
+  const v = ventaLargaBuscar(filas, req.id);
+  const dni = normalizarDni(req.dni);
+  if (v.estado !== 'disputa' || (dni !== v.hacia_dni && dni !== v.dni_cobro)) falla('datos_invalidos');
+  Object.assign(v, { estado: dni === v.dni_cobro ? 'confirmada' : 'asignada', dni_vendio: dni, ts_decidido: new Date(deps.ahora()).toISOString(), decide_dni: usuario.dni });
+  deps.repo.escribir('ventas_largas', filas);
+  return {};
+}
+
+// La venta suma a quien vendió y se le saca a quien solo cobró
+function ajustarVentasLargas(valores, dni, mes, filas) {
+  filas.filter(v => v.estado === 'asignada' && v.dni_vendio !== v.dni_cobro && String(v.fecha).indexOf(mes) === 0).forEach(v => {
+    const signo = dni === v.dni_vendio ? 1 : dni === v.dni_cobro ? -1 : 0;
+    if (!signo) return;
+    const clave = v.tipo === 'nuevo' ? 'nuevos' : 'renovaciones';
+    valores.planes_largos = Math.max(0, (Number(valores.planes_largos) || 0) + signo);
+    valores[clave] = Math.max(0, (Number(valores[clave]) || 0) + signo);
+  });
+  return valores;
+}
+
+function ventasLargasDe(usuario, usuarios, deps) {
+  if (!tieneRol(usuario, 'recepcion')) return null;
+  const hoy = deps.hoy(), desde = sumarDias(hoy, -DIAS_PARA_REASIGNAR);
+  const nombre = dni => (usuarios.find(u => u.dni === dni) || {}).nombre || '';
+  const ver = v => ({ id: v.id, fecha: v.fecha, socio_nombre: v.socio_nombre, plan: v.plan, nombre_cobro: v.nombre_cobro, sugerido_dni: v.sugerido_dni === usuario.dni ? '' : v.sugerido_dni, sugerido: v.sugerido_dni === usuario.dni ? '' : nombre(v.sugerido_dni), pide: nombre(v.pide_dni), cobro_pide: v.pide_dni === v.dni_cobro, responde: nombre(v.responde_dni), te_sugiere: v.sugerido_dni === usuario.dni });
+  const filas = deps.repo.leer('ventas_largas').filter(v => v.sede === usuario.sede);
+  const abierta = v => v.estado === 'cobro' && String(v.fecha) >= desde;
+  return {
+    pedidos: filas.filter(v => v.estado === 'pedida' && v.responde_dni === usuario.dni).map(ver),
+    espera: filas.filter(v => (v.estado === 'pedida' || v.estado === 'disputa') && v.pide_dni === usuario.dni).map(ver),
+    cobradas: filas.filter(v => abierta(v) && v.dni_cobro === usuario.dni).map(ver),
+    de_la_sede: filas.filter(v => abierta(v) && v.dni_cobro !== usuario.dni).map(ver),
+    companeros: usuarios.filter(u => u.sede === usuario.sede && u.dni !== usuario.dni && esVerdad(u.activo) && tieneRol(u, 'recepcion')).map(u => ({ dni: u.dni, nombre: u.nombre })),
+  };
+}
+
+function ventasLargasDeSede(usuario, usuarios, sede, deps) {
+  if (!tieneRol(usuario, 'admin') && !tieneRol(usuario, 'coordinador')) return [];
+  const nombre = dni => (usuarios.find(u => u.dni === dni) || {}).nombre || '';
+  const desde = sumarDias(deps.hoy(), -DIAS_VENTAS_SEDE);
+  return deps.repo.leer('ventas_largas').filter(v => v.sede === sede && String(v.fecha) >= desde && v.estado !== 'cobro').map(v => Object.assign({}, v, { nombre_vendio: nombre(v.dni_vendio), nombre_hacia: nombre(v.hacia_dni), nombre_responde: nombre(v.responde_dni) }));
 }
 
 // El último conteo de cada producto en cada sede
@@ -598,11 +706,11 @@ function rachaDe(dni, tareas, hoy) {
 }
 
 function miDia(req, deps) {
-  const { usuario } = sesion(req, deps);
+  const { usuario, usuarios } = sesion(req, deps);
   const hoy = deps.hoy(), mes = hoy.slice(0, 7);
   const tareas = deps.repo.leer('tareas'), registro = deps.repo.leer('registro'), actividad = deps.repo.leer('actividad');
   const fila = deps.repo.leer('rendimiento').find(r => r.mes === mes && r.dni === usuario.dni);
-  const valores = Object.assign({}, fila ? JSON.parse(fila.datos) : {}, valoresEnApp(usuario.dni, mes, tareas, registro, actividad, hoy));
+  const valores = ajustarVentasLargas(Object.assign({}, fila ? JSON.parse(fila.datos) : {}, valoresEnApp(usuario.dni, mes, tareas, registro, actividad, hoy)), usuario.dni, mes, deps.repo.leer('ventas_largas'));
   const propios = {};
   deps.repo.leer('objetivos').filter(o => o.dni === usuario.dni).forEach(o => { propios[o.clave] = Number(o.valor); });
   const suyas = tareas.filter(t => t.asignado_dni === usuario.dni && t.estado !== 'cerrada');
@@ -639,7 +747,7 @@ function miDia(req, deps) {
     saludo: saludo(usuario.nombre, hora), puntos: calcularPuntos(valores), racha: racha,
     hoy: { hechas: deHoy.hechas, pendientes: pendientes.length, atrasadas: atrasadas, mensajes: deHoy.mensajes, consultas: deHoy.consultas },
     coach: mensajesCoach(valores, propios, { hoy: hoy, atrasadas: atrasadas, racha: racha }),
-    hora_fin: usuario.hora_fin || '', cierre_hecho: deps.repo.leer('cierres').some(c => c.dni === usuario.dni && c.fecha === hoy),
+    ventas_largas: ventasLargasDe(usuario, usuarios, deps), hora_fin: usuario.hora_fin || '', cierre_hecho: deps.repo.leer('cierres').some(c => c.dni === usuario.dni && c.fecha === hoy),
   };
 }
 
@@ -710,7 +818,7 @@ function respaldo(req, deps) {
   exigirClave(req, deps);
   const usuarios = deps.repo.leer('usuarios').map(u => { const c = Object.assign({}, u); delete c.pin_hash; delete c.sal; return c; });
   const out = { usuarios: usuarios };
-  ['tareas', 'registro', 'garantia', 'actividad', 'rendimiento', 'objetivos', 'cierres', 'profes', 'uso', 'beneficios', 'stock', 'ventas'].forEach(h => { out[h] = deps.repo.leer(h); });
+  ['tareas', 'registro', 'garantia', 'actividad', 'rendimiento', 'objetivos', 'cierres', 'profes', 'uso', 'beneficios', 'stock', 'ventas', 'ventas_largas'].forEach(h => { out[h] = deps.repo.leer(h); });
   return out;
 }
 
@@ -732,11 +840,13 @@ function vistaRendimiento(req, deps) {
   const calculado = deps.repo.leer('rendimiento').filter(r => r.mes === mes);
   const objetivos = deps.repo.leer('objetivos');
   const filasVentas = deps.repo.leer('ventas');
+  const filasLargas = deps.repo.leer('ventas_largas');
   let actualizado = '';
   const personas = equipo.map(u => {
     const fila = calculado.find(r => r.dni === u.dni);
     if (fila && fila.actualizado > actualizado) actualizado = fila.actualizado;
     const valores = Object.assign({}, fila ? JSON.parse(fila.datos) : {}, valoresEnApp(u.dni, mes, tareas, registro, actividad, deps.hoy()));
+    ajustarVentasLargas(valores, u.dni, mes, filasLargas);
     if (valores.consultas && valores.nuevos != null) valores.conversion = Math.min(1, valores.nuevos / valores.consultas);   // hay nuevos que no pasaron por una consulta registrada
     const propios = {};
     objetivos.filter(o => o.dni === u.dni).forEach(o => { propios[o.clave] = Number(o.valor); });
@@ -889,6 +999,10 @@ const ACCIONES = {
   beneficio_decidir: beneficioDecidir,
   cargar_beneficios: cargarBeneficios,
   cargar_ventas: cargarVentas,
+  cargar_ventas_largas: cargarVentasLargas,
+  venta_larga_pedir: ventaLargaPedir,
+  venta_larga_responder: ventaLargaResponder,
+  venta_larga_decidir: ventaLargaDecidir,
 };
 
 function manejar(req, deps) {

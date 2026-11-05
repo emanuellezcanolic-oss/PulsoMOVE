@@ -745,3 +745,36 @@ test('stock: cada sede cuenta lo que vende', () => {
   assert.equal(L.productosStockDe('bolson').includes('Pistola de masajes para vender'), false);
   assert.equal(L.productosStockDe('bariloche').includes('Pistola de masajes para vender'), true);
 });
+
+test('venta de 3 meses: queda para quien cobró, se puede dar o pedir, y suma a quien vendió', () => {
+  const clave = 'clave-prueba';
+  const fila = id => ({ id, fecha: '2026-11-08', sede: 'bolson', dni_cobro: TARDE.dni, nombre_cobro: TARDE.nombre, socio_id: '5', socio_nombre: 'Socia', plan: 'plan de 3 meses', tipo: 'nuevo', sugerido_dni: '30123456' });
+  const d = equipo({ rendimiento: [{ mes: '2026-11', dni: TARDE.dni, datos: JSON.stringify({ planes_largos: 2, nuevos: 2 }), actualizado: '' }, { mes: '2026-11', dni: '30123456', datos: JSON.stringify({ planes_largos: 0, nuevos: 0 }), actualizado: '' }] });
+  assert.equal(pedir(d, { accion: 'cargar_ventas_largas', clave, filas: [fila('1'), fila('2'), fila('3'), { ...fila('viejo'), fecha: '2026-10-01' }] }).data.nuevas, 4);
+  assert.equal(pedir(d, { accion: 'cargar_ventas_largas', clave, filas: [fila('1')] }).data.nuevas, 0);
+  const ana = entrar(d), tarde = entrar(d, TARDE.dni, '0907'), admin = entrar(d, '20000001', '0907');
+  const diaDe = t => pedir(d, { accion: 'mi_dia', token: t }).data.ventas_largas;
+  // Si nadie dice nada, queda para quien cobró
+  assert.deepEqual(diaDe(tarde).cobradas.map(v => v.id), ['1', '2', '3']);
+  assert.deepEqual(diaDe(ana).de_la_sede.map(v => v.id), ['1', '2', '3']);
+  // Vencido el plazo no se puede
+  assert.equal(pedir(d, { accion: 'venta_larga_pedir', token: ana, id: 'viejo' }).error, 'datos_invalidos');
+  // Quien cobró se la da; la otra persona acepta
+  assert.equal(pedir(d, { accion: 'venta_larga_pedir', token: tarde, id: '1', dni: '30123456' }).ok, true);
+  assert.deepEqual(diaDe(ana).pedidos.map(v => v.id), ['1']);
+  assert.equal(pedir(d, { accion: 'venta_larga_responder', token: tarde, id: '1', acepta: true }).error, 'prohibido');
+  assert.equal(pedir(d, { accion: 'venta_larga_responder', token: ana, id: '1', acepta: true }).ok, true);
+  const r = pedir(d, { accion: 'rendimiento', token: admin, sede: 'bolson', mes: '2026-11' }).data.personas;
+  assert.equal(r.find(p => p.dni === '30123456').valores.planes_largos, 1);
+  assert.equal(r.find(p => p.dni === TARDE.dni).valores.planes_largos, 1);
+  // La otra persona la pide; quien cobró la rechaza: deciden Lucía y Emanuel
+  assert.equal(pedir(d, { accion: 'venta_larga_pedir', token: ana, id: '2' }).ok, true);
+  assert.equal(pedir(d, { accion: 'venta_larga_responder', token: tarde, id: '2', acepta: false }).ok, true);
+  assert.equal(pedir(d, { accion: 'venta_larga_decidir', token: entrar(d, '25111222', '0907'), id: '2', dni: '30123456' }).ok, false);
+  assert.equal(pedir(d, { accion: 'venta_larga_decidir', token: admin, id: '2', dni: TARDE.dni }).ok, true);
+  assert.equal(pedir(d, { accion: 'sede', token: admin, sede: 'bolson' }).data.ventas_largas.find(v => v.id === '2').estado, 'confirmada');
+  // Se la da y la otra persona dice que no: sigue siendo de quien cobró
+  pedir(d, { accion: 'venta_larga_pedir', token: tarde, id: '3', dni: '30123456' });
+  pedir(d, { accion: 'venta_larga_responder', token: ana, id: '3', acepta: false });
+  assert.deepEqual(diaDe(tarde).cobradas.map(v => v.id), ['3']);
+});

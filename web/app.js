@@ -275,6 +275,7 @@
     const frase = fraseDelDia(hechas, total, semilla);
     return `<section class="saludo"><b>${esc(D ? D.saludo : 'Hola')}</b><p>${esc(frase)}</p></section>
       ${avance(hechas, total)}
+      ${D ? bloqueVentasLargas(D) : ''}
       <section class="logros">
         <div class="logro oro"><strong>${D ? D.puntos : 0}</strong><span>puntos del mes</span></div>
         <div class="logro"><strong>${D && D.racha ? '🔥 ' + D.racha : '0'}</strong><span>días seguidos</span></div>
@@ -654,6 +655,7 @@
     }
   }
   function revisarAvisos() {
+    avisarVentas();
     const D = E.dia;
     if (!D || !cliente.sesion() || !tiene('recepcion') || !D.hora_fin || !D.hora_inicio) return;
     if (Date.now() - (E.ultimoAviso || 0) < CADA_AVISO_MS) return;
@@ -800,6 +802,53 @@
         const lista = P.tareas.filter(t => t.tipo === tipo);
         return `<section class="grupo"><h2>${esc(tipo)} <span class="cuenta">${lista.length}</span></h2>${lista.map(t => tarjetaLectura(t, i++)).join('')}</section>`;
       }).join('') : '<div class="vacio">Sin tareas para hoy.</div>'}`;
+  }
+
+  // ---------- Planes de 3 meses o más: de quién es la venta ----------
+
+  function bloqueVentasLargas(D) {
+    const V = D.ventas_largas;
+    if (!V || !(V.pedidos.length + V.espera.length + V.cobradas.length + V.de_la_sede.length)) return '';
+    const fila = (texto, extra, acciones) => `<div class="venta-larga"><p>${texto}</p>${extra ? `<p class="aclara">${extra}</p>` : ''}<div class="botones">${acciones}</div></div>`;
+    const pedidos = V.pedidos.map(v => fila(
+      v.cobro_pide ? `<b>${esc(v.pide)}</b> cobró el ${esc(v.plan)} de <b>${esc(v.socio_nombre)}</b> y dice que lo vendiste vos. ¿Es así?` : `<b>${esc(v.pide)}</b> dice que vendió el ${esc(v.plan)} de <b>${esc(v.socio_nombre)}</b>, que cobraste vos. ¿Es así?`,
+      v.cobro_pide ? '' : 'Si decís que no, deciden Lucía y Emanuel.',
+      `<button class="boton verde" data-accion="venta-responder" data-id="${esc(v.id)}" data-si="1">Sí, aceptar</button><button class="boton claro" data-accion="venta-responder" data-id="${esc(v.id)}" data-si="">No</button>`)).join('');
+    const opciones = v => V.companeros.map(c => `<option value="${esc(c.dni)}" ${c.dni === v.sugerido_dni ? 'selected' : ''}>${esc(c.nombre)}</option>`).join('');
+    const cobradas = V.cobradas.map(v => fila(
+      `Cobraste el ${esc(v.plan)} de <b>${esc(v.socio_nombre)}</b> el ${ddmm(v.fecha)}. ¿Lo vendió otra persona?`,
+      `${v.sugerido ? `💡 ${esc(v.sugerido)} habló con este socio hace poco. ` : ''}Si no hacés nada, la venta queda para vos.`,
+      V.companeros.length ? `<select data-venta-dar="${esc(v.id)}" aria-label="Dar la venta a">${opciones(v)}</select><button class="boton claro" data-accion="venta-dar" data-id="${esc(v.id)}">Dársela</button>` : '')).join('');
+    const sede = V.de_la_sede.map(v => fila(
+      `${esc(v.nombre_cobro)} cobró el ${esc(v.plan)} de <b>${esc(v.socio_nombre)}</b> el ${ddmm(v.fecha)}.`,
+      v.te_sugiere ? '💡 Hablaste con este socio hace poco.' : '',
+      `<button class="boton claro" data-accion="venta-pedir" data-id="${esc(v.id)}">La vendí yo</button>`)).join('');
+    const espera = V.espera.map(v => `<p class="aclara">⏳ ${esc(v.plan)} de ${esc(v.socio_nombre)}: ${v.responde ? 'falta que responda ' + esc(v.responde) : 'lo deciden Lucía y Emanuel'}.</p>`).join('');
+    return `<section class="ventas-largas"><b>🏆 Planes de 3 meses o más</b>${pedidos}${cobradas}${sede}${espera}</section>`;
+  }
+
+  // Lucía y Emanuel deciden; coordinación ve cómo quedó
+  function bloqueVentasLargasSede(S) {
+    const lista = S.ventas_largas || [];
+    if (!lista.length) return '';
+    const disputa = lista.filter(v => v.estado === 'disputa');
+    const resto = lista.filter(v => v.estado === 'asignada' || v.estado === 'confirmada' || v.estado === 'pedida');
+    const botones = v => (tiene('admin') ? `<div class="fila-accion"><button class="boton verde" data-accion="venta-decidir" data-id="${esc(v.id)}" data-dni="${esc(v.hacia_dni)}">Es de ${esc(v.nombre_hacia)}</button>${v.dni_cobro ? `<button class="boton claro" data-accion="venta-decidir" data-id="${esc(v.id)}" data-dni="${esc(v.dni_cobro)}">Es de ${esc(v.nombre_cobro)}</button>` : ''}</div>` : '');
+    return `<section class="grupo"><h2>🏆 Planes de 3 meses o más <span class="cuenta">${lista.length}</span></h2>
+      ${disputa.map(v => `<article class="tarjeta"><div class="cabeza" style="display:grid;gap:2px;padding:12px 14px"><span class="socio">${esc(v.socio_nombre)}</span><span class="profe">${esc(v.plan)} · cobró ${esc(v.nombre_cobro)} · lo pide ${esc(v.nombre_hacia)}</span><span class="situacion">No se pusieron de acuerdo: hay que decidir.</span></div>${botones(v)}</article>`).join('')}
+      ${resto.length ? `<div class="envoltura-tabla"><table class="tabla compacta"><thead><tr><th>Día</th><th>Socio</th><th>Cobró</th><th>Quedó para</th></tr></thead><tbody>${resto.map(v => `<tr><td>${ddmm(v.fecha)}</td><td>${esc(v.socio_nombre)}</td><td>${esc(v.nombre_cobro)}</td><td>${v.estado === 'pedida' ? `⏳ falta que responda ${esc(v.nombre_responde)}` : esc(v.nombre_vendio)}</td></tr>`).join('')}</tbody></table></div>` : ''}
+    </section>`;
+  }
+
+  const ventasAvisadas = {};
+  function avisarVentas() {
+    const V = E.dia && E.dia.ventas_largas;
+    if (!V) return;
+    V.pedidos.forEach(v => {
+      if (ventasAvisadas[v.id]) return;
+      ventasAvisadas[v.id] = true;
+      push('Una venta para revisar', `${v.pide} te escribió por el ${v.plan} de ${v.socio_nombre}.`);
+    });
   }
 
   // ---------- Ventas ----------
@@ -950,6 +999,7 @@
       ${S.personas.some(p => p.en_vivo && p.en_vivo.color === 'rojo') ? `<div class="alerta-roja">🔴 Para mirar: ${S.personas.filter(p => p.en_vivo && p.en_vivo.color === 'rojo').map(p => esc(p.nombre.split(' ')[0])).join(', ')}</div>` : ''}
       ${bloqueBeneficios(S)}
       ${personas}
+      ${bloqueVentasLargasSede(S)}
       ${bloqueVentas(S)}
       ${bloqueStock(S)}
       <section class="grupo"><h2>Atrasadas, 2 días o más <span class="cuenta">${S.alertas.length}</span></h2>${alertas}</section>
@@ -1260,6 +1310,16 @@
       const comentario = app.querySelector(`[data-comentario="${CSS.escape(el.dataset.id)}"]`).value;
       el.disabled = true;
       try { await cliente.llamar('garantia_decidir', { id: el.dataset.id, estado: el.dataset.estado, comentario }); aviso('Decisión guardada.'); cargarVista(); } catch (e) { el.disabled = false; falla(e); }
+    } else if (a === 'venta-dar' || a === 'venta-pedir' || a === 'venta-responder' || a === 'venta-decidir') {
+      el.disabled = true;
+      try {
+        if (a === 'venta-dar') await cliente.llamar('venta_larga_pedir', { id: el.dataset.id, dni: app.querySelector(`[data-venta-dar="${CSS.escape(el.dataset.id)}"]`).value });
+        if (a === 'venta-pedir') await cliente.llamar('venta_larga_pedir', { id: el.dataset.id });
+        if (a === 'venta-responder') await cliente.llamar('venta_larga_responder', { id: el.dataset.id, acepta: !!el.dataset.si });
+        if (a === 'venta-decidir') await cliente.llamar('venta_larga_decidir', { id: el.dataset.id, dni: el.dataset.dni });
+        aviso('Guardado.');
+        cargarVista();
+      } catch (e) { el.disabled = false; falla(e); }
     } else if (a === 'beneficio') {
       el.disabled = true;
       try { await cliente.llamar('beneficio_decidir', { id: el.dataset.id, estado: el.dataset.estado }); aviso('Guardado.'); cargarVista(); } catch (e) { el.disabled = false; falla(e); }
