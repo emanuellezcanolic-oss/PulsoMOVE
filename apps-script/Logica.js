@@ -83,7 +83,7 @@ function leerToken(token, ahoraMs, secreto, hmac) {
 const CANALES = ['MP', 'AU', 'MG', 'LL', 'PR', 'SIN CONTACTO'];
 const RESULTADOS = ['VOLVIÓ', 'VUELVE', 'RESERVA', 'PAGÓ', 'PAGA', 'VACACIONES', 'PAUSA', 'SALUD', 'HORARIOS',
                     'PRECIO', 'BAJA', 'NO CONTESTA', 'TEL MAL', 'NOTIFICADO', 'ENCUESTA ENVIADA', 'SALUDADO', 'SIN CAMBIO', 'SEGUIDO', 'HECHO',
-                    'AGENDADA', 'REPROGRAMADA', 'SE HIZO', 'NO SE HACE', 'CORREGIDO', 'MULTISEDE', 'DE PASO', 'LO SIGUE EL PROFE', 'LO CAMBIA EL PROFE', 'NO HACE FALTA'];
+                    'AGENDADA', 'REPROGRAMADA', 'SE HIZO', 'NO SE HACE', 'CORREGIDO', 'MULTISEDE', 'DE PASO', 'LO SIGUE EL PROFE', 'LO CAMBIA EL PROFE', 'NO HACE FALTA', 'RESPONDIÓ'];
 const PIDEN_FECHA = ['VUELVE', 'PAGA', 'VACACIONES', 'AGENDADA', 'REPROGRAMADA'];   // la fecha se pide solo en estos: en los demás no aparece
 const PREGUNTA_FECHA = { VUELVE: '¿Qué día vuelve?', PAGA: '¿Qué día paga?', VACACIONES: '¿Qué día vuelve de vacaciones?', AGENDADA: '¿Qué día es la evaluación?', REPROGRAMADA: '¿Para qué día quedó?' };
 // El desplegable de resultados, por categoría
@@ -95,6 +95,31 @@ const GRUPOS_RESULTADO = [
   ['No se pudo hablar', ['NO CONTESTA', 'TEL MAL']],
 ];
 const PIDEN_DETALLE = ['BAJA', 'SIN CAMBIO', 'NO SE HACE'];
+
+// Las respuestas posibles según lo que pide cada tarea (Emanuel, 05/11/2026). Lo que no está acá muestra la lista completa.
+const NO_SE_PUDO = ['No se pudo hablar', [['NO CONTESTA', 'No contesta'], ['TEL MAL', 'El teléfono está mal']]];
+const MOTIVOS = t => [t, [['PRECIO', 'Por el precio'], ['HORARIOS', 'No le sirven los horarios'], ['SALUD', 'Por salud'], ['PAUSA', 'Hace una pausa'], ['BAJA', 'Se da de baja']]];
+const AVISADO = ['Solo se le avisó', [['NOTIFICADO', 'Le escribí: espero respuesta']]];
+const RESULTADOS_POR_TIPO = [
+  ['Socio nuevo · semana 2', [['Respondió', [['RESPONDIÓ', 'Respondió el mensaje'], ['RESERVA', 'Respondió y quedó con turnos']]], AVISADO, MOTIVOS('Qué le pasa'), NO_SE_PUDO]],
+  ['Socio nuevo', [['Ya se resolvió', [['RESERVA', 'Quedó con turnos reservados']]], AVISADO, MOTIVOS('Por qué no reserva'), NO_SE_PUDO]],
+  ['Le vence el plan', [['Ya se resolvió', [['PAGÓ', 'Renovó'], ['RESERVA', 'Dejó turnos reservados']]], ['Quedó en una fecha', [['PAGA', 'Va a renovar'], ['VACACIONES', 'Se va de vacaciones']]], AVISADO, MOTIVOS('Por qué no renueva'), NO_SE_PUDO]],
+  ['Vence', [['Ya se resolvió', [['PAGÓ', 'Renovó'], ['RESERVA', 'Dejó turnos reservados']]], ['Quedó en una fecha', [['PAGA', 'Va a renovar'], ['VACACIONES', 'Se va de vacaciones']]], AVISADO, MOTIVOS('Por qué no renueva'), NO_SE_PUDO]],
+  ['Vencieron', [['Ya se resolvió', [['PAGÓ', 'Renovó']]], ['Quedó en una fecha', [['PAGA', 'Va a renovar'], ['VUELVE', 'Vuelve más adelante']]], AVISADO, MOTIVOS('Por qué no renovó'), NO_SE_PUDO]],
+  ['Socio antiguo', [['Ya se resolvió', [['VOLVIÓ', 'Volvió'], ['RESERVA', 'Reservó un turno']]], ['Quedó en una fecha', [['VUELVE', 'Vuelve más adelante']]], AVISADO, MOTIVOS('Por qué no vuelve'), NO_SE_PUDO]],
+  ['Para hablar cuando vengan', [['Ya se resolvió', [['RESERVA', 'Le enseñé y reservó']]], ['Solo se le avisó', [['NOTIFICADO', 'Le expliqué, todavía no reservó']]], MOTIVOS('Qué le pasa')]],
+  ['De vacaciones', [['Ya se resolvió', [['VOLVIÓ', 'Volvió'], ['RESERVA', 'Reservó un turno']]], ['Quedó en una fecha', [['VACACIONES', 'Sigue de vacaciones']]], AVISADO, MOTIVOS('Qué le pasa'), NO_SE_PUDO]],
+  ['Riesgo alto', [['Ya se resolvió', [['PAGÓ', 'Renovó'], ['VOLVIÓ', 'Volvió'], ['RESERVA', 'Reservó un turno']]], ['Quedó en una fecha', [['VUELVE', 'Vuelve'], ['VACACIONES', 'Se va de vacaciones']]], AVISADO, MOTIVOS('Por qué no viene'), NO_SE_PUDO]],
+  ['Pagó y no viene', [['Ya se resolvió', [['VOLVIÓ', 'Volvió'], ['RESERVA', 'Reservó un turno']]], ['Quedó en una fecha', [['VUELVE', 'Vuelve'], ['VACACIONES', 'Está de vacaciones']]], AVISADO, MOTIVOS('Por qué no viene'), NO_SE_PUDO]],
+  ['Faltó', [['Ya se resolvió', [['VOLVIÓ', 'Volvió'], ['RESERVA', 'Reservó un turno']]], ['Quedó en una fecha', [['VUELVE', 'Vuelve'], ['VACACIONES', 'Está de vacaciones']]], AVISADO, MOTIVOS('Por qué faltó'), NO_SE_PUDO]],
+  ['Viene menos', [['Ya se resolvió', [['VOLVIÓ', 'Volvió a venir'], ['RESERVA', 'Reservó un turno']]], ['Quedó en una fecha', [['VUELVE', 'Vuelve'], ['VACACIONES', 'Está de vacaciones']]], AVISADO, MOTIVOS('Por qué viene menos'), NO_SE_PUDO]],
+];
+
+function resultadosDe(tipo) {
+  const t = String(tipo);
+  const f = RESULTADOS_POR_TIPO.find(x => t.indexOf(x[0]) === 0);
+  return f ? f[1] : GRUPOS_RESULTADO.map(g => [g[0], g[1].map(v => [v, v])]);
+}
 
 // Tareas que no se marcan a mano: se dan por hechas solo cuando MOVE muestra el dato cargado.
 const SE_VERIFICAN_EN_MOVE = ['Asignarle profesor', 'Completar ficha', 'Corregir calendario'];
@@ -257,8 +282,8 @@ function puntuar(valores, objetivos) {
 // Qué se hace primero. Arriba, lo que se pierde si se deja pasar: en las rondas de octubre, contactar antes del vencimiento rindió 78% contra 62%.
 const NIVELES = [
   { n: 1, emoji: '🔴', titulo: 'Primero esto', ayuda: 'Si se deja pasar, se puede perder el socio.' },
-  { n: 2, emoji: '🟠', titulo: 'Después', ayuda: 'Cuidan al socio y ordenan su seguimiento.' },
-  { n: 3, emoji: '🟢', titulo: 'Cuando tengas un rato', ayuda: 'Suman, pero pueden esperar.' },
+  { n: 2 },   // sin título: siguen en orden, y "después" o "cuando tengas un rato" confundían (Emanuel, 05/11/2026)
+  { n: 3 },
 ];
 const TIPOS_NIVEL_1 = ['Apertura', 'Pagó y no viene', 'Le vence el plan', 'Vence', 'Socio nuevo', 'Vencieron'];   // el orden de urgencia de Emanuel (03/11/2026)
 const TIPOS_NIVEL_3 = ['Socio antiguo', 'Revisar profesor', 'Completar ficha', 'Asignarle profesor', 'Cierre'];

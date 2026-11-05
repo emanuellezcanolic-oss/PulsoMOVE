@@ -224,6 +224,32 @@ test('sede: alertas desde 2 días hábiles', () => {
   assert.ok(!r.data.personas.some(p => p.sede === 'puelo' || p.dni === '26555666'));
 });
 
+test('reconocimientos: recepción registra con nombre y apellido, autoriza solo admin', () => {
+  const d = equipo({ tareas: [] });
+  const ana = entrar(d);
+  assert.equal(pedir(d, { accion: 'beneficio_crear', token: ana, socio_nombre: 'Marta', nuevo_socio: 'Juan Paz' }).error, 'datos_invalidos');
+  const r = pedir(d, { accion: 'beneficio_crear', token: ana, socio_nombre: 'Marta Quiroga', nuevo_socio: 'Juan Paz' });
+  assert.equal(r.ok, true);
+  const coord = entrar(d, '25111222', '0907'), adm = entrar(d, '20000001', '0907');
+  assert.deepEqual(pedir(d, { accion: 'sede', token: coord }).data.beneficios, []);
+  assert.equal(pedir(d, { accion: 'beneficio_decidir', token: coord, id: r.data.id, estado: 'aprobada' }).error, 'prohibido');
+  assert.equal(pedir(d, { accion: 'beneficio_decidir', token: ana, id: r.data.id, estado: 'aprobada' }).error, 'prohibido');
+  const vista = () => pedir(d, { accion: 'sede', token: adm, sede: 'bolson' }).data.beneficios;
+  assert.equal(vista()[0].nuevo_socio, 'Juan Paz');
+  assert.equal(pedir(d, { accion: 'beneficio_decidir', token: adm, id: r.data.id, estado: 'aprobada' }).ok, true);
+  assert.equal(vista()[0].estado, 'aprobada');
+  pedir(d, { accion: 'beneficio_decidir', token: adm, id: r.data.id, estado: 'aplicada' });
+  assert.equal(vista().length, 0);
+});
+
+test('reconocimientos: la constancia que llega dos veces se guarda una', () => {
+  const d = equipo({ tareas: [] });
+  const carga = () => pedir(d, { accion: 'cargar_beneficios', clave: 'clave-prueba', filas: [{ id: 'constancia-7-2026-11-09', sede: 'bolson', socio_nombre: 'Ana Paz', detalle: '14 días' }] });
+  assert.equal(carga().data.nuevos, 1);
+  assert.equal(carga().data.nuevos, 0);
+  assert.equal(d.repo.leer('beneficios')[0].tipo, 'constancia');
+});
+
 test('uso: registra por persona y solo lo ve quien coordina sin atender recepción', () => {
   const d = equipo({ tareas: [] });
   d.t = Date.parse('2026-11-09T14:00:00Z');

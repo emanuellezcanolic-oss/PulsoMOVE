@@ -140,7 +140,7 @@ test('NOTIFICADO: un recordatorio enviado no pide fecha ni motivo', () => {
 test('resultados por categoría: cada uno una sola vez, y lo que queda afuera tiene su propio formulario', () => {
   const agrupados = L.GRUPOS_RESULTADO.flatMap(g => g[1]);
   assert.equal(new Set(agrupados).size, agrupados.length);
-  assert.deepEqual(L.RESULTADOS.filter(r => agrupados.indexOf(r) < 0).sort(), ['AGENDADA', 'CORREGIDO', 'DE PASO', 'ENCUESTA ENVIADA', 'HECHO', 'LO CAMBIA EL PROFE', 'LO SIGUE EL PROFE', 'MULTISEDE', 'NO HACE FALTA', 'NO SE HACE', 'REPROGRAMADA', 'SALUDADO', 'SE HIZO', 'SEGUIDO', 'SIN CAMBIO']);
+  assert.deepEqual(L.RESULTADOS.filter(r => agrupados.indexOf(r) < 0).sort(), ['AGENDADA', 'CORREGIDO', 'DE PASO', 'ENCUESTA ENVIADA', 'HECHO', 'LO CAMBIA EL PROFE', 'LO SIGUE EL PROFE', 'MULTISEDE', 'NO HACE FALTA', 'NO SE HACE', 'REPROGRAMADA', 'RESPONDIÓ', 'SALUDADO', 'SE HIZO', 'SEGUIDO', 'SIN CAMBIO']);
   assert.ok(agrupados.every(r => L.RESULTADOS.indexOf(r) >= 0));
 });
 
@@ -361,6 +361,16 @@ test('aviso sin uso: va primero e invita a seguir, con título que cambia', () =
   const a = L.proximoAviso(ctxAviso({ minutosSinUso: 41, minuto: 9 * 60, racha: 5 }));
   assert.equal(a.clave.indexOf('sin-uso'), 0);
   assert.notEqual(a.titulo, L.proximoAviso(ctxAviso({ minutosSinUso: 41, minuto: 9 * 60 + 40 })).titulo);
+});
+
+test('resultados: cada tarea muestra solo los que le corresponden, y todos son válidos', () => {
+  const valores = t => L.resultadosDe(t).flatMap(g => g[1].map(o => o[0]));
+  assert.ok(valores('Le vence el plan esta semana').includes('PAGÓ'));
+  assert.ok(!valores('Le vence el plan esta semana').includes('VOLVIÓ'));
+  assert.ok(!valores('Socio nuevo · semana 1: confirmar rutina y turnos fijos').includes('PAGÓ'));
+  assert.ok(valores('Socio nuevo · semana 2: mensaje de recepción (obligatorio)').includes('RESPONDIÓ'));
+  assert.ok(valores('Algo nuevo').includes('VOLVIÓ'));
+  ['Socio nuevo · semana 2', 'Socio nuevo · semana 1', 'Le vence el plan', 'Vence en 7 días', 'Vencieron y no renovaron', 'Socio antiguo', 'Para hablar cuando vengan', 'De vacaciones', 'Riesgo alto', 'Pagó y no viene', 'Faltó toda la semana', 'Viene menos que antes'].forEach(t => valores(t).forEach(v => assert.ok(L.RESULTADOS.includes(v), t + ': ' + v)));
 });
 
 test('aviso de media hora: recomienda y recuerda lo pendiente', () => {

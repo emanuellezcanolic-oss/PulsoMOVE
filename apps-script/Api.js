@@ -191,7 +191,7 @@ function vistaSede(req, deps) {
     .filter(t => t.dias_pendiente >= DIAS_ALERTA)
     .sort((a, b) => b.dias_pendiente - a.dias_pendiente || ordenTareas(a, b));
   const garantias = deps.repo.leer('garantia').filter(g => g.sede === sede && g.estado === 'pendiente');
-  return { hoy: hoy, sede: sede, personas: personas, alertas: alertas, garantias: garantias };
+  return { hoy: hoy, sede: sede, personas: personas, alertas: alertas, garantias: garantias, beneficios: beneficiosParaAutorizar(usuario, deps) };
 }
 
 // Lista de una persona tal como la ve ella, con lo que marcó en cada tarea. Admin: cualquiera; coordinador: su sede.
@@ -252,6 +252,67 @@ function garantiaDecidir(req, deps) {
   g.decidido_en = new Date(deps.ahora()).toISOString();
   deps.repo.escribir('garantia', garantias);
   return {};
+}
+
+// ---------- Reconocimientos a socios: los registra recepción, los autorizan Lucía y Emanuel ----------
+
+const ESTADOS_BENEFICIO = ['aprobada', 'rechazada', 'aplicada'];
+const DIAS_VER_BENEFICIOS = 60;
+
+// Nombre y apellido: sin eso no se puede encontrar a la persona para el cupón
+function nombreCompleto(s) {
+  return texto(s).split(/\s+/).filter(Boolean).length >= 2;
+}
+
+function beneficioCrear(req, deps) {
+  const { usuario } = sesion(req, deps);
+  if (!nombreCompleto(req.socio_nombre) || !nombreCompleto(req.nuevo_socio)) falla('datos_invalidos');
+  const id = 'B-' + deps.aleatorio(6);
+  deps.repo.agregar('beneficios', {
+    id: id, ts: new Date(deps.ahora()).toISOString(), tipo: 'referido', sede: usuario.sede, socio_nombre: texto(req.socio_nombre), nuevo_socio: texto(req.nuevo_socio),
+    detalle: texto(req.detalle), registra_dni: usuario.dni, estado: 'pendiente', decide_dni: '', comentario: '', decidido_en: '',
+  });
+  return { id: id };
+}
+
+function beneficioDecidir(req, deps) {
+  const { usuario } = sesion(req, deps);
+  if (!tieneRol(usuario, 'admin')) falla('prohibido');
+  const estado = texto(req.estado);
+  if (ESTADOS_BENEFICIO.indexOf(estado) < 0) falla('datos_invalidos');
+  const filas = deps.repo.leer('beneficios');
+  const b = filas.find(x => x.id === texto(req.id));
+  if (!b) falla('no_existe');
+  b.estado = estado;
+  b.decide_dni = usuario.dni;
+  b.comentario = texto(req.comentario);
+  b.decidido_en = new Date(deps.ahora()).toISOString();
+  deps.repo.escribir('beneficios', filas);
+  return {};
+}
+
+function cargarBeneficios(req, deps) {
+  exigirClave(req, deps);
+  if (!Array.isArray(req.filas)) falla('datos_invalidos');
+  const ya = {};
+  deps.repo.leer('beneficios').forEach(b => { ya[b.id] = true; });
+  let n = 0;
+  req.filas.forEach(f => {
+    if (!texto(f.id) || ya[f.id]) return;
+    ya[f.id] = true;
+    n++;
+    deps.repo.agregar('beneficios', {
+      id: texto(f.id), ts: new Date(deps.ahora()).toISOString(), tipo: 'constancia', sede: texto(f.sede), socio_nombre: texto(f.socio_nombre), nuevo_socio: '',
+      detalle: texto(f.detalle), registra_dni: '', estado: 'pendiente', decide_dni: '', comentario: '', decidido_en: '',
+    });
+  });
+  return { nuevos: n };
+}
+
+function beneficiosParaAutorizar(usuario, deps) {
+  if (!tieneRol(usuario, 'admin')) return [];
+  const desde = new Date(deps.ahora() - DIAS_VER_BENEFICIOS * 86400000).toISOString();
+  return deps.repo.leer('beneficios').filter(b => b.estado === 'pendiente' || b.estado === 'aprobada' || String(b.ts) >= desde).filter(b => b.estado === 'pendiente' || b.estado === 'aprobada');
 }
 
 // ---------- Pipeline (con clave) ----------
@@ -590,7 +651,7 @@ function respaldo(req, deps) {
   exigirClave(req, deps);
   const usuarios = deps.repo.leer('usuarios').map(u => { const c = Object.assign({}, u); delete c.pin_hash; delete c.sal; return c; });
   const out = { usuarios: usuarios };
-  ['tareas', 'registro', 'garantia', 'actividad', 'rendimiento', 'objetivos', 'cierres', 'profes', 'uso'].forEach(h => { out[h] = deps.repo.leer(h); });
+  ['tareas', 'registro', 'garantia', 'actividad', 'rendimiento', 'objetivos', 'cierres', 'profes', 'uso', 'beneficios'].forEach(h => { out[h] = deps.repo.leer(h); });
   return out;
 }
 
@@ -764,6 +825,9 @@ const ACCIONES = {
   usuarios_listar: usuariosListar,
   usuario_activo: usuarioActivo,
   uso: registrarUso,
+  beneficio_crear: beneficioCrear,
+  beneficio_decidir: beneficioDecidir,
+  cargar_beneficios: cargarBeneficios,
 };
 
 function manejar(req, deps) {

@@ -28,7 +28,9 @@
   function formularioDe(tipo) {
     const t = String(tipo);
     if (t.indexOf('Cumpleaños') === 0) return { resultado: 'SALUDADO', conCanal: true, detalle: 'Qué se hizo', boton: 'Listo, saludado' };
-    if (t.indexOf('Encuesta de baja') === 0) return { resultado: 'ENCUESTA ENVIADA', conCanal: true, detalle: 'Qué respondió', boton: 'Encuesta enviada' };
+    if (t.indexOf('Encuesta de baja: no respondió') === 0) return { conCanal: true, etiqueta: 'Qué pasó', opciones: [['ENCUESTA ENVIADA', 'No respondió: le mandé la encuesta'], ['RESPONDIÓ', 'Al final respondió: no hace falta la encuesta']], detalle: 'Qué dijo', boton: 'Guardar' };
+    if (t.indexOf('Encuesta de baja') === 0) return { conCanal: true, etiqueta: 'Qué pasó', opciones: [['NOTIFICADO', 'Le escribí: espero respuesta'], ['RESPONDIÓ', 'Respondió: ya sé por qué se va'], ['VUELVE', 'Va a volver']], consejo: 'Primero escribile vos, con tus palabras, para saber por qué se va. Si en 3 días no responde, te vuelve la tarea para mandarle la encuesta. Si responde, no se manda.', detalle: 'Qué dijo', boton: 'Guardar' };
+    if (t.indexOf('Felicitar por la constancia') === 0) return { resultado: 'SALUDADO', conCanal: true, detalle: 'Qué le dijiste o qué respondió', boton: 'Listo, felicitado' };
     if (t.indexOf('Apertura del turno') === 0) return { resultado: 'HECHO', conCanal: false, checklist: true, detalle: 'Si algo quedó sin hacer, contá por qué', boton: 'Listo' };
     if (t.indexOf('Seguimiento de consulta') === 0) return { resultado: 'SEGUIDO', conCanal: true, detalle: 'Qué respondió', boton: 'Seguimiento hecho' };
     if (t.indexOf('Coordinar') === 0) return { resultado: 'AGENDADA', conCanal: false, conFecha: true, consejo: 'Marcala recién cuando la evaluación ya esté agendada, con la fecha del turno. Después de esa fecha miramos en MOVE que se haya cargado.', detalle: 'Con quién y a qué hora', boton: 'Quedó agendada' };
@@ -208,7 +210,7 @@
       ${String(t.tipo).indexOf('Socio antiguo') === 0 ? `<div class="guia-audio"><b>Ideas para tu audio, con tus palabras</b><ol>${GUIA_ANTIGUO.map(g => `<li>${esc(g)}</li>`).join('')}</ol></div>` : ''}
       <div class="campos">
         <label class="campo">Canal<select name="canal" required><option value="">Elegí…</option>${opt(CANALES, NOMBRE_CANAL)}</select></label>
-        <label class="campo">Resultado<select name="resultado" required data-accion="resultado"><option value="">Elegí…</option>${GRUPOS_RESULTADO.map(g => `<optgroup label="${esc(g[0])}">${opt(g[1], NOMBRE_RESULTADO)}</optgroup>`).join('')}</select></label>
+        <label class="campo">Resultado<select name="resultado" required data-accion="resultado"><option value="">Elegí…</option>${resultadosDe(t.tipo).map(g => `<optgroup label="${esc(g[0])}">${g[1].map(o => `<option value="${esc(o[0])}">${esc(o[0] === o[1] ? (NOMBRE_RESULTADO[o[0]] || o[1]) : o[1])}</option>`).join('')}</optgroup>`).join('')}</select></label>
         <label class="campo" data-campo="fecha" hidden><span data-ayuda="fecha">Fecha</span><input name="fecha" type="date"></label>
         <label class="campo">Detalle <span class="opcional" data-ayuda="detalle">(opcional)</span><textarea name="detalle" maxlength="500" placeholder="Día y horario del turno, qué dijo…"></textarea></label>
       </div>
@@ -281,6 +283,7 @@
       ${E.paraAdelantar ? `<button class="boton adelantar ancho" data-accion="adelantar">${E.adelantar ? 'Ocultar las de los próximos días' : `⏩ Adelantar tareas (${E.paraAdelantar})`}</button>` : ''}
       <button class="boton ancho" data-accion="registrar">Registrar mensaje, consulta o venta</button>
       <button class="boton claro ancho" data-accion="garantia">Registrar pedido de garantía</button>
+      <button class="boton claro ancho" data-accion="trajo-socio">🎁 Un socio trajo a un socio nuevo</button>
       ${avisosPendientes() ? '<button class="boton claro ancho" data-accion="activar-avisos">🔔 Activar avisos en esta PC</button>' : ''}
       ${DEMO ? '<button class="boton claro ancho" data-accion="probar-cierre">Probar la pregunta de cierre</button>' : ''}
       <div class="recordatorio">Todo contacto termina con un turno reservado o una fecha.</div>`;
@@ -321,7 +324,7 @@
         <select data-accion="tipo" aria-label="Tipo de tarea"><option value="">Todos los tipos</option>${tipos.map(t => `<option ${E.tipo === t ? 'selected' : ''}>${esc(t)}</option>`).join('')}</select>
       </div>
       ${primera ? `<button class="empeza" data-accion="abrir" data-id="${esc(primera.id)}"><b>👉 Empezá por acá</b><span>${esc(primera.socio_nombre)} · ${esc(primera.tipo)}</span></button>` : ''}
-      ${porNivel.length ? porNivel.map(([n, grupos]) => `<section class="nivel nivel-${n.n}"><h2 class="nivel-titulo">${n.emoji} ${esc(n.titulo)}<small>${esc(n.ayuda)}</small></h2>${grupos.map(grupoHtml).join('')}</section>`).join('')
+      ${porNivel.length ? porNivel.map(([n, grupos]) => `<section class="nivel nivel-${n.n}">${n.titulo ? `<h2 class="nivel-titulo">${n.emoji} ${esc(n.titulo)}<small>${esc(n.ayuda)}</small></h2>` : ''}${grupos.map(grupoHtml).join('')}</section>`).join('')
         : `<div class="vacio">${E.filtro === 'pendientes' ? '¡No te quedan tareas pendientes! Si querés sumar, adelantá las de mañana.' : 'No hay tareas para mostrar.'}</div>`}
     </div></div>`;
   }
@@ -797,6 +800,20 @@
 
   // ---------- Sede ----------
 
+  // Solo llegan a Lucía y Emanuel
+  function bloqueBeneficios(S) {
+    const lista = S.beneficios || [];
+    if (!lista.length) return '';
+    const fila = b => `<article class="tarjeta"><div class="cabeza" style="display:grid;gap:2px;padding:12px 14px">
+        <span class="socio">${esc(b.socio_nombre)}</span>
+        <span class="profe">${b.tipo === 'referido' ? `Trajo a ${esc(b.nuevo_socio)}: en su próxima renovación de 3 meses paga 2` : `Constancia: ${esc(b.detalle)}`} · ${esc(SEDES[b.sede] || b.sede)}${b.detalle && b.tipo === 'referido' ? ' · ' + esc(b.detalle) : ''}</span>
+        ${b.estado === 'aprobada' ? '<span class="situacion">Autorizado: falta crear el cupón en MOVE</span>' : ''}</div>
+        <div class="fila-accion">${b.estado === 'pendiente'
+    ? `<button class="boton verde" data-accion="beneficio" data-id="${esc(b.id)}" data-estado="aprobada">Autorizar</button><button class="boton claro" data-accion="beneficio" data-id="${esc(b.id)}" data-estado="rechazada">Rechazar</button>`
+    : `<button class="boton verde" data-accion="beneficio" data-id="${esc(b.id)}" data-estado="aplicada">Cupón creado en MOVE</button>`}</div></article>`;
+    return `<section class="grupo"><h2>🎁 Reconocimientos para autorizar <span class="cuenta">${lista.length}</span></h2>${lista.map(fila).join('')}</section>`;
+  }
+
   function vistaSede() {
     if (E.personaDni) return vistaPersona();
     const selector = tiene('admin') ? `<div class="filtros">${Object.keys(SEDES).map(k => `<button class="chip" data-accion="sede-elegir" data-s="${k}" aria-pressed="${E.sedeElegida === k}">${SEDES[k]}</button>`).join('')}</div>` : '';
@@ -826,6 +843,7 @@
     return `${selector}<h1 class="titulo">${esc(SEDES[S.sede])} <span>·</span> ${esc(tituloDia(S.hoy))}</h1>
       <p class="bajada">Avance del equipo, tareas atrasadas y pedidos de garantía.</p>
       ${S.personas.some(p => p.en_vivo && p.en_vivo.color === 'rojo') ? `<div class="alerta-roja">🔴 Para mirar: ${S.personas.filter(p => p.en_vivo && p.en_vivo.color === 'rojo').map(p => esc(p.nombre.split(' ')[0])).join(', ')}</div>` : ''}
+      ${bloqueBeneficios(S)}
       ${personas}
       <section class="grupo"><h2>Atrasadas, 2 días o más <span class="cuenta">${S.alertas.length}</span></h2>${alertas}</section>
       <section class="grupo"><h2>Garantía de atención <span class="cuenta">${S.garantias.length}</span></h2><div class="frase">${esc(FRASE_GARANTIA)}</div><p class="bajada" style="margin-top:8px">Se regala el mes siguiente. Decide el responsable de sede.</p>${garantias}</section>`;
@@ -883,6 +901,34 @@
           await cliente.llamar('garantia_crear', { socio_id: t ? t.socio_id : '', socio_nombre: socio, profe: String(f.get('profe') || (t ? t.profe : '')).trim(), motivo: String(f.get('motivo')).trim() });
           d.close();
           aviso('Pedido registrado. Le llega al responsable de sede.');
+        } catch (e) { btn.disabled = false; falla(e); }
+      };
+    });
+  }
+
+  function dialogoTrajoSocio() {
+    const nombres = (E.tareas || []).map(t => t.socio_nombre);
+    dialogo(`<h3>🎁 Un socio trajo a un socio nuevo</h3>
+      <p class="bajada" style="margin:0">Cuando renueve con un plan de 3 meses, paga 2. Lo autorizan Lucía y Emanuel.</p>
+      <form data-form="trajo" class="marca-form" style="border:0;padding:0">
+        <label class="campo">Nombre y apellido del socio que lo trajo<input name="socio" list="lista-socios" required></label>
+        <datalist id="lista-socios">${nombres.map(n => `<option value="${esc(n)}">`).join('')}</datalist>
+        <label class="campo">Nombre y apellido del socio nuevo<input name="nuevo" required></label>
+        <label class="campo">Detalle <span class="opcional">(opcional)</span><textarea name="detalle" maxlength="300"></textarea></label>
+        <div class="botones"><button class="boton verde">Registrar</button><button type="button" class="boton claro" data-cerrar>Cancelar</button></div>
+      </form>`, d => {
+      d.querySelector('[data-cerrar]').onclick = () => d.close();
+      d.querySelector('form').onsubmit = async ev => {
+        ev.preventDefault();
+        const f = new FormData(ev.target);
+        const socio = String(f.get('socio')).trim(), nuevo = String(f.get('nuevo')).trim();
+        if (socio.split(/\s+/).length < 2 || nuevo.split(/\s+/).length < 2) { aviso('Hace falta nombre y apellido de los dos.', true); return; }
+        const btn = ev.target.querySelector('button');
+        btn.disabled = true;
+        try {
+          await cliente.llamar('beneficio_crear', { socio_nombre: socio, nuevo_socio: nuevo, detalle: String(f.get('detalle') || '').trim() });
+          d.close();
+          aviso('Registrado. Les llega a Lucía y Emanuel para autorizarlo.');
         } catch (e) { btn.disabled = false; falla(e); }
       };
     });
@@ -1080,6 +1126,7 @@
     else if (a === 'rend-lista') { E.vista = 'sede'; E.personaDni = el.dataset.dni; E.persona = null; render(); cargarVista(); }
     else if (a === 'cerrar') { E.abierta = null; E.errorForm = ''; render(); }
     else if (a === 'garantia') dialogoGarantia();
+    else if (a === 'trajo-socio') dialogoTrajoSocio();
     else if (a === 'reintentar') { E.errorCarga = ''; render(); cargarVista(); }
     else if (a === 'registrar') dialogoRegistrar();
     else if (a === 'rend-mes') { E.rendMes = el.dataset.m; E.rend = null; render(); cargarVista(); }
@@ -1103,6 +1150,9 @@
       const comentario = app.querySelector(`[data-comentario="${CSS.escape(el.dataset.id)}"]`).value;
       el.disabled = true;
       try { await cliente.llamar('garantia_decidir', { id: el.dataset.id, estado: el.dataset.estado, comentario }); aviso('Decisión guardada.'); cargarVista(); } catch (e) { el.disabled = false; falla(e); }
+    } else if (a === 'beneficio') {
+      el.disabled = true;
+      try { await cliente.llamar('beneficio_decidir', { id: el.dataset.id, estado: el.dataset.estado }); aviso('Guardado.'); cargarVista(); } catch (e) { el.disabled = false; falla(e); }
     } else if (a === 'nuevo-pin') {
       if (!confirm(`¿Generar un PIN nuevo para ${el.dataset.nombre}? El anterior deja de funcionar.`)) return;
       try {
