@@ -242,6 +242,15 @@ test('reconocimientos: recepción registra con nombre y apellido, autoriza solo 
   assert.equal(vista().length, 0);
 });
 
+test('reconocimientos: lo que elige el socio llega a quien autoriza', () => {
+  const t = tarea({ id: 'f', sede: 'bolson', socio_id: 'constancia-7', tipo: 'Felicitar por la constancia', asignado_dni: '30123456', fecha: '2026-11-09' });
+  const d = equipo({ tareas: [t] });
+  pedir(d, { accion: 'cargar_beneficios', clave: 'clave-prueba', filas: [{ id: 'constancia-7-2026-11-09', sede: 'bolson', socio_nombre: 'Ana Paz', detalle: '14 días con QR' }] });
+  const r = pedir(d, { accion: 'marcar', token: entrar(d), id_marca: 'm', tarea_id: 'f', canal: 'PR', resultado: 'ELIGIÓ PRODUCTO', detalle: 'Proteína' });
+  assert.equal(r.ok, true);
+  assert.equal(d.repo.leer('beneficios')[0].detalle, '14 días con QR · Eligió producto: Proteína');
+});
+
 test('reconocimientos: la constancia que llega dos veces se guarda una', () => {
   const d = equipo({ tareas: [] });
   const carga = () => pedir(d, { accion: 'cargar_beneficios', clave: 'clave-prueba', filas: [{ id: 'constancia-7-2026-11-09', sede: 'bolson', socio_nombre: 'Ana Paz', detalle: '14 días' }] });

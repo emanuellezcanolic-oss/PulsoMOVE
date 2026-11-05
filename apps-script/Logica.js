@@ -83,7 +83,7 @@ function leerToken(token, ahoraMs, secreto, hmac) {
 const CANALES = ['MP', 'AU', 'MG', 'LL', 'PR', 'SIN CONTACTO'];
 const RESULTADOS = ['VOLVIÓ', 'VUELVE', 'RESERVA', 'PAGÓ', 'PAGA', 'VACACIONES', 'PAUSA', 'SALUD', 'HORARIOS',
                     'PRECIO', 'BAJA', 'NO CONTESTA', 'TEL MAL', 'NOTIFICADO', 'ENCUESTA ENVIADA', 'SALUDADO', 'SIN CAMBIO', 'SEGUIDO', 'HECHO',
-                    'AGENDADA', 'REPROGRAMADA', 'SE HIZO', 'NO SE HACE', 'CORREGIDO', 'MULTISEDE', 'DE PASO', 'LO SIGUE EL PROFE', 'LO CAMBIA EL PROFE', 'NO HACE FALTA', 'RESPONDIÓ'];
+                    'AGENDADA', 'REPROGRAMADA', 'SE HIZO', 'NO SE HACE', 'CORREGIDO', 'MULTISEDE', 'DE PASO', 'LO SIGUE EL PROFE', 'LO CAMBIA EL PROFE', 'NO HACE FALTA', 'RESPONDIÓ', 'ELIGIÓ PRODUCTO', 'ELIGIÓ RECOVERY', 'LO PIENSA'];
 const PIDEN_FECHA = ['VUELVE', 'PAGA', 'VACACIONES', 'AGENDADA', 'REPROGRAMADA'];   // la fecha se pide solo en estos: en los demás no aparece
 const PREGUNTA_FECHA = { VUELVE: '¿Qué día vuelve?', PAGA: '¿Qué día paga?', VACACIONES: '¿Qué día vuelve de vacaciones?', AGENDADA: '¿Qué día es la evaluación?', REPROGRAMADA: '¿Para qué día quedó?' };
 // El desplegable de resultados, por categoría
@@ -285,7 +285,7 @@ const NIVELES = [
   { n: 2 },   // sin título: siguen en orden, y "después" o "cuando tengas un rato" confundían (Emanuel, 05/11/2026)
   { n: 3 },
 ];
-const TIPOS_NIVEL_1 = ['Apertura', 'Pagó y no viene', 'Le vence el plan', 'Vence', 'Socio nuevo', 'Vencieron'];   // el orden de urgencia de Emanuel (03/11/2026)
+const TIPOS_NIVEL_1 = ['Encargo', 'Apertura', 'Pagó y no viene', 'Le vence el plan', 'Vence', 'Socio nuevo', 'Vencieron'];   // el orden de urgencia de Emanuel (03/11/2026)
 const TIPOS_NIVEL_3 = ['Socio antiguo', 'Revisar profesor', 'Completar ficha', 'Asignarle profesor', 'Cierre'];
 
 // Lo que quedó de 2 días o más sube un escalón: lo no hecho no se pierde al fondo de la lista. El cierre siempre va al final.

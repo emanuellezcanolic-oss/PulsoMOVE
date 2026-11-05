@@ -134,6 +134,7 @@ function marcar(req, deps) {
   t.estado = 'hecha';
   t.hecha_en = ts;
   deps.repo.escribir('tareas', tareas);
+  anotarEleccion(t, marca, deps);
   return {};
 }
 
@@ -252,6 +253,16 @@ function garantiaDecidir(req, deps) {
   g.decidido_en = new Date(deps.ahora()).toISOString();
   deps.repo.escribir('garantia', garantias);
   return {};
+}
+
+// Lo que eligió el socio le llega a quien autoriza, junto con el reconocimiento
+function anotarEleccion(t, marca, deps) {
+  if (String(t.tipo).indexOf('Felicitar') !== 0 || marca.resultado.indexOf('ELIGIÓ') !== 0) return;
+  const filas = deps.repo.leer('beneficios');
+  const b = filas.filter(x => x.tipo === 'constancia' && String(x.id).indexOf(t.socio_id + '-') === 0 && x.estado === 'pendiente').pop();
+  if (!b) return;
+  b.detalle = texto(b.detalle) + ' · ' + (marca.resultado === 'ELIGIÓ RECOVERY' ? 'Eligió pack recovery' : 'Eligió producto') + (marca.detalle ? ': ' + marca.detalle : '');
+  deps.repo.escribir('beneficios', filas);
 }
 
 // ---------- Reconocimientos a socios: los registra recepción, los autorizan Lucía y Emanuel ----------
@@ -422,9 +433,9 @@ function valoresEnApp(dni, mes, tareas, registro, actividad, hoy) {
   const hechas = suyas.filter(t => t.estado === 'hecha');
   const aTiempo = hechas.filter(t => diasHabiles(t.pendiente_desde, fechaArgentina(t.hecha_en)) === 0);
   const marcas = registro.filter(r => r.dni === dni && delMes(r.ts, mes));
-  const contactos = marcas.filter(r => r.canal !== 'SIN CONTACTO' && !/^(Profes de hoy|Apertura|Cierre|Coordinar|Evaluación sin cargar|Entrena en otra sede|Revisar plan)/.test(r.tipo));
+  const contactos = marcas.filter(r => r.canal !== 'SIN CONTACTO' && !/^(Encargo|Felicitar|Invitar a escanear|Profes de hoy|Apertura|Cierre|Coordinar|Evaluación sin cargar|Entrena en otra sede|Revisar plan)/.test(r.tipo));
   const CON_FECHA = ['RESERVA', 'VUELVE', 'PAGA', 'PAGÓ', 'VOLVIÓ', 'VACACIONES'];
-  const reten = marcas.filter(r => !/^(Cumpleaños|Encuesta de baja|Revisar profesor|Seguimiento de consulta|Profes de hoy|Apertura|Cierre|Socio antiguo|Coordinar|Evaluación sin cargar|Entrena en otra sede|Revisar plan)/.test(r.tipo));
+  const reten = marcas.filter(r => !/^(Encargo|Felicitar|Invitar a escanear|Cumpleaños|Encuesta de baja|Revisar profesor|Seguimiento de consulta|Profes de hoy|Apertura|Cierre|Socio antiguo|Coordinar|Evaluación sin cargar|Entrena en otra sede|Revisar plan)/.test(r.tipo));
   const act = actividad.filter(a => a.dni === dni && delMes(a.ts, mes));
   const cuenta = t => act.filter(a => a.tipo === t).length;
   const encuestas = suyas.filter(t => String(t.tipo).indexOf('Encuesta de baja') === 0);
@@ -588,7 +599,7 @@ function valoresEnAppDia(dni, hoy, tareas, registro, actividad) {
   const esHoy = ts => fechaArgentina(ts) === hoy;
   return {
     hechas: tareas.filter(t => t.asignado_dni === dni && t.estado === 'hecha' && esHoy(t.hecha_en)).length,
-    mensajes: registro.filter(r => r.dni === dni && esHoy(r.ts) && r.canal !== 'SIN CONTACTO' && !/^(Profes de hoy|Apertura|Cierre|Coordinar|Evaluación sin cargar|Entrena en otra sede|Revisar plan)/.test(r.tipo)).length
+    mensajes: registro.filter(r => r.dni === dni && esHoy(r.ts) && r.canal !== 'SIN CONTACTO' && !/^(Encargo|Felicitar|Invitar a escanear|Profes de hoy|Apertura|Cierre|Coordinar|Evaluación sin cargar|Entrena en otra sede|Revisar plan)/.test(r.tipo)).length
       + actividad.filter(a => a.dni === dni && a.tipo === 'mensaje' && esHoy(a.ts)).length,
     consultas: actividad.filter(a => a.dni === dni && a.tipo === 'consulta' && esHoy(a.ts)).length,
   };
