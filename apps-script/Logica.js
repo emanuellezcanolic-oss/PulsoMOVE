@@ -278,6 +278,9 @@ function puntuar(valores, objetivos) {
   return { total: puntaje(filas), grupos: grupos, filas: filas, incentivo: cumplimiento == null ? null : cumplimiento >= UMBRAL_INCENTIVO };
 }
 
+// Lo que se cuenta en cada sede para los reconocimientos a socios (Emanuel, 05/11/2026). La lista se cambia acá.
+const PRODUCTOS_STOCK = ['Proteína ENA 930 g', 'Proteína ENA 453 g', 'Creatina ENA 350 g', 'Creatina ENA 150 g', 'Shaker ENA', 'Barritas', 'Café', 'Botas de presoterapia'];
+
 // ---------- Prioridad ----------
 // Qué se hace primero. Arriba, lo que se pierde si se deja pasar: en las rondas de octubre, contactar antes del vencimiento rindió 78% contra 62%.
 const NIVELES = [
@@ -285,7 +288,7 @@ const NIVELES = [
   { n: 2 },   // sin título: siguen en orden, y "después" o "cuando tengas un rato" confundían (Emanuel, 05/11/2026)
   { n: 3 },
 ];
-const TIPOS_NIVEL_1 = ['Encargo', 'Apertura', 'Pagó y no viene', 'Le vence el plan', 'Vence', 'Socio nuevo', 'Vencieron'];   // el orden de urgencia de Emanuel (03/11/2026)
+const TIPOS_NIVEL_1 = ['Encargo', 'Controlar stock', 'Apertura', 'Pagó y no viene', 'Le vence el plan', 'Vence', 'Socio nuevo', 'Vencieron'];   // el orden de urgencia de Emanuel (03/11/2026)
 const TIPOS_NIVEL_3 = ['Socio antiguo', 'Revisar profesor', 'Completar ficha', 'Asignarle profesor', 'Cierre'];
 
 // Lo que quedó de 2 días o más sube un escalón: lo no hecho no se pierde al fondo de la lista. El cierre siempre va al final.

@@ -32,6 +32,7 @@
     if (t.indexOf('Encuesta de baja') === 0) return { conCanal: true, etiqueta: 'Qué pasó', opciones: [['NOTIFICADO', 'Le escribí: espero respuesta'], ['RESPONDIÓ', 'Respondió: ya sé por qué se va'], ['VUELVE', 'Va a volver']], consejo: 'Primero escribile vos, con tus palabras, para saber por qué se va. Si en 3 días no responde, te vuelve la tarea para mandarle la encuesta. Si responde, no se manda.', detalle: 'Qué dijo', boton: 'Guardar' };
     if (t.indexOf('Felicitar por la constancia') === 0) return { conCanal: true, etiqueta: 'Qué eligió', opciones: [['ELIGIÓ PRODUCTO', 'Un producto'], ['ELIGIÓ RECOVERY', 'El pack recovery'], ['LO PIENSA', 'Lo va a pensar']], consejo: 'Decíselo por su nombre: se lo ganó con su constancia, no es un regalo. Lo que elija les llega a Lucía y Emanuel.', detalle: 'Qué producto eligió o qué dijo', boton: 'Guardar' };
     if (t.indexOf('Invitar a escanear') === 0) return { resultado: 'NOTIFICADO', conCanal: true, consejo: 'Ya viene con mucha constancia, pero sin QR no accede al reconocimiento. Mostrale cómo escanear en la próxima visita.', detalle: 'Qué dijo', boton: 'Listo, invitado' };
+    if (t.indexOf('Controlar stock') === 0) return { resultado: 'HECHO', conCanal: false, stock: true, consejo: 'Contá lo que hay de verdad. Si un número no coincide con MOVE, o el producto no está cargado, agregalo en MOVE.', detalle: 'Otros productos que haya, o algo para avisar', boton: 'Guardar conteo' };
     if (t.indexOf('Encargo') === 0) return { resultado: 'HECHO', conCanal: false, detalle: 'Si hay algo para contar', boton: 'Listo' };
     if (t.indexOf('Apertura del turno') === 0) return { resultado: 'HECHO', conCanal: false, checklist: true, detalle: 'Si algo quedó sin hacer, contá por qué', boton: 'Listo' };
     if (t.indexOf('Seguimiento de consulta') === 0) return { resultado: 'SEGUIDO', conCanal: true, detalle: 'Qué respondió', boton: 'Seguimiento hecho' };
@@ -193,6 +194,7 @@
       ${recomiendaAudio(t.tipo) ? `<div class="consejo-audio">🎙️ ${esc(AVISO_AUDIO)}</div>` : ''}
       ${f.consejo ? `<div class="consejo-audio">${esc(f.consejo)}</div>` : ''}
       ${f.checklist ? checklistHtml(itemsDe(t)) : ''}
+      ${f.stock ? `<div class="conteo-stock">${PRODUCTOS_STOCK.map(p => `<label class="campo">${esc(p)}<input type="number" min="0" max="99999" step="1" inputmode="numeric" required data-stock="${esc(p)}"></label>`).join('')}</div>` : ''}
       <div class="campos">${canal}
         ${f.opciones ? `<label class="campo">${esc(f.etiqueta)}<select name="resultado" required data-accion="resultado"><option value="">Elegí…</option>${f.opciones.map(o => `<option value="${esc(o[0])}">${esc(o[1])}</option>`).join('')}</select></label>` : ''}
         ${f.conFecha || f.opciones ? `<label class="campo" data-campo="fecha" ${f.conFecha ? '' : 'hidden'}><span data-ayuda="fecha">${esc(PREGUNTA_FECHA[f.resultado] || 'Fecha')}</span><input name="fecha" type="date" min="${esc(E.hoy)}" ${f.conFecha ? 'required' : ''}></label>` : ''}
@@ -802,6 +804,12 @@
 
   // ---------- Sede ----------
 
+  function bloqueStock(S) {
+    const lista = S.stock || [];
+    if (!lista.length) return '';
+    return `<section class="grupo"><h2>📦 Stock para reconocimientos</h2><div class="envoltura-tabla"><table class="tabla compacta"><thead><tr><th>Sede</th><th>Producto</th><th>Hay</th><th>Contó</th><th>Fecha</th></tr></thead><tbody>${lista.map(f => `<tr><td>${esc(SEDES[f.sede] || f.sede)}</td><td>${esc(f.producto)}</td><td class="num"><b>${esc(f.cantidad)}</b></td><td>${esc(f.nombre)}</td><td>${ddmm(f.fecha)}</td></tr>`).join('')}</tbody></table></div></section>`;
+  }
+
   // Solo llegan a Lucía y Emanuel
   function bloqueBeneficios(S) {
     const lista = S.beneficios || [];
@@ -846,6 +854,7 @@
       <p class="bajada">Avance del equipo, tareas atrasadas y pedidos de garantía.</p>
       ${S.personas.some(p => p.en_vivo && p.en_vivo.color === 'rojo') ? `<div class="alerta-roja">🔴 Para mirar: ${S.personas.filter(p => p.en_vivo && p.en_vivo.color === 'rojo').map(p => esc(p.nombre.split(' ')[0])).join(', ')}</div>` : ''}
       ${bloqueBeneficios(S)}
+      ${bloqueStock(S)}
       ${personas}
       <section class="grupo"><h2>Atrasadas, 2 días o más <span class="cuenta">${S.alertas.length}</span></h2>${alertas}</section>
       <section class="grupo"><h2>Garantía de atención <span class="cuenta">${S.garantias.length}</span></h2><div class="frase">${esc(FRASE_GARANTIA)}</div><p class="bajada" style="margin-top:8px">Se regala el mes siguiente. Decide el responsable de sede.</p>${garantias}</section>`;
@@ -1076,6 +1085,8 @@
         render();
         return;
       }
+      const conteo = [...form.querySelectorAll('[data-stock]')].map(i => ({ producto: i.dataset.stock, cantidad: i.value }));
+      if (conteo.length) marca.stock = conteo;
       const t = E.tareas.find(x => x.id === form.dataset.id);
       btn.disabled = true;
       const r = await cliente.marcar(Object.assign({ tarea_id: t.id, abierta_en: E.abiertaEn }, marca));

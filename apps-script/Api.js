@@ -120,6 +120,7 @@ function marcar(req, deps) {
   if (!t) falla('no_existe');
   if (t.asignado_dni !== usuario.dni) falla('prohibido');
   if (seVerificaEnMove(t.tipo) || esRecordatorio(t.tipo)) falla('datos_invalidos');
+  if (String(t.tipo).indexOf('Controlar stock') === 0 && !stockValido(req.stock)) falla('datos_invalidos');
   if (deps.repo.leer('registro').some(r => r.id_marca === idMarca)) return {};
   const ts = new Date(deps.ahora()).toISOString();
   const abierta = Date.parse(texto(req.abierta_en));
@@ -135,6 +136,7 @@ function marcar(req, deps) {
   t.hecha_en = ts;
   deps.repo.escribir('tareas', tareas);
   anotarEleccion(t, marca, deps);
+  guardarStock(t, req.stock, usuario, ts, deps);
   return {};
 }
 
@@ -192,7 +194,7 @@ function vistaSede(req, deps) {
     .filter(t => t.dias_pendiente >= DIAS_ALERTA)
     .sort((a, b) => b.dias_pendiente - a.dias_pendiente || ordenTareas(a, b));
   const garantias = deps.repo.leer('garantia').filter(g => g.sede === sede && g.estado === 'pendiente');
-  return { hoy: hoy, sede: sede, personas: personas, alertas: alertas, garantias: garantias, beneficios: beneficiosParaAutorizar(usuario, deps) };
+  return { hoy: hoy, sede: sede, personas: personas, alertas: alertas, garantias: garantias, beneficios: beneficiosParaAutorizar(usuario, deps), stock: ultimoStock(usuario, sede, deps) };
 }
 
 // Lista de una persona tal como la ve ella, con lo que marcó en cada tarea. Admin: cualquiera; coordinador: su sede.
@@ -253,6 +255,23 @@ function garantiaDecidir(req, deps) {
   g.decidido_en = new Date(deps.ahora()).toISOString();
   deps.repo.escribir('garantia', garantias);
   return {};
+}
+
+function stockValido(lista) {
+  return Array.isArray(lista) && lista.length > 0 && lista.every(x => x && texto(x.producto) && /^\d{1,5}$/.test(String(x.cantidad)));
+}
+
+function guardarStock(t, lista, usuario, ts, deps) {
+  if (String(t.tipo).indexOf('Controlar stock') !== 0) return;
+  lista.forEach(x => deps.repo.agregar('stock', { ts: ts, fecha: fechaArgentina(ts), sede: t.sede, dni: usuario.dni, nombre: usuario.nombre, producto: texto(x.producto), cantidad: String(x.cantidad) }));
+}
+
+// El último conteo de cada producto en cada sede
+function ultimoStock(usuario, sede, deps) {
+  const ve = tieneRol(usuario, 'admin') ? () => true : (tieneRol(usuario, 'coordinador') ? f => f.sede === sede : () => false);
+  const ultimo = {};
+  deps.repo.leer('stock').filter(ve).forEach(f => { const k = f.sede + '|' + f.producto; if (!ultimo[k] || String(f.ts) >= String(ultimo[k].ts)) ultimo[k] = f; });
+  return Object.keys(ultimo).sort().map(k => ultimo[k]);
 }
 
 // Lo que eligió el socio le llega a quien autoriza, junto con el reconocimiento
@@ -433,9 +452,9 @@ function valoresEnApp(dni, mes, tareas, registro, actividad, hoy) {
   const hechas = suyas.filter(t => t.estado === 'hecha');
   const aTiempo = hechas.filter(t => diasHabiles(t.pendiente_desde, fechaArgentina(t.hecha_en)) === 0);
   const marcas = registro.filter(r => r.dni === dni && delMes(r.ts, mes));
-  const contactos = marcas.filter(r => r.canal !== 'SIN CONTACTO' && !/^(Encargo|Felicitar|Invitar a escanear|Profes de hoy|Apertura|Cierre|Coordinar|Evaluación sin cargar|Entrena en otra sede|Revisar plan)/.test(r.tipo));
+  const contactos = marcas.filter(r => r.canal !== 'SIN CONTACTO' && !/^(Controlar stock|Encargo|Felicitar|Invitar a escanear|Profes de hoy|Apertura|Cierre|Coordinar|Evaluación sin cargar|Entrena en otra sede|Revisar plan)/.test(r.tipo));
   const CON_FECHA = ['RESERVA', 'VUELVE', 'PAGA', 'PAGÓ', 'VOLVIÓ', 'VACACIONES'];
-  const reten = marcas.filter(r => !/^(Encargo|Felicitar|Invitar a escanear|Cumpleaños|Encuesta de baja|Revisar profesor|Seguimiento de consulta|Profes de hoy|Apertura|Cierre|Socio antiguo|Coordinar|Evaluación sin cargar|Entrena en otra sede|Revisar plan)/.test(r.tipo));
+  const reten = marcas.filter(r => !/^(Controlar stock|Encargo|Felicitar|Invitar a escanear|Cumpleaños|Encuesta de baja|Revisar profesor|Seguimiento de consulta|Profes de hoy|Apertura|Cierre|Socio antiguo|Coordinar|Evaluación sin cargar|Entrena en otra sede|Revisar plan)/.test(r.tipo));
   const act = actividad.filter(a => a.dni === dni && delMes(a.ts, mes));
   const cuenta = t => act.filter(a => a.tipo === t).length;
   const encuestas = suyas.filter(t => String(t.tipo).indexOf('Encuesta de baja') === 0);
@@ -599,7 +618,7 @@ function valoresEnAppDia(dni, hoy, tareas, registro, actividad) {
   const esHoy = ts => fechaArgentina(ts) === hoy;
   return {
     hechas: tareas.filter(t => t.asignado_dni === dni && t.estado === 'hecha' && esHoy(t.hecha_en)).length,
-    mensajes: registro.filter(r => r.dni === dni && esHoy(r.ts) && r.canal !== 'SIN CONTACTO' && !/^(Encargo|Felicitar|Invitar a escanear|Profes de hoy|Apertura|Cierre|Coordinar|Evaluación sin cargar|Entrena en otra sede|Revisar plan)/.test(r.tipo)).length
+    mensajes: registro.filter(r => r.dni === dni && esHoy(r.ts) && r.canal !== 'SIN CONTACTO' && !/^(Controlar stock|Encargo|Felicitar|Invitar a escanear|Profes de hoy|Apertura|Cierre|Coordinar|Evaluación sin cargar|Entrena en otra sede|Revisar plan)/.test(r.tipo)).length
       + actividad.filter(a => a.dni === dni && a.tipo === 'mensaje' && esHoy(a.ts)).length,
     consultas: actividad.filter(a => a.dni === dni && a.tipo === 'consulta' && esHoy(a.ts)).length,
   };
@@ -662,7 +681,7 @@ function respaldo(req, deps) {
   exigirClave(req, deps);
   const usuarios = deps.repo.leer('usuarios').map(u => { const c = Object.assign({}, u); delete c.pin_hash; delete c.sal; return c; });
   const out = { usuarios: usuarios };
-  ['tareas', 'registro', 'garantia', 'actividad', 'rendimiento', 'objetivos', 'cierres', 'profes', 'uso', 'beneficios'].forEach(h => { out[h] = deps.repo.leer(h); });
+  ['tareas', 'registro', 'garantia', 'actividad', 'rendimiento', 'objetivos', 'cierres', 'profes', 'uso', 'beneficios', 'stock'].forEach(h => { out[h] = deps.repo.leer(h); });
   return out;
 }
 

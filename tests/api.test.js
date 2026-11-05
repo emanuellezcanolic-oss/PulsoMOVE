@@ -242,6 +242,19 @@ test('reconocimientos: recepción registra con nombre y apellido, autoriza solo 
   assert.equal(vista().length, 0);
 });
 
+test('stock: recepción cuenta y coordinación ve el último conteo', () => {
+  const t = tarea({ id: 's', sede: 'bolson', socio_id: 'stock-1', tipo: 'Controlar stock', asignado_dni: '30123456', fecha: '2026-11-09' });
+  const d = equipo({ tareas: [t], stock: [{ ts: '2026-11-01T10:00:00.000Z', fecha: '2026-11-01', sede: 'bolson', dni: 'x', nombre: 'Otra', producto: 'Shaker ENA', cantidad: '9' }, { ts: '2026-11-01T10:00:00.000Z', fecha: '2026-11-01', sede: 'puelo', dni: 'x', nombre: 'Otra', producto: 'Café', cantidad: '4' }] });
+  const ana = entrar(d);
+  const base = { accion: 'marcar', token: ana, tarea_id: 's', canal: 'PR', resultado: 'HECHO' };
+  assert.equal(pedir(d, { ...base, id_marca: 'a' }).error, 'datos_invalidos');
+  assert.equal(pedir(d, { ...base, id_marca: 'b', stock: [{ producto: 'Shaker ENA', cantidad: 'dos' }] }).error, 'datos_invalidos');
+  assert.equal(pedir(d, { ...base, id_marca: 'c', stock: [{ producto: 'Shaker ENA', cantidad: 2 }] }).ok, true);
+  const adm = pedir(d, { accion: 'sede', token: entrar(d, '20000001', '0907'), sede: 'bolson' }).data.stock;
+  assert.deepEqual(adm.map(f => [f.sede, f.producto, f.cantidad]), [['bolson', 'Shaker ENA', '2'], ['puelo', 'Café', '4']]);
+  assert.deepEqual(pedir(d, { accion: 'sede', token: entrar(d, '25111222', '0907') }).data.stock.map(f => f.sede), ['bolson']);
+});
+
 test('reconocimientos: lo que elige el socio llega a quien autoriza', () => {
   const t = tarea({ id: 'f', sede: 'bolson', socio_id: 'constancia-7', tipo: 'Felicitar por la constancia', asignado_dni: '30123456', fecha: '2026-11-09' });
   const d = equipo({ tareas: [t] });

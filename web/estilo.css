@@ -387,3 +387,4 @@ dialog h3 { margin: 0; font: 800 21px/1 var(--display); text-transform: uppercas
 .alerta-roja { margin: 8px 0 12px; padding: 10px 12px; border-radius: 8px; border: 1px solid var(--rojo); color: var(--rojo); font-weight: 700; }
 .hueco { display: inline-block; margin: 1px 4px 1px 0; color: var(--rojo); font-size: 12px; white-space: nowrap; }
 .sub-bloque { margin: 14px 0 6px; font-size: 13px; }
+.conteo-stock { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 8px; margin: 8px 0; }

@@ -9,6 +9,7 @@ const COLUMNAS = {
   actividad: ['id', 'ts', 'dni', 'sede', 'tipo', 'nombre', 'categoria', 'canal', 'origen', 'interes', 'detalle'],
   rendimiento: ['mes', 'dni', 'datos', 'actualizado'],
   uso: ['ts', 'dni', 'fecha', 'activos', 'quieta', 'otra'],
+  stock: ['ts', 'fecha', 'sede', 'dni', 'nombre', 'producto', 'cantidad'],
   beneficios: ['id', 'ts', 'tipo', 'sede', 'socio_nombre', 'nuevo_socio', 'detalle', 'registra_dni', 'estado', 'decide_dni', 'comentario', 'decidido_en'],
   objetivos: ['dni', 'clave', 'valor'],
   profes: ['fecha', 'sede', 'profe_id', 'profe', 'clase', 'qr', 'estado'],
