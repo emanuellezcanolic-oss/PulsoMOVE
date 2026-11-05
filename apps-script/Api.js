@@ -164,10 +164,22 @@ function vistaSede(req, deps) {
   const tareas = deps.repo.leer('tareas').filter(t => !esRecordatorio(t.tipo)
     && (equipo.some(u => u.dni === t.asignado_dni) || (t.sede === sede && !deOtraSede(t.asignado_dni))));
   const nombre = dni => (usuarios.find(u => u.dni === dni) || {}).nombre || '';
+  const ve = veUso(usuario);
+  const filasUso = ve ? deps.repo.leer('uso').filter(f => f.fecha === hoy) : [];
+  const registro = ve ? deps.repo.leer('registro') : [];
+  const diaSemana = new Date(hoy + 'T12:00:00Z').getUTCDay();
   const personas = equipo.map(u => {
     const suyas = tareas.filter(t => t.asignado_dni === u.dni);
     const hechas = suyas.filter(t => t.estado === 'hecha').map(t => fechaArgentina(t.hecha_en));
+    const inicio = aMinutoDelDia(u.hora_inicio), fin = aMinutoDelDia(u.hora_fin);
+    const enVivo = !ve ? {} : (() => {
+      const ahora = minutoAhora(deps);
+      const uso = usoDelDia(filasUso.filter(f => f.dni === u.dni), marcasDeTrabajo(registro, u.dni).filter(r => fechaArgentina(r.ts) === hoy), inicio, fin, ahora);
+      const pendientes = suyas.filter(t => t.estado === 'pendiente' && String(t.fecha) <= hoy).length;
+      return { en_vivo: estadoEnVivo({ uso: uso, inicio: inicio, fin: fin, ahora: ahora, pendientes: pendientes, habil: diaSemana >= 1 && diaSemana <= 5 }), uso_hoy: uso };
+    })();
     return {
+      ...enVivo,
       dni: u.dni, nombre: u.nombre, sede: u.sede, turno: u.turno,
       hechas_hoy: hechas.filter(f => f === hoy).length,
       pendientes: suyas.filter(t => t.estado === 'pendiente').length,
@@ -258,6 +270,9 @@ function cargarTareas(req, deps) {
   const r = fusionarCargaDetalle(deps.repo.leer('tareas'), nuevas, cerrar, fecha);
   deps.repo.escribir('tareas', r.filas);
   registrarVerificadas(r.filas, cerrar, deps);
+  const usoGuardado = deps.repo.leer('uso');
+  const usoVigente = usoGuardado.filter(f => String(f.fecha) >= sumarDias(fecha, -DIAS_GUARDAR_USO));
+  if (usoVigente.length < usoGuardado.length) deps.repo.escribir('uso', usoVigente);
   return { nuevas: r.nuevas, actualizadas: r.actualizadas, cerradas: r.cerradas };
 }
 
@@ -376,9 +391,45 @@ function serieTareas(dni, mes, tareas) {
   return Object.keys(dias).sort().map(f => ({ fecha: f, hechas: dias[f] }));
 }
 
+// Las horas de actividad las ve quien coordina sin atender recepción (Emanuel, 04/11/2026).
+function veUso(usuario) {
+  return (tieneRol(usuario, 'admin') || tieneRol(usuario, 'coordinador')) && !tieneRol(usuario, 'recepcion');
+}
+
+const DIAS_GUARDAR_USO = 40;
+
+function registrarUso(req, deps) {
+  const { usuario } = sesion(req, deps);
+  const fecha = texto(req.fecha);
+  if (!fechaIsoValida(fecha)) falla('datos_invalidos');
+  const lista = x => (Array.isArray(x) ? x : []).map(Number).filter(m => m >= 0 && m < 1440).slice(0, 1440).join(',');
+  const fila = { ts: new Date(deps.ahora()).toISOString(), dni: usuario.dni, fecha: fecha, activos: lista(req.activos), quieta: lista(req.quieta), otra: lista(req.otra) };
+  if (fila.activos || fila.quieta || fila.otra) deps.repo.agregar('uso', fila);
+  return {};
+}
+
+function marcasDeTrabajo(registro, dni) {
+  return registro.filter(r => r.dni === dni && r.resultado !== 'VERIFICADO EN MOVE');
+}
+
+function minutoAhora(deps) {
+  return minutoDeTs(new Date(deps.ahora()).toISOString());
+}
+
+function usoDelMes(u, mes, filasUso, registro, deps) {
+  const hoy = deps.hoy();
+  const suyas = marcasDeTrabajo(registro, u.dni).filter(r => delMes(r.ts, mes));
+  const usos = filasUso.filter(f => f.dni === u.dni && String(f.fecha).indexOf(mes) === 0);
+  const dias = {};
+  suyas.forEach(r => { dias[fechaArgentina(r.ts)] = true; });
+  usos.forEach(f => { dias[f.fecha] = true; });
+  const inicio = aMinutoDelDia(u.hora_inicio), fin = aMinutoDelDia(u.hora_fin);
+  return Object.keys(dias).sort().map(f => Object.assign({ fecha: f }, usoDelDia(usos.filter(x => x.fecha === f), suyas.filter(r => fechaArgentina(r.ts) === f), inicio, fin, f === hoy ? minutoAhora(deps) : null)));
+}
+
 // Cuándo trabajó las tareas: horas de cada día, tareas por hora del día y tiempo promedio con la tarea abierta
 function tiemposDe(dni, mes, registro, horaFin) {
-  const marcas = registro.filter(r => r.dni === dni && delMes(r.ts, mes));
+  const marcas = marcasDeTrabajo(registro, dni).filter(r => delMes(r.ts, mes));
   const horaDe = ts => new Date(Date.parse(ts) - 3 * 3600 * 1000).toISOString().slice(11, 16);
   const dias = {};
   const porHora = {};
@@ -539,7 +590,7 @@ function respaldo(req, deps) {
   exigirClave(req, deps);
   const usuarios = deps.repo.leer('usuarios').map(u => { const c = Object.assign({}, u); delete c.pin_hash; delete c.sal; return c; });
   const out = { usuarios: usuarios };
-  ['tareas', 'registro', 'garantia', 'actividad', 'rendimiento', 'objetivos', 'cierres', 'profes'].forEach(h => { out[h] = deps.repo.leer(h); });
+  ['tareas', 'registro', 'garantia', 'actividad', 'rendimiento', 'objetivos', 'cierres', 'profes', 'uso'].forEach(h => { out[h] = deps.repo.leer(h); });
   return out;
 }
 
@@ -557,6 +608,7 @@ function vistaRendimiento(req, deps) {
     equipo = [usuario];
   }
   const tareas = deps.repo.leer('tareas'), registro = deps.repo.leer('registro'), actividad = deps.repo.leer('actividad');
+  const filasUso = veUso(usuario) ? deps.repo.leer('uso') : [];
   const calculado = deps.repo.leer('rendimiento').filter(r => r.mes === mes);
   const objetivos = deps.repo.leer('objetivos');
   let actualizado = '';
@@ -571,7 +623,10 @@ function vistaRendimiento(req, deps) {
     const puntos = calcularPuntos(valores);
     if (!coordina) SOLO_COORDINACION.forEach(k => { delete valores[k]; });
     const out = { dni: u.dni, nombre: u.nombre, turno: u.turno, sede: u.sede, valores: valores, puntaje: puntaje, puntos: puntos, serie: serieTareas(u.dni, mes, tareas) };
-    if (coordina) out.tiempos = tiemposDe(u.dni, mes, registro, u.hora_fin);
+    if (veUso(usuario)) {
+      out.tiempos = tiemposDe(u.dni, mes, registro, u.hora_fin);
+      out.uso = usoDelMes(u, mes, filasUso, registro, deps);
+    }
     return out;
   }).sort((a, b) => (b.puntaje.total == null ? -1 : b.puntaje.total) - (a.puntaje.total == null ? -1 : a.puntaje.total));
   return { mes: mes, hoy: deps.hoy(), actualizado: actualizado, personas: personas, metricas: METRICAS };
@@ -708,6 +763,7 @@ const ACCIONES = {
   pin_regenerar: pinRegenerar,
   usuarios_listar: usuariosListar,
   usuario_activo: usuarioActivo,
+  uso: registrarUso,
 };
 
 function manejar(req, deps) {

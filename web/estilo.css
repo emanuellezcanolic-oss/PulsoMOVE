@@ -380,3 +380,10 @@ dialog h3 { margin: 0; font: 800 21px/1 var(--display); text-transform: uppercas
 .lo-mejor small { display: block; color: var(--gris); font-size: 12px; }
 
 .aviso-ok { padding: 12px 14px; background: var(--verde-claro); border-radius: var(--radio); font-weight: 600; font-size: 14px; }
+.persona .en-vivo { display: block; margin-top: 6px; font-size: 13px; font-weight: 700; }
+.persona .uso-hoy { display: block; margin-top: 2px; font-size: 12px; color: var(--gris); }
+.persona.vivo-rojo { border-color: var(--rojo); box-shadow: inset 3px 0 0 var(--rojo); }
+.persona.vivo-rojo .en-vivo { color: var(--rojo); }
+.alerta-roja { margin: 8px 0 12px; padding: 10px 12px; border-radius: 8px; border: 1px solid var(--rojo); color: var(--rojo); font-weight: 700; }
+.hueco { display: inline-block; margin: 1px 4px 1px 0; color: var(--rojo); font-size: 12px; white-space: nowrap; }
+.sub-bloque { margin: 14px 0 6px; font-size: 13px; }

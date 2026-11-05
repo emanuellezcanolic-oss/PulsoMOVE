@@ -408,7 +408,77 @@ function recomiendaAudio(tipo) {
   return TIPOS_AUDIO.some(t => String(tipo).indexOf(t) === 0);
 }
 
-// Avisos durante el turno. c: {nombre, minuto, inicio, fin (minutos del día), hechas, pendientes, minutosSinMarcar, enviados, siguiente, ayer, racha, adelantar, diasSinPlan}.
+// ---------- Uso de la app por minuto: solo para quien coordina y no atiende recepción ----------
+
+const MINUTOS_ALERTA_USO = 45;   // 40 sin tocar la app, más el margen de envío: la señal llega cada 5 minutos
+const MINUTOS_SIN_ENTRAR = 30;
+
+function minutoDeTs(ts) {
+  const ms = Date.parse(ts);
+  return isNaN(ms) ? null : Math.floor((((ms - 3 * 3600 * 1000) % 86400000) + 86400000) % 86400000 / 60000);
+}
+
+function aMinutoDelDia(hhmm) {
+  return /^\d{1,2}:\d{2}$/.test(String(hhmm)) ? Number(String(hhmm).split(':')[0]) * 60 + Number(String(hhmm).split(':')[1]) : null;
+}
+
+// filas: hoja uso de ese día y esa persona. marcas: sus tareas de ese día. ahora: minuto actual si el día sigue, null si ya pasó.
+// Una marca cuenta como minuto activo. con_senal: false en los días anteriores al registro por minuto.
+function usoDelDia(filas, marcas, inicio, fin, ahora) {
+  const estado = {};
+  const pone = (lista, e) => String(lista || '').split(',').forEach(x => {
+    const m = Number(x);
+    if (x === '' || !(m >= 0 && m < 1440)) return;
+    if (!estado[m] || e === 'a' || (e === 'o' && estado[m] === 'q')) estado[m] = e;
+  });
+  filas.forEach(f => { pone(f.quieta, 'q'); pone(f.otra, 'o'); pone(f.activos, 'a'); });
+  const conSenal = Object.keys(estado).length > 0;
+  const completando = {};
+  let segundos = 0;
+  marcas.forEach(r => {
+    const m = minutoDeTs(r.ts);
+    if (m == null) return;
+    estado[m] = 'a';
+    const s = Number(r.segundos) || 0;
+    segundos += s;
+    const h = Math.floor(m / 60);
+    completando[h] = (completando[h] || 0) + s;
+  });
+  const vistos = Object.keys(estado).map(Number).sort((a, b) => a - b);
+  const desde = inicio != null ? inicio : (vistos.length ? vistos[0] : 0);
+  let hasta = fin != null ? fin : (vistos.length ? vistos[vistos.length - 1] + 1 : 0);
+  if (ahora != null) hasta = Math.min(hasta, ahora);
+  const r = { con_senal: conSenal, activo: 0, quieta: 0, otra: 0, cerrada: 0, completando: Math.round(segundos / 60), huecos: [], primera: vistos.length ? vistos[0] : null, ultima: vistos.length ? vistos[vistos.length - 1] : null, ultima_activa: null, completando_por_hora: completando };
+  let hueco = null;
+  const cierra = m => { if (hueco != null && m - hueco >= 40) r.huecos.push({ desde: hueco, hasta: m, minutos: m - hueco }); hueco = null; };
+  for (let m = desde; m < hasta; m++) {
+    const e = estado[m];
+    if (e === 'a') r.activo++; else if (e === 'q') r.quieta++; else if (e === 'o') r.otra++; else r.cerrada++;
+    if (e === 'a') cierra(m); else if (hueco == null) hueco = m;
+  }
+  cierra(hasta);
+  for (let i = vistos.length - 1; i >= 0; i--) if (estado[vistos[i]] === 'a') { r.ultima_activa = vistos[i]; break; }
+  return r;
+}
+
+// Cómo está ahora una persona, para la vista de sede. c: {uso, inicio, fin, ahora, pendientes, cerro, habil}
+function estadoEnVivo(c) {
+  if (c.inicio == null || c.fin == null) return { color: 'gris', texto: 'Sin horario cargado' };
+  if (c.ahora < c.inicio) return { color: 'gris', texto: 'Todavía no empieza' };
+  if (c.ahora >= c.fin) {
+    if (!c.uso.primera && c.uso.primera !== 0) return c.habil ? { color: 'rojo', texto: 'No registró actividad en su turno' } : { color: 'gris', texto: 'Sin actividad hoy' };
+    if (c.pendientes > 0) return { color: 'rojo', texto: 'Terminó el turno con ' + c.pendientes + (c.pendientes === 1 ? ' pendiente' : ' pendientes') };
+    return { color: 'verde', texto: 'Terminó el turno al día' };
+  }
+  if (c.uso.ultima_activa == null) {
+    return c.habil && c.ahora - c.inicio >= MINUTOS_SIN_ENTRAR ? { color: 'rojo', texto: 'No entró: van ' + (c.ahora - c.inicio) + ' min de turno' } : { color: 'gris', texto: 'Todavía no entró' };
+  }
+  const sin = c.ahora - c.uso.ultima_activa;
+  if (sin >= MINUTOS_ALERTA_USO) return { color: 'rojo', texto: 'Sin tocar la app hace ' + sin + ' min' };
+  return { color: 'verde', texto: sin <= 5 ? 'Usando la app ahora' : 'Usó la app hace ' + sin + ' min' };
+}
+
+// Avisos durante el turno. c: {nombre, minuto, inicio, fin (minutos del día), hechas, pendientes, minutosSinUso, enviados, siguiente, ayer, racha, adelantar, diasSinPlan}.
 // Personalizados con su nombre y sus números. La frecuencia la limita quien llama: cada 20 minutos, para que no se vuelvan ruido.
 function proximoAviso(c) {
   if (c.inicio == null || c.fin == null || c.minuto < c.inicio || c.minuto >= c.fin) return null;
@@ -420,6 +490,11 @@ function proximoAviso(c) {
   const total = c.hechas + c.pendientes;
   const falta = c.fin - c.minuto;
   const candidatos = [];
+  if (c.pendientes > 0 && c.minutosSinUso >= 40) {
+    const tanda = Math.floor(c.minuto / 40);
+    const titulos = ['👀 ¿Seguimos, ' + pila + '?', '🙌 ' + pila + ', ¿qué te parece si continuamos?', '💪 ' + pila + ', ¿le damos a una más?'];
+    candidatos.push(dale('sin-uso-' + tanda, titulos[tanda % titulos.length], 'Si tenés un momento libre, te esperan ' + c.pendientes + ' tareas.' + (sig ? ' La próxima: ' + sig + '.' : '')));
+  }
   if (c.nuevaMedalla) candidatos.push(dale('medalla-' + c.nuevaMedalla.clave, c.nuevaMedalla.emoji + ' ¡Nueva medalla, ' + pila + '!', c.nuevaMedalla.nombre + ': ' + c.nuevaMedalla.como + '.'));
   if (c.diaSemana === 1 && c.minuto - c.inicio <= 60) candidatos.push(dale('lunes', '👋 ¡Buena semana, ' + pila + '!', 'Qué bueno tenerte de vuelta. Al cerrar el turno te vamos a preguntar qué fue lo mejor de tu finde.'));
   if (c.hechas === 0 && c.pendientes > 0 && c.minuto - c.inicio <= 30) candidatos.push(dale('arranque', '☀️ ¡Buen arranque, ' + pila + '!', 'Hoy tenés ' + c.pendientes + ' tareas.' + (sig ? ' Podés empezar por ' + sig + '.' : '')));
@@ -433,9 +508,5 @@ function proximoAviso(c) {
   if (transcurrido >= 0.5 && total > 0 && c.hechas / total < 0.4) candidatos.push(dale('ritmo', '⏱️ ' + pila + ', ya pasó la mitad de tu turno', 'Llevás ' + c.hechas + ' de ' + total + '. Con unos minutos ahora, llegás bien.' + (sig ? ' Seguí con ' + sig + '.' : '')));
   if (c.diasSinPlan >= 3) candidatos.push(dale('plan', '🎁 Hoy va un plan de 3 meses, ' + pila, 'Van ' + c.diasSinPlan + ' días sin venderlo, y vale el doble de puntos. Al próximo que renueve, ofrecéselo.'));
   if (c.racha >= 3) candidatos.push(dale('racha', '🔥 ¡' + c.racha + ' días seguidos, ' + pila + '!', 'Esa constancia es la que hace que los socios se queden.'));
-  if (c.pendientes > 0 && c.minutosSinMarcar >= 40) {
-    const tanda = Math.floor(c.minuto / 40);
-    candidatos.push(dale('sin-marcar-' + tanda, '👀 ¿Seguimos, ' + pila + '?', 'Si tenés un momento libre, te esperan ' + c.pendientes + ' tareas.' + (sig ? ' La próxima: ' + sig + '.' : '')));
-  }
   return candidatos.find(x => x) || null;
 }

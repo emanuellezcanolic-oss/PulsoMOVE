@@ -261,7 +261,7 @@ test('aviso: arranque con el primer socio', () => {
 });
 
 test('aviso: tiempo sin marcar, ritmo y última hora', () => {
-  assert.equal(L.proximoAviso(ctxAviso({ minutosSinMarcar: 45 })).clave.indexOf('sin-marcar'), 0);
+  assert.equal(L.proximoAviso(ctxAviso({ minutosSinUso: 45 })).clave.indexOf('sin-uso'), 0);
   assert.equal(L.proximoAviso(ctxAviso({ minuto: 11 * 60 + 30, hechas: 2, pendientes: 20 })).clave, 'ritmo');
   assert.equal(L.proximoAviso(ctxAviso({ minuto: 13 * 60 + 10, hechas: 20, pendientes: 2 })).clave, 'ultima-hora');
 });
@@ -275,8 +275,8 @@ test('aviso: logros', () => {
 test('aviso: no repite y fuera del turno no molesta', () => {
   assert.equal(L.proximoAviso(ctxAviso({ hechas: 12, ayer: 10, enviados: { 'supero-ayer': 1, 'cuenta-10': 1 } })), null);
   assert.equal(L.proximoAviso(ctxAviso({ minuto: 7 * 60 })), null);
-  assert.equal(L.proximoAviso(ctxAviso({ minuto: 15 * 60, minutosSinMarcar: 90 })), null);
-  assert.equal(L.proximoAviso(ctxAviso({ minutosSinMarcar: 45, pendientes: 0 })), null);
+  assert.equal(L.proximoAviso(ctxAviso({ minuto: 15 * 60, minutosSinUso: 90 })), null);
+  assert.equal(L.proximoAviso(ctxAviso({ minutosSinUso: 45, pendientes: 0 })), null);
 });
 
 test('plan de 3 meses en el aviso', () => {
@@ -321,6 +321,46 @@ test('resumen de cierres: promedia lo respondido y cuenta las notas bajas', () =
   assert.equal(r.sedes[0].sede, 'bolson');
   assert.equal(r.sedes[0].sala, 2);
   assert.equal(r.bajas, 1);
+});
+
+test('uso del día: separa minutos y encuentra huecos de 40 o más', () => {
+  const fila = { activos: '480,481,482,600', quieta: '483,484', otra: '485' };
+  const u = L.usoDelDia([fila], [{ ts: '2026-11-04T13:00:00.000Z', segundos: '120' }], 480, 660, null);
+  assert.equal(u.con_senal, true);
+  assert.equal(u.activo, 4);
+  assert.equal(u.quieta, 2);
+  assert.equal(u.otra, 1);
+  assert.equal(u.cerrada, 173);
+  assert.equal(u.completando, 2);
+  assert.deepEqual(u.completando_por_hora, { 10: 120 });
+  assert.deepEqual(u.huecos.map(h => [h.desde, h.hasta]), [[483, 600], [601, 660]]);
+});
+
+test('uso del día: sin señal se calcula solo con las marcas', () => {
+  const u = L.usoDelDia([], [{ ts: '2026-11-04T11:30:00.000Z', segundos: '60' }], 480, 840, null);
+  assert.equal(u.con_senal, false);
+  assert.equal(u.primera, 510);
+});
+
+test('estado en vivo: rojo sin tocar la app, sin entrar o con pendientes al terminar', () => {
+  const uso = a => ({ primera: a, ultima_activa: a });
+  const c = o => L.estadoEnVivo(Object.assign({ inicio: 480, fin: 840, ahora: 600, pendientes: 2, habil: true, uso: uso(590) }, o));
+  assert.equal(c().color, 'verde');
+  assert.equal(c({ uso: uso(555) }).color, 'rojo');
+  assert.equal(c({ uso: uso(556) }).color, 'verde');
+  assert.match(c({ uso: uso(555) }).texto, /hace 45 min/);
+  assert.equal(c({ uso: uso(null), ahora: 510 }).color, 'rojo');
+  assert.equal(c({ uso: uso(null), ahora: 509 }).color, 'gris');
+  assert.equal(c({ uso: uso(null), ahora: 600, habil: false }).color, 'gris');
+  assert.equal(c({ ahora: 850 }).color, 'rojo');
+  assert.equal(c({ ahora: 850, pendientes: 0 }).color, 'verde');
+  assert.equal(c({ ahora: 400 }).color, 'gris');
+});
+
+test('aviso sin uso: va primero e invita a seguir, con título que cambia', () => {
+  const a = L.proximoAviso(ctxAviso({ minutosSinUso: 41, minuto: 9 * 60, racha: 5 }));
+  assert.equal(a.clave.indexOf('sin-uso'), 0);
+  assert.notEqual(a.titulo, L.proximoAviso(ctxAviso({ minutosSinUso: 41, minuto: 9 * 60 + 40 })).titulo);
 });
 
 test('aviso de media hora: recomienda y recuerda lo pendiente', () => {

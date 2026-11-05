@@ -224,6 +224,38 @@ test('sede: alertas desde 2 días hábiles', () => {
   assert.ok(!r.data.personas.some(p => p.sede === 'puelo' || p.dni === '26555666'));
 });
 
+test('uso: registra por persona y solo lo ve quien coordina sin atender recepción', () => {
+  const d = equipo({ tareas: [] });
+  d.t = Date.parse('2026-11-09T14:00:00Z');
+  const ana = entrar(d);
+  assert.equal(pedir(d, { accion: 'uso', token: ana, fecha: '2026-11-09', activos: [660, 661], quieta: [662], otra: [] }).ok, true);
+  assert.equal(pedir(d, { accion: 'uso', token: ana, fecha: 'x', activos: [1] }).error, 'datos_invalidos');
+  assert.equal(pedir(d, { accion: 'uso', fecha: '2026-11-09', activos: [1] }).ok, false);
+  assert.equal(d.repo.leer('uso').length, 1);
+  assert.equal(d.repo.leer('uso')[0].dni, '30123456');
+  const adm = entrar(d, '20000001', '0907');
+  const persona = r => r.data.personas.find(p => p.dni === '30123456');
+  const rend = pedir(d, { accion: 'rendimiento', token: adm, sede: 'bolson' });
+  assert.equal(persona(rend).uso[0].activo >= 0, true);
+  assert.equal(persona(rend).uso[0].con_senal, true);
+  assert.ok(persona(pedir(d, { accion: 'sede', token: adm, sede: 'bolson' })).en_vivo);
+  const coordQueAtiende = entrar(d, '25111222', '0907');
+  assert.equal(persona(pedir(d, { accion: 'rendimiento', token: coordQueAtiende })).uso, undefined);
+  assert.equal(persona(pedir(d, { accion: 'rendimiento', token: coordQueAtiende })).tiempos, undefined);
+  assert.equal(persona(pedir(d, { accion: 'sede', token: coordQueAtiende })).en_vivo, undefined);
+  const propia = pedir(d, { accion: 'rendimiento', token: ana }).data.personas[0];
+  assert.equal(propia.uso, undefined);
+  assert.equal(propia.tiempos, undefined);
+});
+
+test('uso: lo verificado por el proceso diario no cuenta como tiempo de la persona', () => {
+  const d = equipo({ tareas: [] });
+  d.t = Date.parse('2026-11-09T14:00:00Z');
+  d.repo.agregar('registro', { dni: '30123456', ts: '2026-11-09T09:00:00.000Z', resultado: 'VERIFICADO EN MOVE', tipo: 'Entrena en otra sede', segundos: '' });
+  const adm = entrar(d, '20000001', '0907');
+  assert.equal(pedir(d, { accion: 'rendimiento', token: adm, sede: 'bolson' }).data.personas.find(p => p.dni === '30123456').tiempos.por_dia.length, 0);
+});
+
 test('otra sede: lo que marca recepción no cuenta hasta que MOVE muestra el cambio', () => {
   const t = tarea({ id: 'x', sede: 'bariloche', socio_id: 'sede-7', tipo: 'Entrena en otra sede', asignado_dni: '30123456', fecha: '2026-11-09' });
   const d = equipo({ tareas: [t] });
@@ -528,7 +560,7 @@ test('tiempos en rendimiento para quien coordina', () => {
     registro: [{ ts: '2026-11-09T12:00:00.000Z', dni: '30123456', canal: 'LL', resultado: 'RESERVA', tipo: 'x', segundos: '60' },
                { ts: '2026-11-09T14:30:00.000Z', dni: '30123456', canal: 'LL', resultado: 'RESERVA', tipo: 'x', segundos: '120' },
                { ts: '2026-11-06T12:00:00.000Z', dni: '30123456', canal: 'LL', resultado: 'RESERVA', tipo: 'x', segundos: '' }] });
-  const v = pedir(d, { accion: 'rendimiento', token: entrar(d, '25111222', '0907') }).data.personas.find(p => p.dni === '30123456').tiempos;
+  const v = pedir(d, { accion: 'rendimiento', token: entrar(d, '20000001', '0907') }).data.personas.find(p => p.dni === '30123456').tiempos;
   assert.equal(v.segundos_promedio, 90);
   assert.deepEqual(v.por_dia.map(x => [x.fecha, x.marcas]), [['2026-11-06', 1], ['2026-11-09', 2]]);
   const hoy = v.por_dia[1];
@@ -591,7 +623,7 @@ test('admin que además es recepcionista: ve todo y conserva su lista', () => {
 
 test('tiempos: tareas por hora y lo que le quedaba del turno', () => {
   const u = { ...usuario(), hora_fin: '14:00' };
-  const d = entorno([u, usuario({ dni: '25111222', nombre: 'Coord', pin: '0907', roles: 'recepcion,coordinador' })], { tareas: [], actividad: [], objetivos: [], rendimiento: [], cierres: [],
+  const d = entorno([u, usuario({ dni: '25111222', nombre: 'Coord', pin: '0907', roles: 'coordinador' })], { tareas: [], actividad: [], objetivos: [], rendimiento: [], cierres: [],
     registro: [{ ts: '2026-11-06T12:00:00.000Z', dni: '30123456', canal: 'LL', resultado: 'RESERVA', tipo: 'x', segundos: '120' },
                { ts: '2026-11-06T13:00:00.000Z', dni: '30123456', canal: 'LL', resultado: 'RESERVA', tipo: 'x', segundos: '60' },
                { ts: '2026-11-06T14:00:00.000Z', dni: '30123456', canal: 'LL', resultado: 'RESERVA', tipo: 'x', segundos: '' }] });

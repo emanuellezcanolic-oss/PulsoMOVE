@@ -355,6 +355,23 @@
     return `<section class="bloque"><div class="bloque-cab"><h2>Tareas hechas por día</h2></div>${barras(ult.map(x => ({ valor: x.hechas, etiqueta: x.fecha.slice(8, 10), titulo: `${ddmm(x.fecha)}: ${x.hechas} hechas` })))}</section>`;
   }
 
+  const hm = m => (m == null ? '—' : String(Math.floor(m / 60)).padStart(2, '0') + ':' + String(m % 60).padStart(2, '0'));
+  const horas = m => (m >= 60 ? Math.floor(m / 60) + ' h ' + (m % 60) + ' min' : m + ' min');
+
+  // Solo llega a quien coordina sin atender recepción
+  function bloqueUso(p) {
+    if (!p.uso || !p.uso.length) return '';
+    const ult = p.uso.slice(-7).reverse();
+    const seg = {};
+    p.uso.forEach(d => Object.keys(d.completando_por_hora).forEach(h => { seg[h] = (seg[h] || 0) + d.completando_por_hora[h]; }));
+    const barrasHora = [];
+    for (let h = 6; h <= 22; h++) barrasHora.push({ valor: Math.round((seg[h] || 0) / 60), etiqueta: String(h), titulo: `De ${h} a ${h + 1} h: ${Math.round((seg[h] || 0) / 60)} min completando` });
+    return `<section class="bloque"><div class="bloque-cab"><h2>Tiempo en su turno</h2><span class="sello">Solo coordinación</span></div>
+      <div class="envoltura-tabla"><table class="tabla compacta"><thead><tr><th>Día</th><th>Usando la app</th><th>Abierta sin tocar</th><th>En otra ventana</th><th>Cerrada</th><th>Completando</th><th>Huecos de 40 min o más</th></tr></thead><tbody>${ult.map(d => `<tr><td>${ddmm(d.fecha)}</td>${d.con_senal ? `<td class="num">${horas(d.activo)}</td><td class="num">${horas(d.quieta)}</td><td class="num">${horas(d.otra)}</td><td class="num">${horas(d.cerrada)}</td>` : '<td colspan="4">Sin medir: solo hay marcas de tareas</td>'}<td class="num">${horas(d.completando)}</td><td>${d.huecos.length ? d.huecos.map(h => `<span class="hueco">${hm(h.desde)} a ${hm(h.hasta)}</span>`).join(' ') : '—'}</td></tr>`).join('')}</tbody></table></div>
+      <h3 class="sub-bloque">Minutos completando tareas, por hora</h3>${barras(barrasHora, 90)}
+      <p class="aclara">Mide la app, no a la persona. Puede estar atendiendo el mostrador, en MOVE o en WhatsApp: "sin tocar", "otra ventana" y "cerrada" no significan que no esté trabajando. Sirve para preguntar, no para concluir.</p></section>`;
+  }
+
   function bloqueTiempos(p) {
     const T = p.tiempos;
     if (!T || !T.por_dia.length) return '';
@@ -430,7 +447,7 @@
         <div class="puntaje"><span class="puntaje-n">${nota(P.total)}</span><span class="puntaje-de">${P.total == null ? '' : 'de 100'}</span>
           <span class="sello ${cls}">${ico} ${txt}</span></div>
         <div class="grupos">${P.grupos.map(g => `<div class="grupo-mini"><strong>${nota(g.puntaje)}</strong><span>${esc(g.nombre)}</span></div>`).join('')}</div>
-      </section>${incentivo}<div class="tablero-columnas">${graficoDias(p.serie)}${propia ? '' : bloqueTiempos(p)}${grupos}${ventas}${actividad}</div>
+      </section>${incentivo}<div class="tablero-columnas">${graficoDias(p.serie)}${propia ? '' : bloqueUso(p) + bloqueTiempos(p)}${grupos}${ventas}${actividad}</div>
       ${editable ? `<div class="botones"><button class="boton verde" data-accion="objetivos-guardar" data-dni="${esc(p.dni)}">Guardar objetivos</button></div>` : ''}`;
   }
 
@@ -499,6 +516,7 @@
   const notaSede = v => (v == null ? '—' : String(v).replace('.', ',') + ' ★');
   // Los avisos que reciben y por qué están. "Probado" dice de dónde sale cada idea, no que ya sepamos que acá funciona: eso lo va a decir el uso.
   const CATALOGO_AVISOS = [
+    ['👀 ¿Seguimos, Ara?', 'A los 40 minutos sin tocar la app, si le quedan tareas. El título cambia', 'La invita a seguir, sin retar'],
     ['⏰ Ara, falta media hora para tu cierre', '30 minutos antes de terminar. La recomendación cambia cada día', 'Le da tiempo de ordenar y de terminar lo que falta'],
     ['🚪 Terminó tu turno: cerrá PulsoMOVE', 'Al terminar el turno', 'Que nadie quede con el usuario de otra persona'],
     ['☀️ ¡Buen arranque, Ara!', 'Al empezar el turno, con el primer socio', 'Da un primer paso claro. Metas cercanas'],
@@ -593,6 +611,41 @@
 
   // Avisos personalizados durante el turno, como mucho uno cada 20 minutos
   const CADA_AVISO_MS = 20 * 60000;
+
+  // Registro por minuto del uso de la app. Se manda cada 5 minutos: si no hay red, queda guardado y va después.
+  let ultimaInteraccion = Date.now();
+  ['pointerdown', 'keydown', 'input', 'wheel', 'touchstart'].forEach(ev => document.addEventListener(ev, () => { ultimaInteraccion = Date.now(); }, { passive: true, capture: true }));
+  const MINUTOS_GRACIA_USO = 3;
+  const claveUso = () => 'pulso_uso_' + cliente.sesion().nombre;
+  function tomarMinutoDeUso() {
+    if (!cliente.sesion() || !tiene('recepcion')) return;
+    const iso = new Date(Date.now() - 3 * 3600000).toISOString();
+    const fecha = iso.slice(0, 10), minuto = Number(iso.slice(11, 13)) * 60 + Number(iso.slice(14, 16));
+    const alm = almacenSeguro();
+    let q = {};
+    try { q = JSON.parse(alm.getItem(claveUso()) || '{}'); } catch (e) { q = {}; }
+    const d = q[fecha] = q[fecha] || { activos: [], quieta: [], otra: [] };
+    const lista = (document.hidden || !document.hasFocus()) ? (Date.now() - ultimaInteraccion < 60000 ? d.activos : d.otra) : (Date.now() - ultimaInteraccion <= MINUTOS_GRACIA_USO * 60000 ? d.activos : d.quieta);
+    if (lista.indexOf(minuto) < 0) lista.push(minuto);
+    alm.setItem(claveUso(), JSON.stringify(q));
+  }
+  async function enviarUso() {
+    if (!cliente.sesion() || !tiene('recepcion')) return;
+    const clave = claveUso(), alm = almacenSeguro();
+    let q = {};
+    try { q = JSON.parse(alm.getItem(clave) || '{}'); } catch (e) { return; }
+    for (const fecha of Object.keys(q)) {
+      try {
+        await cliente.llamar('uso', Object.assign({ fecha: fecha }, q[fecha]));
+      } catch (e) { return; }
+      let ahora = {};
+      try { ahora = JSON.parse(alm.getItem(clave) || '{}'); } catch (e) { ahora = {}; }
+      const enviado = q[fecha], resto = ahora[fecha];
+      if (resto) ['activos', 'quieta', 'otra'].forEach(k => { resto[k] = resto[k].filter(m => enviado[k].indexOf(m) < 0); });
+      if (!resto || !(resto.activos.length + resto.quieta.length + resto.otra.length)) delete ahora[fecha];
+      alm.setItem(clave, JSON.stringify(ahora));
+    }
+  }
   function revisarAvisos() {
     const D = E.dia;
     if (!D || !cliente.sesion() || !tiene('recepcion') || !D.hora_fin || !D.hora_inicio) return;
@@ -606,7 +659,7 @@
     const a = proximoAviso({
       nombre: cliente.sesion().nombre, minuto: ahora.getHours() * 60 + ahora.getMinutes(), inicio: min(D.hora_inicio), fin: min(D.hora_fin), hechas: D.hoy.hechas, pendientes: D.hoy.pendientes,
       nuevaMedalla: medallaNueva(D), diaSemana: ahora.getDay(), prioritarias: D.prioritarias, volvieron: D.volvieron, equipoHechas: D.equipo ? D.equipo.hechas : 0, equipoFaltan: D.equipo ? D.equipo.faltan : 0,
-      minutosSinMarcar: E.ultimaMarca ? (Date.now() - E.ultimaMarca) / 60000 : 0, enviados: enviados, siguiente: D.siguiente, ayer: D.ayer, racha: D.racha, adelantar: D.para_adelantar, diasSinPlan: D.dias_sin_plan,
+      minutosSinUso: (Date.now() - ultimaInteraccion) / 60000, enviados: enviados, siguiente: D.siguiente, ayer: D.ayer, racha: D.racha, adelantar: D.para_adelantar, diasSinPlan: D.dias_sin_plan,
     });
     if (!a) return;
     enviados[a.clave] = 1;
@@ -637,6 +690,7 @@
 
   function salirDeLaApp() {
     if (cliente.pendientesDeEnvio() && !confirm('Hay marcas que todavía no se enviaron. Si salís, se pierden. ¿Salir igual?')) return false;
+    enviarUso();
     cliente.cerrarSesion();
       Object.assign(E, { vista: null, tareas: null, sede: null, usuarios: null, abierta: null, personaDni: null, persona: null, rend: null, rendMes: null, rendDni: null, dia: null, adelantar: false, cierres: null, celebrado: {} });
     return true;
@@ -749,7 +803,7 @@
     if (!E.sede) return selector + '<div class="cargando">Cargando la sede…</div>';
     const S = E.sede;
     const nombre = dni => (S.personas.find(p => p.dni === dni) || {}).nombre || 'Otra persona';
-    const personas = S.personas.length ? `<div class="personas">${S.personas.map(p => `<div class="persona"><b>${esc(p.nombre)}</b><span class="turno">${esc(TURNOS[p.turno] || '')}</span>
+    const personas = S.personas.length ? `<div class="personas">${S.personas.map(p => `<div class="persona ${p.en_vivo ? 'vivo-' + esc(p.en_vivo.color) : ''}"><b>${esc(p.nombre)}</b><span class="turno">${esc(TURNOS[p.turno] || '')}</span>${p.en_vivo ? `<span class="en-vivo">${p.en_vivo.color === 'rojo' ? '🔴' : p.en_vivo.color === 'verde' ? '🟢' : '⚪'} ${esc(p.en_vivo.texto)}</span>` : ''}${p.uso_hoy && p.uso_hoy.con_senal ? `<span class="uso-hoy">Hoy: ${horas(p.uso_hoy.activo)} usando la app · ${horas(p.uso_hoy.completando)} completando</span>` : ''}
         <div class="cifras"><div><strong>${p.hechas_hoy}</strong><span>Hoy</span></div><div class="${p.pendientes > 15 ? 'mal' : ''}"><strong>${p.pendientes}</strong><span>Pendientes</span></div><div><strong>${p.hechas_semana}</strong><span>Semana</span></div></div>
         <button class="chip ver-lista" data-accion="ver-persona" data-dni="${esc(p.dni)}">Ver su lista</button></div>`).join('')}</div>`
       : '<div class="vacio">No hay recepcionistas cargados en esta sede.</div>';
@@ -771,6 +825,7 @@
       : '<div class="vacio">No hay pedidos de garantía pendientes.</div>';
     return `${selector}<h1 class="titulo">${esc(SEDES[S.sede])} <span>·</span> ${esc(tituloDia(S.hoy))}</h1>
       <p class="bajada">Avance del equipo, tareas atrasadas y pedidos de garantía.</p>
+      ${S.personas.some(p => p.en_vivo && p.en_vivo.color === 'rojo') ? `<div class="alerta-roja">🔴 Para mirar: ${S.personas.filter(p => p.en_vivo && p.en_vivo.color === 'rojo').map(p => esc(p.nombre.split(' ')[0])).join(', ')}</div>` : ''}
       ${personas}
       <section class="grupo"><h2>Atrasadas, 2 días o más <span class="cuenta">${S.alertas.length}</span></h2>${alertas}</section>
       <section class="grupo"><h2>Garantía de atención <span class="cuenta">${S.garantias.length}</span></h2><div class="frase">${esc(FRASE_GARANTIA)}</div><p class="bajada" style="margin-top:8px">Se regala el mes siguiente. Decide el responsable de sede.</p>${garantias}</section>`;
@@ -1073,6 +1128,8 @@
   setInterval(enviarPendientes, 30000);
   setInterval(revisarCierre, 60000);
   setInterval(revisarAvisos, 60000);
+  setInterval(tomarMinutoDeUso, 60000);
+  setInterval(enviarUso, 5 * 60000);
   setInterval(() => { if (cliente.sesion() && !E.abierta && !document.querySelector('dialog') && document.visibilityState === 'visible') cargarVista(); }, 5 * 60000);
 
   render();
