@@ -113,7 +113,7 @@
     ];
     const rango = (d, n) => Array.from({ length: n }, (_, i) => d + i).join(',');
     const ventas = [];
-    const CATALOGO = ['Agua', 'Gatorade', 'Café', 'Barritas', 'Alfajor proteico', 'Botas', 'Creatina', 'Proteína', 'Remera', 'Gorra'];
+    const CATALOGO = ['Bebidas|Agua', 'Bebidas|Gatorade', 'Bebidas|Café', 'Barritas y snacks|Barritas', 'Barritas y snacks|Alfajor proteico', 'Recovery|Botas', 'Suplementos|Creatina', 'Suplementos|Proteína', 'Indumentaria|Remera', 'Indumentaria|Gorra'];
     for (let i = 1; i <= 34; i++) {
       const d = new Date(hoy + 'T12:00:00Z');
       d.setUTCDate(d.getUTCDate() - i);
@@ -122,8 +122,9 @@
       [[R, 'Rocío (práctica)', 1], [T, 'Tomás (práctica)', 2]].forEach(([dni, nombre, k]) => {
         const productos = {};
         CATALOGO.forEach((p, j) => { const n = (i * k + j * 3) % (j < 4 ? 4 : 7) === 0 ? 1 + (i + j) % 2 : 0; if (n) productos[p] = n; });
-        const cuantos = Object.values(productos).reduce((a, b) => a + b, 0);
+        const cuantos = Object.values(productos).reduce((a, b) => a + b, 0) + 0;
         const renovaciones = (i + k) % 3 === 0 ? 2 : 1, nuevos = (i + k) % 5 === 0 ? 1 : 0;
+        productos['Planes|Mensual u otro'] = renovaciones; if (nuevos) productos['Planes|3 meses'] = nuevos;
         const planes = renovaciones + nuevos, planes_monto = planes * 99000, mostrador_monto = cuantos * 6500;
         ventas.push({ fecha, sede: 'bolson', dni, nombre, planes, planes_monto, nuevos, renovaciones, largos: nuevos, mostrador: cuantos, mostrador_monto, efectivo: planes_monto, transferencia: mostrador_monto, mercadopago: 0, otros_medios: 0, productos: JSON.stringify(productos), sin_clasificar: 0 });
       });

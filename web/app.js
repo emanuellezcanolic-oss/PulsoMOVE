@@ -817,18 +817,27 @@
     });
     return t;
   }
-  const rankingProductos = t => Object.keys(t.productos).map(n => [n, t.productos[n]]).sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]));
+  // Las claves vienen como "Categoría|Producto"
+  const partesVenta = k => { const i = String(k).indexOf('|'); return i < 0 ? ['Otros', String(k)] : [k.slice(0, i), k.slice(i + 1)]; };
+  const rankingProductos = t => Object.keys(t.productos).map(k => [partesVenta(k)[1], t.productos[k], partesVenta(k)[0]]).sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]));
+  const ORDEN_CATEGORIAS = ['Planes', 'Suplementos', 'Indumentaria', 'Bebidas', 'Barritas y snacks', 'Comida', 'Recovery', 'Servicios', 'Planes sueltos', 'Otros'];
+  function porCategoria(t) {
+    const m = {};
+    rankingProductos(t).forEach(([n, c, cat]) => { (m[cat] = m[cat] || { total: 0, items: [] }).total += c; m[cat].items.push([n, c]); });
+    return Object.keys(m).sort((a, b) => (ORDEN_CATEGORIAS.indexOf(a) + 1 || 99) - (ORDEN_CATEGORIAS.indexOf(b) + 1 || 99)).map(cat => [cat, m[cat]]);
+  }
   function queVendio(t) {
     const partes = [];
     if (t.renovaciones) partes.push(t.renovaciones + (t.renovaciones === 1 ? ' renovación' : ' renovaciones'));
     if (t.nuevos) partes.push(t.nuevos + (t.nuevos === 1 ? ' socio nuevo' : ' socios nuevos'));
-    return partes.concat(rankingProductos(t).map(([n, c]) => `${c} ${n}`)).join(' · ') || 'Sin ventas';
+    const planes = rankingProductos(t).filter(x => x[2] === 'Planes' && /meses$/.test(x[0])).map(([n, c]) => `${c} de ${n}`);
+    return partes.concat(planes, rankingProductos(t).filter(x => x[2] !== 'Planes').map(([n, c]) => `${c} ${n}`)).join(' · ') || 'Sin ventas';
   }
   function barrasProductos(t) {
-    const r = rankingProductos(t);
-    if (!r.length) return '<div class="vacio">Sin productos en este período.</div>';
-    const max = r[0][1];
-    return `<div class="ranking-ventas">${r.slice(0, 15).map(([n, c]) => `<div class="fila-venta"><span>${esc(n)}</span><div class="medidor"><i class="bien" style="width:${Math.round(c / max * 100)}%"></i></div><b>${c}</b></div>`).join('')}</div>`;
+    const cats = porCategoria(t);
+    if (!cats.length) return '<div class="vacio">Sin ventas en este período.</div>';
+    const max = Math.max(...cats.map(x => x[1].total));
+    return `<div class="ranking-ventas">${cats.map(([cat, x]) => `<div class="categoria-venta"><div class="fila-venta"><b class="nombre-cat">${esc(cat)}</b><div class="medidor"><i class="bien" style="width:${Math.round(x.total / max * 100)}%"></i></div><b>${x.total}</b></div><p class="detalle-cat">${x.items.map(([n, c]) => `${esc(n)} ${c}`).join(' · ')}</p></div>`).join('')}</div>`;
   }
   const PERIODOS_VENTA = [['ayer', 'Último día'], ['semana', '7 días'], ['mes', 'Este mes'], ['pasado', 'Mes pasado']];
   function filtrarPeriodo(filas, hoy, periodo) {
@@ -883,7 +892,7 @@
     if (!filas.length) return '';
     const t = sumarVentas(filas);
     return `<section class="bloque"><div class="bloque-cab"><h2>🛍️ Lo que se vendió en tu caja</h2></div>
-      <div class="datos"><div class="dato"><strong>${t.renovaciones}</strong><span>Renovaciones</span></div><div class="dato"><strong>${t.nuevos}</strong><span>Socios nuevos</span></div><div class="dato"><strong>${t.mostrador}</strong><span>Ventas de mostrador</span></div></div>
+      <div class="datos"><div class="dato"><strong>${t.renovaciones}</strong><span>Renovaciones</span></div><div class="dato"><strong>${t.nuevos}</strong><span>Socios nuevos</span></div><div class="dato"><strong>${t.largos}</strong><span>Planes de 3 meses o más</span></div><div class="dato"><strong>${t.mostrador}</strong><span>Ventas de mostrador</span></div></div>
       ${barrasProductos(t)}
       <div class="dias-venta">${filas.map(f => `<div class="dia-venta"><b>${ddmm(f.fecha)}</b><span>${esc(queVendio(sumarVentas([f])))}</span></div>`).join('')}</div></section>`;
   }

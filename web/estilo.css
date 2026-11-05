@@ -390,6 +390,9 @@ dialog h3 { margin: 0; font: 800 21px/1 var(--display); text-transform: uppercas
 .ranking-ventas { display: grid; gap: 7px; margin-top: 10px; }
 .fila-venta { display: grid; grid-template-columns: minmax(110px, 170px) 1fr 34px; gap: 10px; align-items: center; font-size: 13px; }
 .fila-venta b { text-align: right; }
+.fila-venta .nombre-cat { text-align: left; }
+.categoria-venta { display: grid; gap: 2px; }
+.detalle-cat { margin: 0; font-size: 12px; color: var(--gris); }
 .dias-venta { display: grid; gap: 6px; margin-top: 14px; max-height: 320px; overflow-y: auto; }
 .dia-venta { display: grid; grid-template-columns: 48px 1fr; gap: 8px; font-size: 13px; border-top: 1px solid var(--linea); padding-top: 6px; }
 details.grupo summary { cursor: pointer; }
