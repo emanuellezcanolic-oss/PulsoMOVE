@@ -33,7 +33,7 @@
     if (t.indexOf('Seguimiento de consulta') === 0) return { resultado: 'SEGUIDO', conCanal: true, detalle: 'Qué respondió', boton: 'Seguimiento hecho' };
     if (t.indexOf('Coordinar') === 0) return { resultado: 'AGENDADA', conCanal: false, conFecha: true, consejo: 'Marcala recién cuando la evaluación ya esté agendada, con la fecha del turno. Después de esa fecha miramos en MOVE que se haya cargado.', detalle: 'Con quién y a qué hora', boton: 'Quedó agendada' };
     if (t.indexOf('Evaluación sin cargar') === 0) return { conCanal: false, etiqueta: 'Qué pasó', opciones: [['REPROGRAMADA', 'Faltó o no se hizo: la reprogramé'], ['SE HIZO', 'Se hizo: falta que el profe la cargue'], ['NO SE HACE', 'No se va a hacer']], detalle: 'Contá qué pasó', boton: 'Guardar' };
-    if (t.indexOf('Entrena en otra sede') === 0) return { conCanal: false, etiqueta: 'Qué hablaste con el profe', opciones: [['CORREGIDO', 'Corregí la sede o el profe en MOVE'], ['LO SIGUE EL PROFE', 'Su profe lo sigue igual: queda como está']], consejo: 'Hablá primero con el profe a cargo y preguntale si le sigue haciendo el seguimiento. Si todavía no pudiste hablar, dejala pendiente.', detalle: 'Qué te dijo', boton: 'Guardar' };
+    if (t.indexOf('Entrena en otra sede') === 0) return { conCanal: false, etiqueta: '¿Sigue entrenando en la sede donde está registrado?', opciones: [['CORREGIDO', 'No, entrena acá: corregí la sede en MOVE'], ['MULTISEDE', 'Sí, hace doble turno o es multisede: queda como está'], ['DE PASO', 'Sí, acá vino de paso: queda como está']], consejo: 'Preguntale cuando venga. Si no entrena allá, primero corregí la sede en MOVE: recién cuenta cuando MOVE muestra el cambio, y lo miramos cada mañana. Si todavía no pudiste preguntarle, dejala pendiente.', detalle: 'Qué te dijo', boton: 'Guardar' };
     if (t.indexOf('Revisar plan') === 0) return { conCanal: false, etiqueta: 'Qué dijo el profe', opciones: [['LO CAMBIA EL PROFE', 'Se lo va a cambiar'], ['NOTIFICADO', 'Lo ve bien: ya le escribí al socio para ver si le gustaría un cambio'], ['NO HACE FALTA', 'No hace falta cambiarlo por ahora']], consejo: 'Primero hablalo con el profe. Si lo ve bien, escribile vos al socio, con tus palabras, para ver si le gustaría una modificación.', detalle: 'Qué te dijo', boton: 'Guardar' };
     if (t.indexOf('Revisar profesor') === 0) return { resultado: 'SIN CAMBIO', conCanal: false, detalle: 'Por qué se deja como está', obligatorio: true, boton: 'Dejarlo como está' };
     return null;
@@ -170,6 +170,7 @@
 
   function etiquetaEstado(t) {
     if (t.estado === 'pendiente' && E.hoy && String(t.fecha) > E.hoy) return `<span class="estado adelanto">⏩ Del ${ddmm(t.fecha)}</span>`;
+    if (t.estado === 'hecha' && (t.resultado_local || (t.marca && t.marca.resultado)) === 'CORREGIDO') return '<span class="estado adelanto">⏳ Falta que MOVE muestre el cambio</span>';
     if (t.estado === 'hecha') return `<span class="estado hecha">✓ ${esc(t.resultado_local || (t.marca && t.marca.resultado) || (seVerificaEnMove(t.tipo) ? 'Verificada en MOVE' : 'Hecha'))}</span>`;
     if (t.dias_pendiente >= 2) return `<span class="estado atrasada">Desde el ${ddmm(t.pendiente_desde)}</span>`;
     if (t.dias_pendiente === 1) return '<span class="estado ayer">De ayer</span>';

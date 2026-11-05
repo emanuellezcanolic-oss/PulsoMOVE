@@ -83,7 +83,7 @@ function leerToken(token, ahoraMs, secreto, hmac) {
 const CANALES = ['MP', 'AU', 'MG', 'LL', 'PR', 'SIN CONTACTO'];
 const RESULTADOS = ['VOLVIÓ', 'VUELVE', 'RESERVA', 'PAGÓ', 'PAGA', 'VACACIONES', 'PAUSA', 'SALUD', 'HORARIOS',
                     'PRECIO', 'BAJA', 'NO CONTESTA', 'TEL MAL', 'NOTIFICADO', 'ENCUESTA ENVIADA', 'SALUDADO', 'SIN CAMBIO', 'SEGUIDO', 'HECHO',
-                    'AGENDADA', 'REPROGRAMADA', 'SE HIZO', 'NO SE HACE', 'CORREGIDO', 'LO SIGUE EL PROFE', 'LO CAMBIA EL PROFE', 'NO HACE FALTA'];
+                    'AGENDADA', 'REPROGRAMADA', 'SE HIZO', 'NO SE HACE', 'CORREGIDO', 'MULTISEDE', 'DE PASO', 'LO SIGUE EL PROFE', 'LO CAMBIA EL PROFE', 'NO HACE FALTA'];
 const PIDEN_FECHA = ['VUELVE', 'PAGA', 'VACACIONES', 'AGENDADA', 'REPROGRAMADA'];   // la fecha se pide solo en estos: en los demás no aparece
 const PREGUNTA_FECHA = { VUELVE: '¿Qué día vuelve?', PAGA: '¿Qué día paga?', VACACIONES: '¿Qué día vuelve de vacaciones?', AGENDADA: '¿Qué día es la evaluación?', REPROGRAMADA: '¿Para qué día quedó?' };
 // El desplegable de resultados, por categoría
@@ -336,7 +336,7 @@ function medallasDelMes(c) {
     ['redondo', '🎯', 'Día redondo', 'Cerrar un turno sin pendientes', 'redondos', 1],
     ['adelantada', '🚀', 'Un paso adelante', '5 tareas adelantadas', 'adelantadas', 5],
     ['puente', '🤝', 'Puente con los profes', '10 tareas resueltas con un profe', 'puente', 10],
-    ['brujula', '🧭', 'Brújula', '3 socios bien ubicados en MOVE', 'corregidos', 3],
+    ['brujula', '🧭', 'Brújula', '3 socios con la sede corregida y confirmada en MOVE', 'corregidos', 3],
     ['volvieron', '🙌', 'Volvieron por vos', '3 socios que volvieron después de tu contacto', 'volvieron', 3],
     ['voz', '💬', 'Voz del equipo', 'Contar cómo fue tu día 10 veces', 'encuestas', 10],
   ];

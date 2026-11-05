@@ -140,7 +140,7 @@ test('NOTIFICADO: un recordatorio enviado no pide fecha ni motivo', () => {
 test('resultados por categoría: cada uno una sola vez, y lo que queda afuera tiene su propio formulario', () => {
   const agrupados = L.GRUPOS_RESULTADO.flatMap(g => g[1]);
   assert.equal(new Set(agrupados).size, agrupados.length);
-  assert.deepEqual(L.RESULTADOS.filter(r => agrupados.indexOf(r) < 0).sort(), ['AGENDADA', 'CORREGIDO', 'ENCUESTA ENVIADA', 'HECHO', 'LO CAMBIA EL PROFE', 'LO SIGUE EL PROFE', 'NO HACE FALTA', 'NO SE HACE', 'REPROGRAMADA', 'SALUDADO', 'SE HIZO', 'SEGUIDO', 'SIN CAMBIO']);
+  assert.deepEqual(L.RESULTADOS.filter(r => agrupados.indexOf(r) < 0).sort(), ['AGENDADA', 'CORREGIDO', 'DE PASO', 'ENCUESTA ENVIADA', 'HECHO', 'LO CAMBIA EL PROFE', 'LO SIGUE EL PROFE', 'MULTISEDE', 'NO HACE FALTA', 'NO SE HACE', 'REPROGRAMADA', 'SALUDADO', 'SE HIZO', 'SEGUIDO', 'SIN CAMBIO']);
   assert.ok(agrupados.every(r => L.RESULTADOS.indexOf(r) >= 0));
 });
 

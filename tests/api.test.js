@@ -224,6 +224,22 @@ test('sede: alertas desde 2 días hábiles', () => {
   assert.ok(!r.data.personas.some(p => p.sede === 'puelo' || p.dni === '26555666'));
 });
 
+test('otra sede: lo que marca recepción no cuenta hasta que MOVE muestra el cambio', () => {
+  const t = tarea({ id: 'x', sede: 'bariloche', socio_id: 'sede-7', tipo: 'Entrena en otra sede', asignado_dni: '30123456', fecha: '2026-11-09' });
+  const d = equipo({ tareas: [t] });
+  d.t = Date.parse('2026-11-09T15:00:00Z');
+  const token = entrar(d);
+  assert.equal(pedir(d, { accion: 'marcar', token, id_marca: 'm1', tarea_id: 'x', canal: 'PR', resultado: 'CORREGIDO' }).ok, true);
+  const brujula = () => pedir(d, { accion: 'mi_dia', token }).data.medallas.find(m => m.clave === 'brujula').actual;
+  assert.equal(brujula(), 0);
+  assert.equal(pedir(d, { accion: 'marcar', token, id_marca: 'm2', tarea_id: 'x', canal: 'PR', resultado: 'VERIFICADO EN MOVE' }).error, 'datos_invalidos');
+  const avisar = () => pedir(d, { accion: 'cargar_tareas', clave: 'clave-prueba', fecha: '2026-11-09', tareas: [], cerrar: [{ sede: 'bariloche', socio_id: 'sede-7', verificada: true }] });
+  avisar();
+  avisar();
+  assert.equal(d.repo.leer('registro').filter(r => r.resultado === 'VERIFICADO EN MOVE').length, 1);
+  assert.equal(brujula(), 1);
+});
+
 test('sede: una tarea de otra sede se ve con quien la tiene', () => {
   const d = equipo({ tareas: [tarea({ id: 'online', sede: 'puelo', pendiente_desde: '2026-11-02' }), tarea({ id: 'suya', sede: 'bolson', asignado_dni: '26555666', pendiente_desde: '2026-11-02' })] });
   const r = pedir(d, { accion: 'sede', token: entrar(d, '25111222', '0907') });

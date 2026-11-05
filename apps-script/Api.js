@@ -257,7 +257,26 @@ function cargarTareas(req, deps) {
   if (!nuevas.every(completa) || !cerrar.every(c => c && SEDES.indexOf(c.sede) >= 0 && texto(c.socio_id))) falla('datos_invalidos');
   const r = fusionarCargaDetalle(deps.repo.leer('tareas'), nuevas, cerrar, fecha);
   deps.repo.escribir('tareas', r.filas);
+  registrarVerificadas(r.filas, cerrar, deps);
   return { nuevas: r.nuevas, actualizadas: r.actualizadas, cerradas: r.cerradas };
+}
+
+// La sede corregida recién cuenta cuando MOVE la muestra (Emanuel, 04/11/2026). Lo anota el proceso diario, nunca la persona.
+function registrarVerificadas(tareas, cerrar, deps) {
+  const verificadas = cerrar.filter(c => c.verificada);
+  if (!verificadas.length) return;
+  const ya = {};
+  deps.repo.leer('registro').forEach(r => { ya[r.id_marca] = true; });
+  const ts = new Date(deps.ahora()).toISOString();
+  verificadas.forEach(c => {
+    const t = tareas.filter(x => x.sede === c.sede && x.socio_id === String(c.socio_id) && String(x.tipo).indexOf('Entrena en otra sede') === 0).pop();
+    if (!t || ya['verificada-' + t.id]) return;
+    ya['verificada-' + t.id] = true;
+    deps.repo.agregar('registro', {
+      segundos: '', adelantada: '', id_marca: 'verificada-' + t.id, ts: ts, tarea_id: t.id, fecha_tarea: t.fecha, sede: t.sede, socio_id: t.socio_id,
+      socio_nombre: t.socio_nombre, tipo: t.tipo, dni: t.asignado_dni, canal: 'SIN CONTACTO', resultado: 'VERIFICADO EN MOVE', fecha_resultado: '', detalle: '',
+    });
+  });
 }
 
 // Corrige a quién le toca una tarea pendiente. No cambia fechas: no le suma atraso a nadie.
@@ -434,8 +453,8 @@ function miDia(req, deps) {
   const delMesCierres = deps.repo.leer('cierres').filter(c => c.dni === usuario.dni && String(c.fecha).indexOf(mes) === 0);
   const medallas = medallasDelMes({
     tareas: valores.tareas_hechas, racha: racha, adelantadas: valores.adelantadas, volvieron: valores.reenganches,
-    puente: delMesReg.filter(r => /^(Coordinar|Evaluación sin cargar|Revisar plan|Entrena en otra sede|Revisar profesor)/.test(r.tipo)).length,
-    corregidos: delMesReg.filter(r => r.resultado === 'CORREGIDO').length,
+    puente: delMesReg.filter(r => r.resultado !== 'VERIFICADO EN MOVE' && /^(Coordinar|Evaluación sin cargar|Revisar plan|Entrena en otra sede|Revisar profesor)/.test(r.tipo)).length,
+    corregidos: delMesReg.filter(r => r.resultado === 'VERIFICADO EN MOVE').length,
     encuestas: delMesCierres.length, redondos: delMesCierres.filter(c => Number(c.pendientes) === 0).length,
   });
   const deMiSede = tareas.filter(t => t.sede === usuario.sede && !esRecordatorio(t.tipo) && !seVerificaEnMove(t.tipo) && t.estado !== 'cerrada');
