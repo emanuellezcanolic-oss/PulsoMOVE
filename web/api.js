@@ -42,7 +42,11 @@
     };
     const guardarJson = (k, v) => { try { almacen.setItem(k, JSON.stringify(v)); } catch (e) { /* sin almacenamiento */ } };
 
-    const sesion = () => leerJson(CLAVE_SESION, null);
+    // Una sesión sin token, nombre o roles no sirve: se vuelve a la pantalla de entrada en vez de dejar a la persona sin vistas (Ara, 05/11/2026)
+    const sesion = () => {
+      const s = leerJson(CLAVE_SESION, null);
+      return s && s.token && s.nombre && Array.isArray(s.roles) && s.roles.length ? s : null;
+    };
     const guardarSesion = s => guardarJson(CLAVE_SESION, s);
     const cerrarSesion = () => { try { almacen.removeItem(CLAVE_SESION); } catch (e) { /* nada */ } };
     const cola = () => leerJson(CLAVE_COLA, []);
