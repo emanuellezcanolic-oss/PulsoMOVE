@@ -535,7 +535,7 @@
   function bloqueCierres() {
     if (!E.cierres) return '';
     const Z = E.cierresResumen;
-    const catalogo = `<details class="catalogo"><summary>🔔 Ver los avisos que recibe recepción y para qué está cada uno</summary><div class="envoltura-tabla"><table class="tabla compacta"><thead><tr><th>Aviso</th><th>Cuándo</th><th>Para qué</th></tr></thead><tbody>${CATALOGO_AVISOS.filter(x => !tiene('recepcion') || x[1].indexOf('sin tocar la app') < 0).map(a => `<tr><td>${esc(a[0])}</td><td>${esc(a[1])}</td><td>${esc(a[2])}</td></tr>`).join('')}</tbody></table></div><p class="aclara">Salen como mucho cada 20 minutos y solo con PulsoMOVE abierta en esa PC.</p></details>`;
+    const catalogo = `<details class="catalogo"><summary>🔔 Ver los avisos que recibe recepción y para qué está cada uno</summary><div class="envoltura-tabla"><table class="tabla compacta"><thead><tr><th>Aviso</th><th>Cuándo</th><th>Para qué</th></tr></thead><tbody>${CATALOGO_AVISOS.filter(x => tiene('admin') || !tiene('recepcion') || x[1].indexOf('sin tocar la app') < 0).map(a => `<tr><td>${esc(a[0])}</td><td>${esc(a[1])}</td><td>${esc(a[2])}</td></tr>`).join('')}</tbody></table></div><p class="aclara">Salen como mucho cada 20 minutos y solo con PulsoMOVE abierta en esa PC.</p></details>`;
     if (!E.cierres.length) return `<section class="bloque"><div class="bloque-cab"><h2>Cómo vivió el día el equipo</h2></div><p class="aclara">Todavía nadie respondió la encuesta del cierre.</p>${catalogo}</section>`;
     const mejores = E.cierres.filter(c => c.lo_mejor).slice(0, 8);
     return `<section class="bloque"><div class="bloque-cab"><h2>Cómo vivió el día el equipo</h2><span class="sello">Últimos 14 días</span></div>

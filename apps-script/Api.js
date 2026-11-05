@@ -391,9 +391,9 @@ function serieTareas(dni, mes, tareas) {
   return Object.keys(dias).sort().map(f => ({ fecha: f, hechas: dias[f] }));
 }
 
-// Las horas de actividad las ve quien coordina sin atender recepción (Emanuel, 04/11/2026).
+// Las horas de actividad las ven los admin (Emanuel y Lucía) y quien coordina sin atender recepción (Emanuel, 04/11/2026).
 function veUso(usuario) {
-  return (tieneRol(usuario, 'admin') || tieneRol(usuario, 'coordinador')) && !tieneRol(usuario, 'recepcion');
+  return tieneRol(usuario, 'admin') || (tieneRol(usuario, 'coordinador') && !tieneRol(usuario, 'recepcion'));
 }
 
 const DIAS_GUARDAR_USO = 40;

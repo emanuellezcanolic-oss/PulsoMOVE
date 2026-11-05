@@ -243,6 +243,9 @@ test('uso: registra por persona y solo lo ve quien coordina sin atender recepci�
   assert.equal(persona(pedir(d, { accion: 'rendimiento', token: coordQueAtiende })).uso, undefined);
   assert.equal(persona(pedir(d, { accion: 'rendimiento', token: coordQueAtiende })).tiempos, undefined);
   assert.equal(persona(pedir(d, { accion: 'sede', token: coordQueAtiende })).en_vivo, undefined);
+  d.repo.hojas.usuarios.find(u => u.dni === '25111222').roles = 'recepcion,coordinador,admin';
+  assert.ok(persona(pedir(d, { accion: 'rendimiento', token: coordQueAtiende })).uso, 'admin que atiende recepción, como Lucía');
+  d.repo.hojas.usuarios.find(u => u.dni === '25111222').roles = 'recepcion,coordinador';
   const propia = pedir(d, { accion: 'rendimiento', token: ana }).data.personas[0];
   assert.equal(propia.uso, undefined);
   assert.equal(propia.tiempos, undefined);
