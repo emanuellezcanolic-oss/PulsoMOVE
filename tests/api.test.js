@@ -724,3 +724,24 @@ test('cierre con estrellas: guarda sala, profes y lo mejor, y coordinación ve e
   assert.equal(g.equipo, '4');
   assert.equal(g.pregunta, '¿Qué te salió bien hoy?');
 });
+
+test('ventas: coordinación ve la plata de su sede y recepción solo lo que vendió', () => {
+  const fila = { fecha: '2026-11-03', sede: 'bolson', dni: '30123456', nombre: 'Ana', planes: 2, planes_monto: 100, nuevos: 1, renovaciones: 1, largos: 0, mostrador: 1, mostrador_monto: 50, efectivo: 150, transferencia: 0, mercadopago: 0, otros_medios: 0, productos: '{"Agua":1}', sin_clasificar: 0 };
+  const d = equipo({ ventas: [fila, { ...fila, sede: 'puelo', dni: 'x' }, { ...fila, fecha: '2020-01-01', dni: 'x' }] });
+  const sede = pedir(d, { accion: 'sede', token: entrar(d, '25111222', '0907') }).data.ventas;
+  assert.deepEqual(sede.map(f => f.sede), ['bolson']);
+  assert.equal(sede[0].planes_monto, 100);
+  const propia = pedir(d, { accion: 'rendimiento', token: entrar(d), mes: '2026-11' }).data.personas[0].ventas_dias;
+  assert.equal(propia.length, 1);
+  assert.equal(propia[0].productos, '{"Agua":1}');
+  assert.equal(propia[0].renovaciones, 1);
+  ['planes_monto', 'mostrador_monto', 'efectivo', 'transferencia', 'mercadopago', 'otros_medios'].forEach(k => assert.equal(k in propia[0], false));
+  assert.equal(pedir(d, { accion: 'cargar_ventas', clave: 'mala', desde: '2026-11-01', filas: [] }).ok, false);
+});
+
+test('stock: cada sede cuenta lo que vende', () => {
+  assert.equal(L.productosStockDe('puelo').includes('Café'), false);
+  assert.equal(L.productosStockDe('bolson').includes('Café'), true);
+  assert.equal(L.productosStockDe('bolson').includes('Pistola de masajes para vender'), false);
+  assert.equal(L.productosStockDe('bariloche').includes('Pistola de masajes para vender'), true);
+});

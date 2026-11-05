@@ -194,7 +194,7 @@
       ${recomiendaAudio(t.tipo) ? `<div class="consejo-audio">🎙️ ${esc(AVISO_AUDIO)}</div>` : ''}
       ${f.consejo ? `<div class="consejo-audio">${esc(f.consejo)}</div>` : ''}
       ${f.checklist ? checklistHtml(itemsDe(t)) : ''}
-      ${f.stock ? `<div class="conteo-stock">${PRODUCTOS_STOCK.map(p => `<label class="campo">${esc(p)}<input type="number" min="0" max="99999" step="1" inputmode="numeric" required data-stock="${esc(p)}"></label>`).join('')}</div>` : ''}
+      ${f.stock ? `<p class="aclara">Si no hay, poné 0.</p><div class="conteo-stock">${productosStockDe(t.sede).map(p => `<label class="campo">${esc(p)}<input type="number" min="0" max="99999" step="1" inputmode="numeric" required data-stock="${esc(p)}"></label>`).join('')}</div>` : ''}
       <div class="campos">${canal}
         ${f.opciones ? `<label class="campo">${esc(f.etiqueta)}<select name="resultado" required data-accion="resultado"><option value="">Elegí…</option>${f.opciones.map(o => `<option value="${esc(o[0])}">${esc(o[1])}</option>`).join('')}</select></label>` : ''}
         ${f.conFecha || f.opciones ? `<label class="campo" data-campo="fecha" ${f.conFecha ? '' : 'hidden'}><span data-ayuda="fecha">${esc(PREGUNTA_FECHA[f.resultado] || 'Fecha')}</span><input name="fecha" type="date" min="${esc(E.hoy)}" ${f.conFecha ? 'required' : ''}></label>` : ''}
@@ -454,7 +454,7 @@
         <div class="puntaje"><span class="puntaje-n">${nota(P.total)}</span><span class="puntaje-de">${P.total == null ? '' : 'de 100'}</span>
           <span class="sello ${cls}">${ico} ${txt}</span></div>
         <div class="grupos">${P.grupos.map(g => `<div class="grupo-mini"><strong>${nota(g.puntaje)}</strong><span>${esc(g.nombre)}</span></div>`).join('')}</div>
-      </section>${incentivo}<div class="tablero-columnas">${graficoDias(p.serie)}${propia ? '' : bloqueUso(p) + bloqueTiempos(p)}${grupos}${ventas}${actividad}</div>
+      </section>${incentivo}<div class="tablero-columnas">${graficoDias(p.serie)}${propia ? '' : bloqueUso(p) + bloqueTiempos(p)}${grupos}${bloqueVentasPersona(p)}${ventas}${actividad}</div>
       ${editable ? `<div class="botones"><button class="boton verde" data-accion="objetivos-guardar" data-dni="${esc(p.dni)}">Guardar objetivos</button></div>` : ''}`;
   }
 
@@ -802,12 +802,98 @@
       }).join('') : '<div class="vacio">Sin tareas para hoy.</div>'}`;
   }
 
+  // ---------- Ventas ----------
+
+  const nro = v => Number(v) || 0;
+  const productosDe = f => { try { return JSON.parse(f.productos || '{}'); } catch (e) { return {}; } };
+  const CAMPOS_SUMA = ['planes', 'planes_monto', 'nuevos', 'renovaciones', 'largos', 'mostrador', 'mostrador_monto', 'efectivo', 'transferencia', 'mercadopago', 'otros_medios', 'sin_clasificar'];
+  function sumarVentas(filas) {
+    const t = { productos: {} };
+    CAMPOS_SUMA.forEach(k => { t[k] = 0; });
+    filas.forEach(f => {
+      CAMPOS_SUMA.forEach(k => { t[k] += nro(f[k]); });
+      const p = productosDe(f);
+      Object.keys(p).forEach(n => { t.productos[n] = (t.productos[n] || 0) + nro(p[n]); });
+    });
+    return t;
+  }
+  const rankingProductos = t => Object.keys(t.productos).map(n => [n, t.productos[n]]).sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]));
+  function queVendio(t) {
+    const partes = [];
+    if (t.renovaciones) partes.push(t.renovaciones + (t.renovaciones === 1 ? ' renovación' : ' renovaciones'));
+    if (t.nuevos) partes.push(t.nuevos + (t.nuevos === 1 ? ' socio nuevo' : ' socios nuevos'));
+    return partes.concat(rankingProductos(t).map(([n, c]) => `${c} ${n}`)).join(' · ') || 'Sin ventas';
+  }
+  function barrasProductos(t) {
+    const r = rankingProductos(t);
+    if (!r.length) return '<div class="vacio">Sin productos en este período.</div>';
+    const max = r[0][1];
+    return `<div class="ranking-ventas">${r.slice(0, 15).map(([n, c]) => `<div class="fila-venta"><span>${esc(n)}</span><div class="medidor"><i class="bien" style="width:${Math.round(c / max * 100)}%"></i></div><b>${c}</b></div>`).join('')}</div>`;
+  }
+  const PERIODOS_VENTA = [['ayer', 'Último día'], ['semana', '7 días'], ['mes', 'Este mes'], ['pasado', 'Mes pasado']];
+  function filtrarPeriodo(filas, hoy, periodo) {
+    const mes = hoy.slice(0, 7);
+    if (periodo === 'mes') return filas.filter(f => String(f.fecha).indexOf(mes) === 0);
+    if (periodo === 'pasado') {
+      const d = new Date(mes + '-01T12:00:00Z');
+      d.setUTCMonth(d.getUTCMonth() - 1);
+      const ant = d.toISOString().slice(0, 7);
+      return filas.filter(f => String(f.fecha).indexOf(ant) === 0);
+    }
+    if (periodo === 'ayer') {
+      const ult = filas.map(f => String(f.fecha)).sort().pop();
+      return filas.filter(f => String(f.fecha) === ult);
+    }
+    const d = new Date(hoy + 'T12:00:00Z');
+    d.setUTCDate(d.getUTCDate() - 7);
+    const desde = d.toISOString().slice(0, 10);
+    return filas.filter(f => String(f.fecha) >= desde);
+  }
+  // Coordinación: todo lo que pasó por las cajas de la sede
+  function bloqueVentas(S) {
+    const todas = S.ventas || [];
+    if (!todas.length) return '';
+    const periodo = E.ventasPeriodo || 'mes';
+    const filas = filtrarPeriodo(todas, S.hoy, periodo);
+    const t = sumarVentas(filas);
+    const dato = (n, val, sub) => `<div class="dato"><strong>${val}</strong><span>${esc(n)}</span>${sub ? `<em>${esc(sub)}</em>` : ''}</div>`;
+    const grupo = clave => { const m = {}; filas.forEach(f => { (m[f[clave]] = m[f[clave]] || []).push(f); }); return m; };
+    const porPersona = grupo('nombre'), porDia = grupo('fecha');
+    const personas = Object.keys(porPersona).map(n => [n, sumarVentas(porPersona[n])]).sort((a, b) => (b[1].planes_monto + b[1].mostrador_monto) - (a[1].planes_monto + a[1].mostrador_monto));
+    const dias = Object.keys(porDia).sort().reverse().slice(0, 31);
+    return `<section class="grupo"><h2>💰 Ventas de la sede</h2>
+      <div class="filtros">${PERIODOS_VENTA.map(([k, n]) => `<button class="chip" data-accion="ventas-periodo" data-p="${k}" aria-pressed="${periodo === k}">${n}</button>`).join('')}</div>
+      <section class="bloque"><div class="datos">
+        ${dato('Entró en total', plata(t.planes_monto + t.mostrador_monto))}
+        ${dato('Por planes', plata(t.planes_monto), t.planes + ' cobros')}
+        ${dato('Por mostrador', plata(t.mostrador_monto), t.mostrador + ' ventas')}
+        ${dato('Renovaciones', t.renovaciones)}${dato('Socios nuevos', t.nuevos)}${dato('Planes de 3 meses o más', t.largos)}
+        ${dato('Efectivo', plata(t.efectivo))}${dato('Transferencia', plata(t.transferencia))}${dato('Mercado Pago', plata(t.mercadopago))}${dato('Tarjeta', plata(t.otros_medios))}
+      </div></section>
+      <div class="tablero-columnas">
+        <section class="bloque"><div class="bloque-cab"><h2>Qué se vendió</h2></div>${barrasProductos(t)}${t.sin_clasificar ? `<p class="aclara">${t.sin_clasificar} ventas con un texto que no se pudo reconocer en la caja.</p>` : ''}</section>
+        <section class="bloque"><div class="bloque-cab"><h2>Por persona</h2></div><div class="envoltura-tabla"><table class="tabla compacta"><thead><tr><th>Quién</th><th>Planes</th><th>Renov.</th><th>Mostrador</th><th>Total</th></tr></thead><tbody>${personas.map(([n, x]) => `<tr><td>${esc(n)}</td><td class="num">${x.planes}</td><td class="num">${x.renovaciones}</td><td class="num">${x.mostrador}</td><td class="num"><b>${plata(x.planes_monto + x.mostrador_monto)}</b></td></tr>`).join('')}</tbody></table></div></section>
+      </div>
+      <section class="bloque"><div class="bloque-cab"><h2>Día por día</h2></div><div class="envoltura-tabla"><table class="tabla compacta"><thead><tr><th>Día</th><th>Entró</th><th>Qué se vendió</th></tr></thead><tbody>${dias.map(d => { const x = sumarVentas(porDia[d]); return `<tr><td>${ddmm(d)}</td><td class="num"><b>${plata(x.planes_monto + x.mostrador_monto)}</b></td><td>${esc(queVendio(x))}</td></tr>`; }).join('')}</tbody></table></div>
+      <p class="aclara">Sale de las cajas de MOVE y se actualiza cada mañana. Cada venta cuenta para quien abrió esa caja. Para que se reconozca, hay que escribir en la caja qué se vendió.</p></section></section>`;
+  }
+  // Lo que vendió cada persona, día por día. En su propia vista no hay plata: el backend no la manda.
+  function bloqueVentasPersona(p) {
+    const filas = (p.ventas_dias || []).slice().sort((a, b) => String(b.fecha).localeCompare(String(a.fecha)));
+    if (!filas.length) return '';
+    const t = sumarVentas(filas);
+    return `<section class="bloque"><div class="bloque-cab"><h2>🛍️ Lo que se vendió en tu caja</h2></div>
+      <div class="datos"><div class="dato"><strong>${t.renovaciones}</strong><span>Renovaciones</span></div><div class="dato"><strong>${t.nuevos}</strong><span>Socios nuevos</span></div><div class="dato"><strong>${t.mostrador}</strong><span>Ventas de mostrador</span></div></div>
+      ${barrasProductos(t)}
+      <div class="dias-venta">${filas.map(f => `<div class="dia-venta"><b>${ddmm(f.fecha)}</b><span>${esc(queVendio(sumarVentas([f])))}</span></div>`).join('')}</div></section>`;
+  }
+
   // ---------- Sede ----------
 
   function bloqueStock(S) {
-    const lista = S.stock || [];
+    const lista = (S.stock || []).filter(f => f.sede === S.sede);
     if (!lista.length) return '';
-    return `<section class="grupo"><h2>📦 Stock para reconocimientos</h2><div class="envoltura-tabla"><table class="tabla compacta"><thead><tr><th>Sede</th><th>Producto</th><th>Hay</th><th>Contó</th><th>Fecha</th></tr></thead><tbody>${lista.map(f => `<tr><td>${esc(SEDES[f.sede] || f.sede)}</td><td>${esc(f.producto)}</td><td class="num"><b>${esc(f.cantidad)}</b></td><td>${esc(f.nombre)}</td><td>${ddmm(f.fecha)}</td></tr>`).join('')}</tbody></table></div></section>`;
+    return `<details class="grupo"><summary><h2>📦 Stock</h2></summary><div class="envoltura-tabla"><table class="tabla compacta"><thead><tr><th>Sede</th><th>Producto</th><th>Hay</th><th>Contó</th><th>Fecha</th></tr></thead><tbody>${lista.map(f => `<tr><td>${esc(SEDES[f.sede] || f.sede)}</td><td>${esc(f.producto)}</td><td class="num"><b>${esc(f.cantidad)}</b></td><td>${esc(f.nombre)}</td><td>${ddmm(f.fecha)}</td></tr>`).join('')}</tbody></table></div></details>`;
   }
 
   // Solo llegan a Lucía y Emanuel
@@ -851,11 +937,12 @@
           <button class="boton claro" data-accion="decidir" data-id="${esc(g.id)}" data-estado="rechazada">Rechazar</button></div></article>`).join('')
       : '<div class="vacio">No hay pedidos de garantía pendientes.</div>';
     return `${selector}<h1 class="titulo">${esc(SEDES[S.sede])} <span>·</span> ${esc(tituloDia(S.hoy))}</h1>
-      <p class="bajada">Avance del equipo, tareas atrasadas y pedidos de garantía.</p>
+      <p class="bajada">Avance del equipo, ventas, tareas atrasadas y pedidos de garantía.</p>
       ${S.personas.some(p => p.en_vivo && p.en_vivo.color === 'rojo') ? `<div class="alerta-roja">🔴 Para mirar: ${S.personas.filter(p => p.en_vivo && p.en_vivo.color === 'rojo').map(p => esc(p.nombre.split(' ')[0])).join(', ')}</div>` : ''}
       ${bloqueBeneficios(S)}
-      ${bloqueStock(S)}
       ${personas}
+      ${bloqueVentas(S)}
+      ${bloqueStock(S)}
       <section class="grupo"><h2>Atrasadas, 2 días o más <span class="cuenta">${S.alertas.length}</span></h2>${alertas}</section>
       <section class="grupo"><h2>Garantía de atención <span class="cuenta">${S.garantias.length}</span></h2><div class="frase">${esc(FRASE_GARANTIA)}</div><p class="bajada" style="margin-top:8px">Se regala el mes siguiente. Decide el responsable de sede.</p>${garantias}</section>`;
   }
@@ -1154,6 +1241,7 @@
     }
     else if (a === 'ver-persona') { E.personaDni = el.dataset.dni; E.persona = null; render(); cargarVista(); }
     else if (a === 'persona-volver') { E.personaDni = null; E.persona = null; render(); cargarVista(); }
+    else if (a === 'ventas-periodo') { E.ventasPeriodo = el.dataset.p; render(); }
     else if (a === 'sede-elegir') { E.sedeElegida = el.dataset.s; E.sede = null; render(); cargarVista(); }
     else if (a === 'reasignar') {
       const dni = app.querySelector(`[data-reasignar="${CSS.escape(el.dataset.id)}"]`).value;

@@ -194,7 +194,7 @@ function vistaSede(req, deps) {
     .filter(t => t.dias_pendiente >= DIAS_ALERTA)
     .sort((a, b) => b.dias_pendiente - a.dias_pendiente || ordenTareas(a, b));
   const garantias = deps.repo.leer('garantia').filter(g => g.sede === sede && g.estado === 'pendiente');
-  return { hoy: hoy, sede: sede, personas: personas, alertas: alertas, garantias: garantias, beneficios: beneficiosParaAutorizar(usuario, deps), stock: ultimoStock(usuario, sede, deps) };
+  return { hoy: hoy, sede: sede, personas: personas, alertas: alertas, garantias: garantias, beneficios: beneficiosParaAutorizar(usuario, deps), stock: ultimoStock(usuario, sede, deps), ventas: ventasDeSede(usuario, sede, deps) };
 }
 
 // Lista de una persona tal como la ve ella, con lo que marcó en cada tarea. Admin: cualquiera; coordinador: su sede.
@@ -264,6 +264,35 @@ function stockValido(lista) {
 function guardarStock(t, lista, usuario, ts, deps) {
   if (String(t.tipo).indexOf('Controlar stock') !== 0) return;
   lista.forEach(x => deps.repo.agregar('stock', { ts: ts, fecha: fechaArgentina(ts), sede: t.sede, dni: usuario.dni, nombre: usuario.nombre, producto: texto(x.producto), cantidad: String(x.cantidad) }));
+}
+
+// ---------- Ventas: salen de las cajas de MOVE, una fila por día, sede y persona que abrió la caja ----------
+
+const CAMPOS_PLATA_VENTAS = ['planes_monto', 'mostrador_monto', 'efectivo', 'transferencia', 'mercadopago', 'otros_medios'];
+const DIAS_VENTAS_SEDE = 70;
+
+function cargarVentas(req, deps) {
+  exigirClave(req, deps);
+  const desde = texto(req.desde);
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(desde) || !Array.isArray(req.filas) || req.filas.some(f => !f || String(f.fecha) < desde)) falla('datos_invalidos');
+  const quedan = deps.repo.leer('ventas').filter(f => String(f.fecha) < desde);
+  deps.repo.escribir('ventas', quedan.concat(req.filas));
+  return { filas: req.filas.length };
+}
+
+function ventasDeSede(usuario, sede, deps) {
+  if (!tieneRol(usuario, 'admin') && !tieneRol(usuario, 'coordinador')) return [];
+  const desde = sumarDias(deps.hoy(), -DIAS_VENTAS_SEDE);
+  return deps.repo.leer('ventas').filter(f => f.sede === sede && String(f.fecha) >= desde);
+}
+
+// Cada recepcionista ve lo que vendió, sin plata: la plata queda para coordinación (Emanuel, 04 y 05/11/2026)
+function ventasDePersona(dni, mes, coordina, filas) {
+  return filas.filter(f => f.dni === dni && String(f.fecha).indexOf(mes) === 0).map(f => {
+    const o = Object.assign({}, f);
+    if (!coordina) CAMPOS_PLATA_VENTAS.forEach(k => { delete o[k]; });
+    return o;
+  });
 }
 
 // El último conteo de cada producto en cada sede
@@ -681,7 +710,7 @@ function respaldo(req, deps) {
   exigirClave(req, deps);
   const usuarios = deps.repo.leer('usuarios').map(u => { const c = Object.assign({}, u); delete c.pin_hash; delete c.sal; return c; });
   const out = { usuarios: usuarios };
-  ['tareas', 'registro', 'garantia', 'actividad', 'rendimiento', 'objetivos', 'cierres', 'profes', 'uso', 'beneficios', 'stock'].forEach(h => { out[h] = deps.repo.leer(h); });
+  ['tareas', 'registro', 'garantia', 'actividad', 'rendimiento', 'objetivos', 'cierres', 'profes', 'uso', 'beneficios', 'stock', 'ventas'].forEach(h => { out[h] = deps.repo.leer(h); });
   return out;
 }
 
@@ -702,6 +731,7 @@ function vistaRendimiento(req, deps) {
   const filasUso = veUso(usuario) ? deps.repo.leer('uso') : [];
   const calculado = deps.repo.leer('rendimiento').filter(r => r.mes === mes);
   const objetivos = deps.repo.leer('objetivos');
+  const filasVentas = deps.repo.leer('ventas');
   let actualizado = '';
   const personas = equipo.map(u => {
     const fila = calculado.find(r => r.dni === u.dni);
@@ -713,7 +743,7 @@ function vistaRendimiento(req, deps) {
     const puntaje = puntuar(valores, propios);
     const puntos = calcularPuntos(valores);
     if (!coordina) SOLO_COORDINACION.forEach(k => { delete valores[k]; });
-    const out = { dni: u.dni, nombre: u.nombre, turno: u.turno, sede: u.sede, valores: valores, puntaje: puntaje, puntos: puntos, serie: serieTareas(u.dni, mes, tareas) };
+    const out = { dni: u.dni, nombre: u.nombre, turno: u.turno, sede: u.sede, valores: valores, puntaje: puntaje, puntos: puntos, serie: serieTareas(u.dni, mes, tareas), ventas_dias: ventasDePersona(u.dni, mes, coordina, filasVentas) };
     if (veUso(usuario)) {
       out.tiempos = tiemposDe(u.dni, mes, registro, u.hora_fin);
       out.uso = usoDelMes(u, mes, filasUso, registro, deps);
@@ -858,6 +888,7 @@ const ACCIONES = {
   beneficio_crear: beneficioCrear,
   beneficio_decidir: beneficioDecidir,
   cargar_beneficios: cargarBeneficios,
+  cargar_ventas: cargarVentas,
 };
 
 function manejar(req, deps) {

@@ -387,4 +387,11 @@ dialog h3 { margin: 0; font: 800 21px/1 var(--display); text-transform: uppercas
 .alerta-roja { margin: 8px 0 12px; padding: 10px 12px; border-radius: 8px; border: 1px solid var(--rojo); color: var(--rojo); font-weight: 700; }
 .hueco { display: inline-block; margin: 1px 4px 1px 0; color: var(--rojo); font-size: 12px; white-space: nowrap; }
 .sub-bloque { margin: 14px 0 6px; font-size: 13px; }
+.ranking-ventas { display: grid; gap: 7px; margin-top: 10px; }
+.fila-venta { display: grid; grid-template-columns: minmax(110px, 170px) 1fr 34px; gap: 10px; align-items: center; font-size: 13px; }
+.fila-venta b { text-align: right; }
+.dias-venta { display: grid; gap: 6px; margin-top: 14px; max-height: 320px; overflow-y: auto; }
+.dia-venta { display: grid; grid-template-columns: 48px 1fr; gap: 8px; font-size: 13px; border-top: 1px solid var(--linea); padding-top: 6px; }
+details.grupo summary { cursor: pointer; }
+details.grupo summary h2 { display: inline; }
 .conteo-stock { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 8px; margin: 8px 0; }

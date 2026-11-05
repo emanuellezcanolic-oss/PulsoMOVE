@@ -279,7 +279,14 @@ function puntuar(valores, objetivos) {
 }
 
 // Lo que se cuenta en cada sede para los reconocimientos a socios (Emanuel, 05/11/2026). La lista se cambia acá.
-const PRODUCTOS_STOCK = ['Proteína ENA 930 g', 'Proteína ENA 453 g', 'Creatina ENA 350 g', 'Creatina ENA 150 g', 'Shaker ENA', 'Barritas', 'Café', 'Botas de presoterapia'];
+const PRODUCTOS_STOCK = ['Proteína ENA 930 g', 'Proteína ENA 453 g', 'Plant Protein ENA', 'Colágeno ENA', 'Creatina ENA 350 g', 'Creatina ENA 150 g', 'Citrato de magnesio', 'Omega', 'Cafeína', 'Shaker ENA',
+                         'Barritas', 'Alfajor proteico', 'Bombones proteicos', 'Agua 500 ml', 'Agua 1 L', 'Gatorade 500 ml', 'Gatorade 750 ml', 'Red Bull', 'Corona Cero',
+                         'Remeras', 'Musculosas', 'Buzos', 'Shorts', 'Gorras', 'Botas de presoterapia'];
+// Lo que no se vende en todas las sedes (Emanuel, 05/11/2026): café en El Bolsón y Bariloche; pistola y botas para llevar, solo en Bariloche
+const PRODUCTOS_STOCK_SEDE = { bariloche: ['Café', 'Botas de compresión para vender', 'Pistola de masajes para vender'], bolson: ['Café'], puelo: [] };
+function productosStockDe(sede) {
+  return PRODUCTOS_STOCK.concat(PRODUCTOS_STOCK_SEDE[sede] || []);
+}
 
 // ---------- Prioridad ----------
 // Qué se hace primero. Arriba, lo que se pierde si se deja pasar: en las rondas de octubre, contactar antes del vencimiento rindió 78% contra 62%.

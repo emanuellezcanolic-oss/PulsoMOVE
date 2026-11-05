@@ -112,7 +112,23 @@
       { mes, dni: C, datos: venta({ nuevos: 6, planes_largos: 2, mostrador_monto: 214000, retencion_logradas: 5, retencion_pct: 5 / 16 }), actualizado: new Date().toISOString() },
     ];
     const rango = (d, n) => Array.from({ length: n }, (_, i) => d + i).join(',');
-    return { stock: [{ ts: new Date().toISOString(), fecha: hoy, sede: 'bolson', dni: R, nombre: 'Rocío (práctica)', producto: 'Proteína ENA 930 g', cantidad: '5' }], beneficios: [{ id: 'B-demo', ts: new Date().toISOString(), tipo: 'referido', sede: 'bolson', socio_nombre: 'Marta Quiroga', nuevo_socio: 'Juan Paz', detalle: '', registra_dni: R, estado: 'pendiente', decide_dni: '', comentario: '', decidido_en: '' }, { id: 'B-demo2', ts: new Date().toISOString(), tipo: 'constancia', sede: 'puelo', socio_nombre: 'Rosa Medina', nuevo_socio: '', detalle: '14 días con QR en 4 semanas', registra_dni: '', estado: 'pendiente', decide_dni: '', comentario: '', decidido_en: '' }], uso: [{ ts: hoy + 'T12:00:00.000Z', dni: R, fecha: hoy, activos: rango(480, 50) + ',' + rango(600, 70), quieta: rango(530, 30), otra: rango(560, 25) }], usuarios, tareas, registro: [], garantia, rendimiento, actividad: [], objetivos: [], cierres: [
+    const ventas = [];
+    const CATALOGO = ['Agua', 'Gatorade', 'Café', 'Barritas', 'Alfajor proteico', 'Botas', 'Creatina', 'Proteína', 'Remera', 'Gorra'];
+    for (let i = 1; i <= 34; i++) {
+      const d = new Date(hoy + 'T12:00:00Z');
+      d.setUTCDate(d.getUTCDate() - i);
+      if (d.getUTCDay() === 0) continue;
+      const fecha = d.toISOString().slice(0, 10);
+      [[R, 'Rocío (práctica)', 1], [T, 'Tomás (práctica)', 2]].forEach(([dni, nombre, k]) => {
+        const productos = {};
+        CATALOGO.forEach((p, j) => { const n = (i * k + j * 3) % (j < 4 ? 4 : 7) === 0 ? 1 + (i + j) % 2 : 0; if (n) productos[p] = n; });
+        const cuantos = Object.values(productos).reduce((a, b) => a + b, 0);
+        const renovaciones = (i + k) % 3 === 0 ? 2 : 1, nuevos = (i + k) % 5 === 0 ? 1 : 0;
+        const planes = renovaciones + nuevos, planes_monto = planes * 99000, mostrador_monto = cuantos * 6500;
+        ventas.push({ fecha, sede: 'bolson', dni, nombre, planes, planes_monto, nuevos, renovaciones, largos: nuevos, mostrador: cuantos, mostrador_monto, efectivo: planes_monto, transferencia: mostrador_monto, mercadopago: 0, otros_medios: 0, productos: JSON.stringify(productos), sin_clasificar: 0 });
+      });
+    }
+    return { ventas, stock: [{ ts: new Date().toISOString(), fecha: hoy, sede: 'bolson', dni: R, nombre: 'Rocío (práctica)', producto: 'Proteína ENA 930 g', cantidad: '5' }], beneficios: [{ id: 'B-demo', ts: new Date().toISOString(), tipo: 'referido', sede: 'bolson', socio_nombre: 'Marta Quiroga', nuevo_socio: 'Juan Paz', detalle: '', registra_dni: R, estado: 'pendiente', decide_dni: '', comentario: '', decidido_en: '' }, { id: 'B-demo2', ts: new Date().toISOString(), tipo: 'constancia', sede: 'puelo', socio_nombre: 'Rosa Medina', nuevo_socio: '', detalle: '14 días con QR en 4 semanas', registra_dni: '', estado: 'pendiente', decide_dni: '', comentario: '', decidido_en: '' }], uso: [{ ts: hoy + 'T12:00:00.000Z', dni: R, fecha: hoy, activos: rango(480, 50) + ',' + rango(600, 70), quieta: rango(530, 30), otra: rango(560, 25) }], usuarios, tareas, registro: [], garantia, rendimiento, actividad: [], objetivos: [], cierres: [
       { fecha: hoy, ts: hoy + 'T17:30:00.000Z', dni: T, nombre: 'Tomás (práctica)', sede: 'bolson', animo: '5', respuestas: '{}', comentario: '', hechas: '18', pendientes: '0', mensajes: '9', consultas: '2', sala: '4', profes: '', equipo: '', socios: '', pregunta: '😊 ¿Algún socio te alegró el día? Contanos.', lo_mejor: 'Un socio me contó que volvió a correr sin dolor.' },
       { fecha: hoy, ts: hoy + 'T13:30:00.000Z', dni: C, nombre: 'Responsable de sede (práctica)', sede: 'bolson', animo: '3', respuestas: '{}', comentario: 'A la tarde se llenó la sala de golpe.', hechas: '12', pendientes: '4', mensajes: '6', consultas: '1', sala: '2', profes: '', equipo: '', socios: '', pregunta: '', lo_mejor: '' },
     ] };
