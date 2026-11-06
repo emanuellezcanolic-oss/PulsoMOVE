@@ -304,7 +304,11 @@ const DIAS_PARA_REASIGNAR = 7;
 function cargarVentasLargas(req, deps) {
   exigirClave(req, deps);
   if (!Array.isArray(req.filas) || req.filas.some(f => !f || !texto(f.id) || !/^\d{4}-\d{2}-\d{2}$/.test(texto(f.fecha)))) falla('datos_invalidos');
-  const filas = deps.repo.leer('ventas_largas');
+  const vienen = {};
+  req.filas.forEach(f => { vienen[texto(f.id)] = true; });
+  // Lo que ya no es una venta larga (por ejemplo, una cuota 2) se saca si nadie tocó todavía esa venta
+  const desde = texto(req.desde);
+  const filas = deps.repo.leer('ventas_largas').filter(f => !desde || !req.filas.length || f.estado !== 'cobro' || f.fecha < desde || vienen[f.id]);
   const ya = {};
   filas.forEach(f => { ya[f.id] = f; });
   let nuevas = 0;

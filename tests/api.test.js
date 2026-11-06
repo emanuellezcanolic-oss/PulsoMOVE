@@ -752,6 +752,13 @@ test('venta de 3 meses: queda para quien cobró, se puede dar o pedir, y suma a 
   const d = equipo({ rendimiento: [{ mes: '2026-11', dni: TARDE.dni, datos: JSON.stringify({ planes_largos: 2, nuevos: 2 }), actualizado: '' }, { mes: '2026-11', dni: '30123456', datos: JSON.stringify({ planes_largos: 0, nuevos: 0 }), actualizado: '' }] });
   assert.equal(pedir(d, { accion: 'cargar_ventas_largas', clave, filas: [fila('1'), fila('2'), fila('3'), { ...fila('viejo'), fecha: '2026-10-01' }] }).data.nuevas, 4);
   assert.equal(pedir(d, { accion: 'cargar_ventas_largas', clave, filas: [fila('1')] }).data.nuevas, 0);
+  // Lo que ya no es venta larga se saca, si nadie la tocó y entra en el período que se volvió a mirar
+  pedir(d, { accion: 'cargar_ventas_largas', clave, filas: [fila('cuota2')] });
+  pedir(d, { accion: 'cargar_ventas_largas', clave, desde: '2026-10-15', filas: [fila('1'), fila('2'), fila('3')] });
+  assert.deepEqual(d.repo.leer('ventas_largas').map(v => v.id).sort(), ['1', '2', '3', 'viejo']);
+  // Una carga vacía no borra nada: puede ser que MOVE no haya respondido
+  pedir(d, { accion: 'cargar_ventas_largas', clave, desde: '2026-10-15', filas: [] });
+  assert.equal(d.repo.leer('ventas_largas').length, 4);
   const ana = entrar(d), tarde = entrar(d, TARDE.dni, '0907'), admin = entrar(d, '20000001', '0907');
   const diaDe = t => pedir(d, { accion: 'mi_dia', token: t }).data.ventas_largas;
   // Si nadie dice nada, queda para quien cobró

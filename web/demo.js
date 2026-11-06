@@ -124,7 +124,7 @@
         CATALOGO.forEach((p, j) => { const n = (i * k + j * 3) % (j < 4 ? 4 : 7) === 0 ? 1 + (i + j) % 2 : 0; if (n) productos[p] = n; });
         const cuantos = Object.values(productos).reduce((a, b) => a + b, 0) + 0;
         const renovaciones = (i + k) % 3 === 0 ? 2 : 1, nuevos = (i + k) % 5 === 0 ? 1 : 0;
-        productos['Planes|Mensual u otro'] = renovaciones; if (nuevos) productos['Planes|3 meses'] = nuevos;
+        productos['Planes|Mensual'] = renovaciones; if (nuevos) productos['Planes|3 meses'] = nuevos;
         const planes = renovaciones + nuevos, planes_monto = planes * 99000, mostrador_monto = cuantos * 6500;
         ventas.push({ fecha, sede: 'bolson', dni, nombre, planes, planes_monto, nuevos, renovaciones, largos: nuevos, mostrador: cuantos, mostrador_monto, efectivo: planes_monto, transferencia: mostrador_monto, mercadopago: 0, otros_medios: 0, productos: JSON.stringify(productos), sin_clasificar: 0 });
       });
