@@ -1058,6 +1058,7 @@ const ACCIONES = {
   cargar_fichajes: cargarFichajes,
   fichajes_ver: fichajesVer,
   fichaje_marcar: fichajeMarcar,
+  servidor_ver: servidorVer,
   rendimiento: vistaRendimiento,
   objetivos_guardar: objetivosGuardar,
   cargar_rendimiento: cargarRendimiento,
@@ -1077,6 +1078,56 @@ const ACCIONES = {
   venta_larga_responder: ventaLargaResponder,
   venta_larga_decidir: ventaLargaDecidir,
 };
+
+// Las pantallas que solo miran no esperan turno: un pedido trabado no las frena. Lista cerrada: lo que no esté acá espera.
+// Respaldo, bajadas y lo que usan los procesos de la PC siguen con turno porque necesitan los datos completos y sin cambios a mitad.
+const SOLO_LECTURA = ['mis_tareas', 'mi_dia', 'sede', 'tareas_de', 'rendimiento', 'cierres_ver', 'profes_ver', 'fichajes_ver', 'usuarios_listar', 'servidor_ver'];
+const ESPERA_TURNO_MS = 20000;
+const PEDIDO_LENTO_MS = 15000;
+
+function accionesDeLectura() {
+  return SOLO_LECTURA;
+}
+
+// Atiende un pedido. `am` trae lo que depende de Google, para poder probarlo sin Google.
+function atenderPedido(req, am) {
+  const accion = req && typeof req.accion === 'string' ? req.accion.slice(0, 40) : '';
+  const inicio = am.ahora();
+  const anotarSiTardo = () => {
+    const ms = am.ahora() - inicio;
+    if (ms >= PEDIDO_LENTO_MS) am.anotar({ evento: 'lento', accion: accion, dueno: '', ms: ms });
+  };
+  if (SOLO_LECTURA.indexOf(accion) >= 0) {
+    try {
+      return manejar(req, am.deps());
+    } catch (e) {
+      return { ok: false, error: 'interno' };
+    } finally {
+      anotarSiTardo();
+    }
+  }
+  if (!am.tomarTurno()) {
+    am.anotar({ evento: 'ocupado', accion: accion, dueno: am.dueno(), ms: am.ahora() - inicio });
+    return { ok: false, error: 'ocupado' };
+  }
+  try {
+    am.marcarDueno(accion);
+    const r = manejar(req, am.deps());
+    am.guardar();
+    return r;
+  } catch (e) {
+    return { ok: false, error: 'interno' };
+  } finally {
+    am.soltarTurno();
+    anotarSiTardo();
+  }
+}
+
+// Lo que el servidor anotó sobre demoras: quién tenía el turno cuando otro no pudo entrar.
+function servidorVer(req, deps) {
+  exigirClave(req, deps);
+  return { filas: deps.repo.leer('servidor').slice(-50) };
+}
 
 function manejar(req, deps) {
   try {

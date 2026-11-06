@@ -17,6 +17,7 @@ const COLUMNAS = {
   profes: ['fecha', 'sede', 'profe_id', 'profe', 'clase', 'qr', 'estado'],
   fichajes: ['id', 'fecha', 'sede', 'persona_id', 'persona', 'dni', 'momento', 'hora', 'estado', 'desde_ts', 'cerrada_ts', 'recordado_ts', 'recordado_dni', 'no_viene_ts', 'no_viene_dni'],
   fichajes_control: ['ts'],
+  servidor: ['ts', 'evento', 'accion', 'dueno', 'ms'],
   cierres: ['fecha', 'ts', 'dni', 'nombre', 'sede', 'animo', 'respuestas', 'comentario', 'hechas', 'pendientes', 'mensajes', 'consultas', 'sala', 'profes', 'lo_mejor', 'equipo', 'socios', 'pregunta'],
   garantia: ['id', 'ts', 'sede', 'socio_id', 'socio_nombre', 'profe', 'motivo', 'registra_dni', 'estado', 'decide_dni',
              'comentario', 'decidido_en'],
@@ -47,8 +48,11 @@ function repoHojas() {
   };
   const aFilas = (nombre, objetos) => objetos.map(o => COLUMNAS[nombre].map(c => (o[c] == null ? '' : String(o[c]))));
   return {
+    // Las lecturas no esperan turno: no crean hojas, y lo que falta todavía se lee como vacío.
     leer: function (nombre) {
-      const h = hoja(nombre);
+      if (!COLUMNAS[nombre]) throw new Error('Hoja desconocida: ' + nombre);
+      const h = libro.getSheetByName(nombre);
+      if (!h) return [];
       const n = h.getLastRow() - 1;
       if (n < 1) return [];
       const cols = COLUMNAS[nombre];
@@ -61,14 +65,19 @@ function repoHojas() {
     escribir: function (nombre, objetos) {
       const h = hoja(nombre);
       const cols = COLUMNAS[nombre].length;
+      const habia = h.getLastRow() - 1;
       h.getRange(1, 1, 1, cols).setValues([COLUMNAS[nombre]]);
-      if (h.getLastRow() > 1) h.getRange(2, 1, h.getLastRow() - 1, cols).clearContent();
-      if (!objetos.length) return;
-      h.getRange(2, 1, objetos.length, cols).setNumberFormat('@').setValues(aFilas(nombre, objetos));
+      // Primero se pisa y recién después se borra lo que sobra: quien lee en ese momento nunca encuentra la hoja vacía.
+      if (objetos.length) h.getRange(2, 1, objetos.length, cols).setNumberFormat('@').setValues(aFilas(nombre, objetos));
+      if (habia > objetos.length) h.getRange(2 + objetos.length, 1, habia - objetos.length, cols).clearContent();
     },
     agregar: function (nombre, objeto) {
       const h = hoja(nombre);
       h.getRange(h.getLastRow() + 1, 1, 1, COLUMNAS[nombre].length).setNumberFormat('@').setValues(aFilas(nombre, [objeto]));
+    },
+    // Agrega sin turno: no pisa aunque haya otro escribiendo.
+    anexar: function (nombre, objeto) {
+      hoja(nombre).appendRow(aFilas(nombre, [objeto])[0]);
     },
   };
 }
@@ -112,15 +121,33 @@ function doPost(e) {
     return respuesta({ ok: false, error: 'datos_invalidos' });
   }
   if (req && req.accion === 'iniciar_clave') return respuesta(iniciarClave(req));
+  return respuesta(atenderPedido(req, ambienteGoogle()));
+}
+
+// Lo que atenderPedido necesita de Google. Anotar nunca puede romper un pedido.
+function ambienteGoogle() {
   const lock = LockService.getScriptLock();
-  if (!lock.tryLock(10000)) return respuesta({ ok: false, error: 'ocupado' });
-  try {
-    return respuesta(manejar(req, depsGoogle()));
-  } catch (err) {
-    return respuesta({ ok: false, error: 'interno' });
-  } finally {
-    lock.releaseLock();
-  }
+  const cache = CacheService.getScriptCache();
+  return {
+    ahora: () => Date.now(),
+    deps: depsGoogle,
+    tomarTurno: () => lock.tryLock(ESPERA_TURNO_MS),
+    soltarTurno: () => { cache.remove('turno'); lock.releaseLock(); },
+    guardar: () => SpreadsheetApp.flush(),   // antes de soltar el turno, para que el siguiente ya vea lo guardado
+    marcarDueno: accion => { try { cache.put('turno', accion + ' desde ' + new Date().toISOString(), 600); } catch (e) { /* solo sirve para diagnosticar */ } },
+    dueno: () => { try { return cache.get('turno') || ''; } catch (e) { return ''; } },
+    anotar: nota => {
+      try {
+        // Con el servidor trabado llegan muchos seguidos: alcanza con uno por minuto
+        if (nota.evento === 'ocupado') {
+          if (cache.get('anotado_ocupado')) return;
+          cache.put('anotado_ocupado', '1', 60);
+        }
+        console.warn('PulsoMOVE ' + nota.evento + ' ' + nota.accion + ' ' + (nota.dueno || nota.ms));
+        repoHojas().anexar('servidor', Object.assign({ ts: new Date().toISOString() }, nota));
+      } catch (e) { /* nada */ }
+    },
+  };
 }
 
 // La primera visita del dueño (que autoriza el script) crea la planilla.

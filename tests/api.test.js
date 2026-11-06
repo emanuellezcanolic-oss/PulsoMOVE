@@ -842,3 +842,106 @@ test('la eficiencia solo la ve admin, y mi_dia trae ideas', () => {
   const ideas = pedir(d, { accion: 'mi_dia', token: entrar(d) }).data.ideas;
   assert.ok(ideas.length >= 3 && ideas[0].titulo);
 });
+
+// ---------- Turnos: quién espera y quién no ----------
+
+function ambiente(d, turnoLibre = true) {
+  const notas = [], log = [];
+  return {
+    notas, log,
+    ahora: () => d.t,
+    deps: () => d,
+    tomarTurno: () => { log.push('toma'); return turnoLibre; },
+    soltarTurno: () => log.push('suelta'),
+    guardar: () => log.push('guarda'),
+    marcarDueno: a => log.push('dueno:' + a),
+    dueno: () => 'cargar_tareas desde 10:00',
+    anotar: n => notas.push(n),
+  };
+}
+
+test('las lecturas se atienden aunque otro pedido tenga el turno', () => {
+  const d = entorno();
+  const token = entrar(d);
+  const am = ambiente(d, false);
+  const r = L.atenderPedido({ accion: 'fichajes_ver', token }, am);
+  assert.ok(r.ok, JSON.stringify(r));
+  assert.deepEqual(am.log, []);
+});
+
+test('lo que guarda datos espera turno, guarda y lo suelta', () => {
+  const d = entorno();
+  const am = ambiente(d);
+  const r = L.atenderPedido({ accion: 'login', dni: '30123456', pin: '4831' }, am);
+  assert.ok(r.ok);
+  assert.deepEqual(am.log, ['toma', 'dueno:login', 'guarda', 'suelta']);
+});
+
+test('una acción desconocida también espera turno', () => {
+  const d = entorno();
+  const am = ambiente(d);
+  assert.deepEqual(L.atenderPedido({ accion: 'nueva' }, am), { ok: false, error: 'datos_invalidos' });
+  assert.equal(am.log[0], 'toma');
+});
+
+test('sin turno responde ocupado y anota quién lo tiene', () => {
+  const d = entorno();
+  const am = ambiente(d, false);
+  assert.deepEqual(L.atenderPedido({ accion: 'login', dni: '1', pin: '2' }, am), { ok: false, error: 'ocupado' });
+  assert.equal(am.notas.length, 1);
+  assert.equal(am.notas[0].evento, 'ocupado');
+  assert.equal(am.notas[0].accion, 'login');
+  assert.equal(am.notas[0].dueno, 'cargar_tareas desde 10:00');
+});
+
+test('si algo falla igual suelta el turno', () => {
+  const d = entorno();
+  const am = ambiente(d);
+  am.deps = () => { throw new Error('planilla caída'); };
+  assert.deepEqual(L.atenderPedido({ accion: 'login' }, am), { ok: false, error: 'interno' });
+  assert.equal(am.log[am.log.length - 1], 'suelta');
+});
+
+test('una falla en una lectura responde interno', () => {
+  const d = entorno();
+  const am = ambiente(d);
+  am.deps = () => { throw new Error('planilla caída'); };
+  assert.deepEqual(L.atenderPedido({ accion: 'fichajes_ver' }, am), { ok: false, error: 'interno' });
+});
+
+test('un pedido lento queda anotado, sin datos del pedido', () => {
+  const d = entorno();
+  const token = entrar(d);
+  const am = ambiente(d);
+  const real = am.deps;
+  am.deps = () => { d.t += 20000; return real(); };
+  L.atenderPedido({ accion: 'fichajes_ver', token }, am);
+  assert.equal(am.notas[0].evento, 'lento');
+  assert.equal(am.notas[0].accion, 'fichajes_ver');
+  assert.equal(am.notas[0].ms, 20000);
+  assert.ok(!JSON.stringify(am.notas).includes(token));
+});
+
+test('toda acción que no espera turno de verdad no escribe nada', () => {
+  const d = entorno([usuario({ roles: 'admin,recepcion' })]);
+  const token = entrar(d);
+  let escrituras = 0;
+  const { escribir, agregar } = d.repo;
+  d.repo.escribir = (...a) => { escrituras++; return escribir(...a); };
+  d.repo.agregar = (...a) => { escrituras++; return agregar(...a); };
+  const lista = Array.from(L.accionesDeLectura());
+  assert.ok(lista.length >= 9);
+  for (const accion of lista) {
+    for (const extra of [{}, { adelantar: true }, { dni: '30123456' }, { sede: 'bolson' }, { clave: 'clave-prueba' }]) L.manejar({ accion, token, ...extra }, d);
+    assert.equal(escrituras, 0, accion + ' escribió');
+  }
+});
+
+test('servidor_ver pide la clave y devuelve lo último', () => {
+  const filas = Array.from({ length: 60 }, (_, i) => ({ ts: String(i), evento: 'lento', accion: 'x', dueno: '', ms: '1' }));
+  const d = entorno([usuario()], { servidor: filas });
+  assert.equal(L.manejar({ accion: 'servidor_ver', clave: 'mal' }, d).ok, false);
+  const r = L.manejar({ accion: 'servidor_ver', clave: 'clave-prueba' }, d);
+  assert.equal(r.data.filas.length, 50);
+  assert.equal(r.data.filas[49].ts, '59');
+});

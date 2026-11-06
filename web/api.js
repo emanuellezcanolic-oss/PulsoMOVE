@@ -4,6 +4,9 @@
   const CLAVE_COLA = 'pulso_cola';
   // Errores que no se arreglan reintentando: la marca se descarta y se avisa
   const DEFINITIVOS = ['prohibido', 'no_existe', 'datos_invalidos'];
+  // "ocupado" garantiza que el pedido no se hizo, así que repetirlo es seguro aunque guarde datos.
+  const ESPERAS_OCUPADO = [3000, 8000];
+  const LIMITE_MS = 90000;   // el servidor espera su turno hasta 20 s; más que esto ya es un pedido colgado
 
   const MENSAJES = {
     credenciales: 'DNI o PIN incorrectos.',
@@ -15,8 +18,9 @@
     datos_invalidos: 'Faltan datos o hay algo mal cargado. Revisá el formulario.',
     no_existe: 'Esa tarea o ese pedido ya no está. Actualizá la pantalla.',
     red: 'No hay conexión. Lo que marques se guarda en este equipo y se envía solo.',
-    ocupado: 'El servidor está ocupado. Se reintenta solo en unos segundos.',
-    interno: 'Algo falló en el servidor. Se reintenta solo; si sigue, avisale a Emanuel.',
+    ocupado: 'El servidor está demorado. Esperá un momento y probá de nuevo.',
+    demora: 'El servidor tardó demasiado en contestar. Esperá un momento y probá de nuevo.',
+    interno: 'Algo falló en el servidor. Probá de nuevo en un momento; si sigue, avisale a Emanuel.',
   };
 
   function mensaje(codigo) {
@@ -36,6 +40,8 @@
 
   function crearCliente(opciones) {
     const { url, fetch, almacen } = opciones;
+    const esperar = opciones.esperar || (ms => new Promise(res => setTimeout(res, ms)));
+    const limiteMs = opciones.limiteMs || LIMITE_MS;
 
     const leerJson = (k, def) => {
       try { const v = almacen.getItem(k); return v ? JSON.parse(v) : def; } catch (e) { return def; }
@@ -51,15 +57,27 @@
     const cerrarSesion = () => { try { almacen.removeItem(CLAVE_SESION); } catch (e) { /* nada */ } };
     const cola = () => leerJson(CLAVE_COLA, []);
 
+    // Un pedido colgado se corta para que la pantalla no quede esperando. No se repite solo porque pudo haberse hecho.
+    async function pedir(cuerpo) {
+      const corte = raiz.AbortController ? new raiz.AbortController() : null;
+      const reloj = corte ? setTimeout(() => corte.abort(), limiteMs) : null;
+      try {
+        const resp = await fetch(url, Object.assign({ method: 'POST', headers: { 'Content-Type': 'text/plain;charset=utf-8' }, body: JSON.stringify(cuerpo) }, corte ? { signal: corte.signal } : {}));
+        return await resp.json();
+      } catch (e) {
+        throw new ErrorPulso(corte && corte.signal.aborted ? 'demora' : 'red');
+      } finally {
+        if (reloj) clearTimeout(reloj);
+      }
+    }
+
     async function llamar(accion, datos) {
       const s = sesion();
       const cuerpo = Object.assign({ accion: accion }, s && s.token ? { token: s.token } : {}, datos || {});
-      let r;
-      try {
-        const resp = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'text/plain;charset=utf-8' }, body: JSON.stringify(cuerpo) });
-        r = await resp.json();
-      } catch (e) {
-        throw new ErrorPulso('red');
+      let r = await pedir(cuerpo);
+      for (let i = 0; i < ESPERAS_OCUPADO.length && r && r.error === 'ocupado'; i++) {
+        await esperar(ESPERAS_OCUPADO[i]);
+        r = await pedir(cuerpo);
       }
       if (!r || !r.ok) {
         const codigo = (r && r.error) || 'interno';

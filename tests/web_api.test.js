@@ -67,7 +67,7 @@ test('marcar sin conexión queda en cola y se envía después, una sola vez', as
 test('cola: error definitivo descarta, ocupado conserva y corta', async () => {
   const respuestas = { T1: { ok: false, error: 'no_existe' }, T2: { ok: false, error: 'ocupado' }, T3: { ok: true, data: {} } };
   const fetch = fetchFalso(p => respuestas[p.tarea_id]);
-  const c = crearCliente({ url: 'u', fetch, almacen: almacenFalso() });
+  const c = crearCliente({ url: 'u', fetch, almacen: almacenFalso(), esperar: () => Promise.resolve() });
   c.guardarSesion({ token: 'tk', nombre: 'Ana', roles: ['recepcion'] });
   for (const t of ['T1', 'T2', 'T3']) await c.marcar({ tarea_id: t, canal: 'LL', resultado: 'RESERVA' });
   // T1 se descartó, T2 quedó (ocupado) y T3 espera detrás de T2
@@ -102,4 +102,52 @@ test('una sesión incompleta vuelve a la pantalla de entrada', () => {
   });
   c.guardarSesion({ token: 'tk', nombre: 'Ana', roles: ['recepcion'] });
   assert.equal(c.sesion().nombre, 'Ana');
+});
+
+test('ocupado: reintenta solo y sigue sin que la persona haga nada', async () => {
+  let n = 0;
+  const esperas = [];
+  const fetch = fetchFalso(() => (++n < 3 ? { ok: false, error: 'ocupado' } : { ok: true, data: { listo: 1 } }));
+  const c = crearCliente({ url: 'u', fetch, almacen: almacenFalso(), esperar: ms => { esperas.push(ms); return Promise.resolve(); } });
+  assert.deepEqual(await c.llamar('login', {}), { listo: 1 });
+  assert.equal(n, 3);
+  assert.equal(esperas.length, 2);
+  assert.ok(esperas[1] > esperas[0]);
+});
+
+test('ocupado: después de los reintentos avisa', async () => {
+  const fetch = fetchFalso(() => ({ ok: false, error: 'ocupado' }));
+  const c = crearCliente({ url: 'u', fetch, almacen: almacenFalso(), esperar: () => Promise.resolve() });
+  await assert.rejects(c.llamar('login', {}), e => e.codigo === 'ocupado');
+  assert.equal(fetch.pedidos.length, 3);
+});
+
+test('los otros errores no se reintentan', async () => {
+  const fetch = fetchFalso(() => ({ ok: false, error: 'interno' }));
+  const c = crearCliente({ url: 'u', fetch, almacen: almacenFalso(), esperar: () => Promise.resolve() });
+  await assert.rejects(c.llamar('login', {}), e => e.codigo === 'interno');
+  assert.equal(fetch.pedidos.length, 1);
+});
+
+test('un pedido colgado se corta y no se repite solo', async () => {
+  let llamadas = 0;
+  const fetch = (u, o) => { llamadas++; return new Promise((res, rej) => o.signal.addEventListener('abort', () => rej(new Error('abort')))); };
+  const c = crearCliente({ url: 'u', fetch, almacen: almacenFalso(), limiteMs: 5 });
+  await assert.rejects(c.llamar('marcar', {}), e => e.codigo === 'demora');
+  assert.equal(llamadas, 1);
+});
+
+test('una marca cortada por demora queda en la cola', async () => {
+  const fetch = (u, o) => new Promise((res, rej) => o.signal.addEventListener('abort', () => rej(new Error('abort'))));
+  const c = crearCliente({ url: 'u', fetch, almacen: almacenFalso(), limiteMs: 5 });
+  c.guardarSesion({ token: 'tk', nombre: 'Ana', roles: ['recepcion'] });
+  const r = await c.marcar({ tarea_id: 'T1', canal: 'LL', resultado: 'RESERVA' });
+  assert.equal(r.enviada, false);
+  assert.equal(c.pendientesDeEnvio(), 1);
+});
+
+test('los mensajes de demora no prometen lo que no pasa', () => {
+  const { mensaje } = require('../web/api.js');
+  for (const k of ['ocupado', 'demora', 'interno']) assert.ok(!/reintenta solo/i.test(mensaje(k)), k);
+  assert.ok(mensaje('demora').length > 10);
 });

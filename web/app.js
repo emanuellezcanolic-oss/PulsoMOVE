@@ -1159,7 +1159,20 @@
     if (s && roles && roles.join() !== (s.roles || []).join()) cliente.guardarSesion(Object.assign(s, { roles: roles }));
   }
 
+  // Si una pantalla no pudo cargar por una demora, se vuelve a pedir sola, cada vez más espaciado.
+  const REINTENTABLES = ['red', 'ocupado', 'demora', 'interno'];
+  let relojVista = null, fallasVista = 0;
+  function programarReintentoVista() {
+    fallasVista++;
+    relojVista = setTimeout(() => {
+      if (!cliente.sesion()) return;
+      if (E.abierta || document.querySelector('dialog')) { programarReintentoVista(); return; }   // no pisar lo que se está escribiendo
+      cargarVista();
+    }, Math.min(15000 * fallasVista, 60000));
+  }
+
   async function cargarVista() {
+    clearTimeout(relojVista);
     revisarFichajes();
     E.errorCarga = '';
     try {
@@ -1188,9 +1201,12 @@
       } else if (E.vista === 'admin') {
         E.usuarios = await cliente.llamar('usuarios_listar');
       }
+      fallasVista = 0;
     } catch (e) {
       if (e && e.codigo !== 'sin_sesion') E.errorCarga = e.message;
-      falla(e);
+      const reintenta = e && REINTENTABLES.indexOf(e.codigo) >= 0;
+      if (!reintenta || !fallasVista) falla(e);   // el cartel una sola vez, no en cada reintento
+      if (reintenta) programarReintentoVista();
     }
     render();
   }
@@ -1252,7 +1268,7 @@
     const cuerpo = E.vista === 'hoy' ? vistaHoy() : E.vista === 'sede' ? vistaSede() : E.vista === 'admin' ? vistaAdmin() : E.vista === 'mes' ? vistaMes() : E.vista === 'rend' ? vistaRendimiento()
       : '<div class="vacio">Tu usuario no tiene ninguna vista asignada. Avisale a Emanuel.</div>';
     const sinDatos = { hoy: !E.tareas, sede: E.personaDni ? !E.persona : !E.sede, mes: !E.rend, rend: !E.rend, admin: !E.usuarios }[E.vista];
-    const mostrar = E.errorCarga && sinDatos ? `<div class="vacio" style="margin-top:18px"><p>${esc(E.errorCarga)}</p><button class="boton" data-accion="reintentar">Reintentar</button></div>` : cuerpo;
+    const mostrar = E.errorCarga && sinDatos ? `<div class="vacio" style="margin-top:18px"><p>${esc(E.errorCarga)}</p><p>La pantalla vuelve a intentarlo sola. Tus marcas no se pierden.</p><button class="boton" data-accion="reintentar">Reintentar ahora</button></div>` : cuerpo;
     app.innerHTML = encabezado() + `<main class="contenedor">${bandaFichajes()}${mostrar}</main>` + (E.vista === 'hoy' && turnoTerminando() ? `<button class="cerrar-app-fijo${DEMO ? ' con-cinta' : ''}" data-accion="cerrar-app">🚪 ${E.dia && E.dia.cierre_hecho ? 'Listo por hoy' : 'Se termina tu turno'}: cerrá la app antes de irte</button>` : '') + (DEMO ? '<div class="cinta-practica">Modo práctica · datos inventados</div>' : '');
     const abierto = app.querySelector('.marca-form select');
     if (abierto && !E.errorForm) abierto.focus({ preventScroll: true });
