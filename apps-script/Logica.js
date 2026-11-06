@@ -129,6 +129,49 @@ function esRecordatorio(tipo) {
   return String(tipo).indexOf('Profes de hoy') === 0;
 }
 
+// Fichaje en vivo: la PC sube cada 5 minutos a quién le falta fichar. Lo que deja de faltar se cierra solo.
+const FICHAJES_VIGENCIA_MIN = 20;   // sin datos más nuevos no se muestra: esa persona ya pudo haber fichado
+const FICHAJE_REAVISAR_MIN = 15;    // "ya se lo recordé" vale esto; si sigue sin QR, vuelve a pedirse
+
+function fusionarFichajes(existentes, nuevas, fecha, ts) {
+  const llegan = {};
+  nuevas.forEach(n => { llegan[n.id] = n; });
+  const piso = sumarDias(fecha, -35);
+  let cambio = false;
+  const filas = existentes.filter(f => {
+    const queda = String(f.fecha) >= piso;
+    if (!queda) cambio = true;
+    return queda;
+  }).map(f => {
+    const c = Object.assign({}, f);
+    if (c.estado === 'falta' && !llegan[c.id]) { c.estado = 'cerrada'; c.cerrada_ts = ts; cambio = true; }
+    else if (c.estado === 'cerrada' && llegan[c.id]) { c.estado = 'falta'; c.cerrada_ts = ''; cambio = true; }
+    return c;
+  });
+  nuevas.forEach(n => {
+    if (filas.some(f => f.id === n.id)) return;
+    cambio = true;
+    filas.push({ id: n.id, fecha: fecha, sede: n.sede, persona_id: n.persona_id, persona: n.persona, dni: n.dni || '', momento: n.momento, hora: n.hora,
+      estado: 'falta', desde_ts: ts, cerrada_ts: '', recordado_ts: '', recordado_dni: '', no_viene_ts: '', no_viene_dni: '' });
+  });
+  return { filas: filas, cambio: cambio };
+}
+
+// Lo ve quien tiene que fichar y la recepción de esa sede que está en su turno. c: {dni, recepcion, sede, enTurno, hoy, ahora (ms)}
+function fichajesVisibles(filas, c) {
+  const noViene = {};
+  filas.forEach(f => { if (f.fecha === c.hoy && f.no_viene_ts) noViene[f.sede + '|' + f.persona_id] = true; });
+  return filas.filter(f => f.fecha === c.hoy && f.estado === 'falta' && !noViene[f.sede + '|' + f.persona_id]
+      && (f.dni === c.dni || (c.recepcion && c.enTurno && f.sede === c.sede)))
+    .map(f => {
+      const propia = f.dni === c.dni;
+      const recordado = propia ? '' : f.recordado_ts;
+      return { id: f.id, persona: f.persona, momento: f.momento, hora: f.hora, propia: propia, recordado: recordado,
+        urgente: !recordado || c.ahora - Date.parse(recordado) > FICHAJE_REAVISAR_MIN * 60000 };
+    })
+    .sort((a, b) => Number(b.urgente) - Number(a.urgente) || String(a.hora).localeCompare(String(b.hora)));
+}
+
 function seVerificaEnMove(tipo) {
   return SE_VERIFICAN_EN_MOVE.some(v => String(tipo).indexOf(v) === 0);
 }

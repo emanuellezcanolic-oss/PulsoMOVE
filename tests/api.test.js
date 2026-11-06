@@ -786,6 +786,47 @@ test('venta de 3 meses: queda para quien cobró, se puede dar o pedir, y suma a 
   assert.deepEqual(diaDe(tarde).cobradas.map(v => v.id), ['3']);
 });
 
+test('fichaje: recepción en turno ve el recordatorio, se cierra solo y se puede marcar', () => {
+  const u = { ...usuario(), hora_inicio: '00:00', hora_fin: '23:59' };
+  const d = entorno([u, TARDE, COORD, COORD_PUELO, ADMIN, DE_PUELO]);
+  const fila = { id: 'f1', sede: 'bolson', persona_id: 'sol', persona: 'Sol', dni: '', momento: 'entrada', hora: '08:00' };
+  const carga = filas => pedir(d, { accion: 'cargar_fichajes', clave: 'clave-prueba', fecha: d.dia, filas });
+  assert.ok(carga([fila]).ok);
+  const ver = (dni, pin) => pedir(d, { accion: 'fichajes_ver', token: entrar(d, dni, pin) }).data;
+  assert.deepEqual(ver('30123456', '4831').filas.map(f => [f.persona, f.urgente, f.propia]), [['Sol', true, false]]);
+  assert.equal(ver(DE_PUELO.dni, '0907').filas.length, 0);   // otra sede
+  // Lo marca: deja de ser urgente y a los 15 minutos vuelve a serlo
+  const m = pedir(d, { accion: 'fichaje_marcar', token: entrar(d), id: 'f1', que: 'recordado' });
+  assert.equal(m.data.filas[0].urgente, false);
+  d.t += 16 * 60000;
+  carga([fila]);
+  assert.equal(ver('30123456', '4831').filas[0].urgente, true);
+  // Sin carga reciente no se muestra: ya pudo haber fichado
+  d.t += 21 * 60000;
+  assert.equal(ver('30123456', '4831').filas.length, 0);
+  // MOVE mostró el QR: se cierra solo
+  carga([]);
+  assert.equal(ver('30123456', '4831').filas.length, 0);
+  assert.equal(d.repo.leer('fichajes')[0].estado, 'cerrada');
+  // "Hoy no viene" apaga todo lo de esa persona ese día
+  carga([fila]);
+  pedir(d, { accion: 'fichaje_marcar', token: entrar(d), id: 'f1', que: 'no_viene' });
+  assert.equal(ver('30123456', '4831').filas.length, 0);
+});
+
+test('fichaje: fuera de turno no se ve; quien debe fichar lo ve aunque no sea recepción', () => {
+  const u = { ...usuario(), hora_inicio: '00:00', hora_fin: '00:00' };
+  const d = entorno([u, ADMIN]);
+  pedir(d, { accion: 'cargar_fichajes', clave: 'clave-prueba', fecha: d.dia, filas: [
+    { id: 'a', sede: 'bolson', persona_id: 'x', persona: 'X', dni: '', momento: 'entrada', hora: '08:00' },
+    { id: 'b', sede: 'puelo', persona_id: 'adm', persona: ADMIN.nombre, dni: ADMIN.dni, momento: 'entrada', hora: '08:00' },
+  ] });
+  assert.equal(pedir(d, { accion: 'fichajes_ver', token: entrar(d) }).data.filas.length, 0);
+  assert.equal(pedir(d, { accion: 'fichaje_marcar', token: entrar(d), id: 'a', que: 'recordado' }).error, 'prohibido');
+  const propia = pedir(d, { accion: 'fichajes_ver', token: entrar(d, ADMIN.dni, '0907') }).data.filas;
+  assert.deepEqual(propia.map(f => [f.id, f.propia]), [['b', true]]);
+});
+
 test('la eficiencia solo la ve admin, y mi_dia trae ideas', () => {
   const d = equipo({ tareas: [], actividad: [], objetivos: [], rendimiento: [], cierres: [],
     registro: [{ ts: '2026-11-06T12:00:00.000Z', dni: '30123456', canal: 'LL', resultado: 'RESERVA', tipo: 'x', segundos: '60' }] });

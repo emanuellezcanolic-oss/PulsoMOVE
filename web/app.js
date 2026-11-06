@@ -1160,6 +1160,7 @@
   }
 
   async function cargarVista() {
+    revisarFichajes();
     E.errorCarga = '';
     try {
       if (E.vista === 'hoy') {
@@ -1216,6 +1217,32 @@
 
   // ---------- Render ----------
 
+  // Fichaje en vivo: primera acción de recepción. Se va solo cuando MOVE muestra el QR.
+  const tituloFichaje = f => (f.propia ? `${cliente.sesion().nombre.split(' ')[0]}, recordá fichar tu ${f.momento}` : `Recordale a ${f.persona} que fiche su ${f.momento}`);
+  function bandaFichajes() {
+    const F = E.fichajes || { filas: [], detenido: '' };
+    const fila = f => `<div class="fichaje${f.urgente ? ' urgente' : ''}"><div><b>${f.urgente ? '🔴 ' : ''}${esc(tituloFichaje(f))}</b>
+      <span>${f.momento === 'entrada' ? 'Empezaba' : 'Terminaba'} a las ${esc(f.hora)}. ${f.propia ? 'Escaneá el QR.' : f.urgente ? 'Todavía no escaneó el QR.' : `Se lo recordaste a las ${horaLocal(f.recordado)}: esperando el QR.`}</span></div>
+      ${f.propia ? '' : `<div class="fichaje-botones">${f.urgente ? `<button class="boton" data-accion="fichaje" data-que="recordado" data-id="${esc(f.id)}">Ya se lo recordé</button>` : ''}<button class="boton claro" data-accion="fichaje" data-que="no_viene" data-id="${esc(f.id)}">${f.momento === 'entrada' ? 'Hoy no viene' : 'Ya se fue'}</button></div>`}</div>`;
+    return `<section id="banda-fichajes" class="fichajes">${F.filas.map(fila).join('')}${F.detenido ? `<p class="fichaje-detenido">⚠️ El control de fichaje está frenado desde las ${horaLocal(F.detenido)}: recepción no recibe los recordatorios. Revisá que la PC esté prendida.</p>` : ''}</section>`;
+  }
+  function mostrarFichajes(F) {
+    E.fichajes = F;
+    const banda = document.getElementById('banda-fichajes');
+    if (banda) banda.outerHTML = bandaFichajes();
+    const vistos = E.fichajesAvisados = E.fichajesAvisados || {};
+    F.filas.filter(f => f.urgente && !vistos[f.id + '|' + f.recordado]).forEach(f => {
+      vistos[f.id + '|' + f.recordado] = 1;
+      push('🔴 ' + tituloFichaje(f), f.propia ? 'Escaneá el QR.' : 'Todavía no escaneó el QR.');
+      aviso(tituloFichaje(f));
+    });
+  }
+  async function revisarFichajes() {
+    const s = cliente.sesion();
+    if (!s || s.debe_cambiar_pin) return;
+    try { mostrarFichajes(await cliente.llamar('fichajes_ver')); } catch (e) { /* sin conexión: se reintenta al minuto */ }
+  }
+
   function render() {
     const s = cliente.sesion();
     if (!s) { app.innerHTML = vistaLogin(); return; }
@@ -1226,7 +1253,7 @@
       : '<div class="vacio">Tu usuario no tiene ninguna vista asignada. Avisale a Emanuel.</div>';
     const sinDatos = { hoy: !E.tareas, sede: E.personaDni ? !E.persona : !E.sede, mes: !E.rend, rend: !E.rend, admin: !E.usuarios }[E.vista];
     const mostrar = E.errorCarga && sinDatos ? `<div class="vacio" style="margin-top:18px"><p>${esc(E.errorCarga)}</p><button class="boton" data-accion="reintentar">Reintentar</button></div>` : cuerpo;
-    app.innerHTML = encabezado() + `<main class="contenedor">${mostrar}</main>` + (E.vista === 'hoy' && turnoTerminando() ? `<button class="cerrar-app-fijo${DEMO ? ' con-cinta' : ''}" data-accion="cerrar-app">🚪 ${E.dia && E.dia.cierre_hecho ? 'Listo por hoy' : 'Se termina tu turno'}: cerrá la app antes de irte</button>` : '') + (DEMO ? '<div class="cinta-practica">Modo práctica · datos inventados</div>' : '');
+    app.innerHTML = encabezado() + `<main class="contenedor">${bandaFichajes()}${mostrar}</main>` + (E.vista === 'hoy' && turnoTerminando() ? `<button class="cerrar-app-fijo${DEMO ? ' con-cinta' : ''}" data-accion="cerrar-app">🚪 ${E.dia && E.dia.cierre_hecho ? 'Listo por hoy' : 'Se termina tu turno'}: cerrá la app antes de irte</button>` : '') + (DEMO ? '<div class="cinta-practica">Modo práctica · datos inventados</div>' : '');
     const abierto = app.querySelector('.marca-form select');
     if (abierto && !E.errorForm) abierto.focus({ preventScroll: true });
   }
@@ -1336,6 +1363,13 @@
     if (a === 'salir') {
       if (salirDeLaApp()) render();
     } else if (a === 'cerrar-app') cerrarApp();
+    else if (a === 'fichaje') {
+      el.disabled = true;
+      try {
+        const r = await cliente.llamar('fichaje_marcar', { id: el.dataset.id, que: el.dataset.que });
+        mostrarFichajes({ filas: r.filas, detenido: E.fichajes ? E.fichajes.detenido : '' });
+      } catch (e) { el.disabled = false; aviso(PulsoApi.mensaje(e.codigo || e.message), true); }
+    }
     else if (a === 'vista') irA(el.dataset.v);
     else if (a === 'filtro') { E.filtro = el.dataset.f; E.abierta = null; render(); }
     else if (a === 'abrir') { E.abierta = E.abierta === el.dataset.id ? null : el.dataset.id; E.abiertaEn = new Date().toISOString(); E.errorForm = ''; render(); }
@@ -1408,6 +1442,7 @@
   setInterval(enviarPendientes, 30000);
   setInterval(revisarCierre, 60000);
   setInterval(revisarAvisos, 60000);
+  setInterval(revisarFichajes, 60000);
   setInterval(tomarMinutoDeUso, 60000);
   setInterval(enviarUso, 5 * 60000);
   setInterval(() => { if (cliente.sesion() && !E.abierta && !document.querySelector('dialog') && document.visibilityState === 'visible') cargarVista(); }, 5 * 60000);

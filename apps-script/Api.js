@@ -813,6 +813,50 @@ function cargarProfes(req, deps) {
   return { filas: req.filas.length };
 }
 
+function cargarFichajes(req, deps) {
+  exigirClave(req, deps);
+  const fecha = texto(req.fecha);
+  const buena = f => f && SEDES.indexOf(f.sede) >= 0 && texto(f.id) && texto(f.persona_id) && texto(f.persona) && ['entrada', 'salida'].indexOf(f.momento) >= 0;
+  if (!fechaIsoValida(fecha) || !Array.isArray(req.filas) || !req.filas.every(buena)) falla('datos_invalidos');
+  const ts = new Date(deps.ahora()).toISOString();
+  const r = fusionarFichajes(deps.repo.leer('fichajes'), req.filas, fecha, ts);
+  if (r.cambio) deps.repo.escribir('fichajes', r.filas);
+  deps.repo.escribir('fichajes_control', [{ ts: ts }]);
+  return { faltan: req.filas.length };
+}
+
+function contextoFichaje(usuario, deps) {
+  const inicio = aMinutoDelDia(usuario.hora_inicio), fin = aMinutoDelDia(usuario.hora_fin), m = minutoAhora(deps);
+  return { dni: usuario.dni, recepcion: tieneRol(usuario, 'recepcion'), sede: usuario.sede, enTurno: inicio != null && fin != null && m >= inicio && m < fin, hoy: deps.hoy(), ahora: deps.ahora() };
+}
+
+function fichajesVer(req, deps) {
+  const { usuario } = sesion(req, deps);
+  const control = deps.repo.leer('fichajes_control')[0];
+  const vigente = control && deps.ahora() - Date.parse(control.ts) <= FICHAJES_VIGENCIA_MIN * 60000;
+  const m = minutoAhora(deps);
+  return {
+    filas: vigente ? fichajesVisibles(deps.repo.leer('fichajes'), contextoFichaje(usuario, deps)) : [],
+    detenido: control && !vigente && tieneRol(usuario, 'admin') && m >= 390 && m <= 1320 ? control.ts : '',
+  };
+}
+
+function fichajeMarcar(req, deps) {
+  const { usuario } = sesion(req, deps);
+  const que = texto(req.que);
+  if (['recordado', 'no_viene'].indexOf(que) < 0) falla('datos_invalidos');
+  const filas = deps.repo.leer('fichajes');
+  const f = filas.find(x => x.id === texto(req.id));
+  if (!f) falla('no_existe');
+  const c = contextoFichaje(usuario, deps);
+  if (!c.recepcion || !c.enTurno || f.sede !== c.sede || f.dni === c.dni) falla('prohibido');
+  const ts = new Date(deps.ahora()).toISOString();
+  f[que + '_ts'] = ts;
+  f[que + '_dni'] = usuario.dni;
+  deps.repo.escribir('fichajes', filas);
+  return { filas: fichajesVisibles(filas, c) };
+}
+
 function profesVer(req, deps) {
   const { usuario } = sesion(req, deps);
   const sede = sedePermitida(usuario, texto(req.sede));
@@ -823,7 +867,7 @@ function respaldo(req, deps) {
   exigirClave(req, deps);
   const usuarios = deps.repo.leer('usuarios').map(u => { const c = Object.assign({}, u); delete c.pin_hash; delete c.sal; return c; });
   const out = { usuarios: usuarios };
-  ['tareas', 'registro', 'garantia', 'actividad', 'rendimiento', 'objetivos', 'cierres', 'profes', 'uso', 'beneficios', 'stock', 'ventas', 'ventas_largas'].forEach(h => { out[h] = deps.repo.leer(h); });
+  ['tareas', 'registro', 'garantia', 'actividad', 'rendimiento', 'objetivos', 'cierres', 'profes', 'fichajes', 'uso', 'beneficios', 'stock', 'ventas', 'ventas_largas'].forEach(h => { out[h] = deps.repo.leer(h); });
   return out;
 }
 
@@ -1011,6 +1055,9 @@ const ACCIONES = {
   respaldo: respaldo,
   cargar_profes: cargarProfes,
   profes_ver: profesVer,
+  cargar_fichajes: cargarFichajes,
+  fichajes_ver: fichajesVer,
+  fichaje_marcar: fichajeMarcar,
   rendimiento: vistaRendimiento,
   objetivos_guardar: objetivosGuardar,
   cargar_rendimiento: cargarRendimiento,
