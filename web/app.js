@@ -282,6 +282,7 @@
         <div class="logro"><strong>${D ? D.hoy.mensajes : 0}</strong><span>mensajes hoy</span></div>
       </section>
       <p class="aclara">Plan de 3 meses: 10 puntos, el doble que un socio nuevo. Cada tarea adelantada suma uno extra.</p>
+      ${D && D.hoy.pendientes ? bloqueIdeas(D, 1) : ''}
       ${D ? bloqueMotivacion(D) : ''}
       ${D && D.coach.length ? `<section class="coach">${D.coach.map(m => `<p class="${esc(m.tono)}">${m.tono === 'logro' ? '★' : '→'} ${esc(m.texto)}</p>`).join('')}</section>` : ''}
       ${profes.length ? `<section class="profes-hoy"><b>Profes de hoy en tu turno</b><p>Recordales que fichen con el QR al ingresar.</p>${profes.map(p => `<div><span>${esc(p.socio_nombre)}</span><em>${esc(String(p.situacion).replace('Primera clase a las ', ''))}</em></div>`).join('')}</section>` : ''}
@@ -292,6 +293,13 @@
       ${avisosPendientes() ? '<button class="boton claro ancho" data-accion="activar-avisos">🔔 Activar avisos en esta PC</button>' : ''}
       ${DEMO ? '<button class="boton claro ancho" data-accion="probar-cierre">Probar la pregunta de cierre</button>' : ''}
       <div class="recordatorio">Todo contacto termina con un turno reservado o una fecha.</div>`;
+  }
+
+  // Además de las tareas: un poco de todo. Con tareas pendientes, una idea; al día, varias.
+  function bloqueIdeas(D, cuantas) {
+    const lista = (D.ideas || []).slice(0, cuantas);
+    if (!lista.length) return '';
+    return `<section class="ideas"><b>${cuantas > 1 ? 'Para seguir sumando' : 'Hoy, además'}</b>${lista.map(i => `<div class="idea"><span class="idea-txt"><strong>${i.emoji} ${esc(i.titulo)}</strong><small>${esc(i.como)} Llevás ${i.llevas} de ${i.meta} este mes${i.puntos ? ` · ${i.puntos} ${i.puntos === 1 ? 'punto' : 'puntos'}` : ''}.</small></span>${i.tipo ? `<button class="boton claro" data-accion="registrar" data-tipo="${esc(i.tipo)}">Registrar</button>` : ''}</div>`).join('')}</section>`;
   }
 
   // Lo propio y lo del equipo: competencia y pertenencia, sin ranking entre compañeros
@@ -330,7 +338,8 @@
       </div>
       ${primera ? `<button class="empeza" data-accion="abrir" data-id="${esc(primera.id)}"><b>👉 Empezá por acá</b><span>${esc(primera.socio_nombre)} · ${esc(primera.tipo)}</span></button>` : ''}
       ${porNivel.length ? porNivel.map(([n, grupos]) => `<section class="nivel nivel-${n.n}">${n.titulo ? `<h2 class="nivel-titulo">${n.emoji} ${esc(n.titulo)}<small>${esc(n.ayuda)}</small></h2>` : ''}${grupos.map(grupoHtml).join('')}</section>`).join('')
-        : `<div class="vacio">${E.filtro === 'pendientes' ? '¡No te quedan tareas pendientes! Si querés sumar, adelantá las de mañana.' : 'No hay tareas para mostrar.'}</div>`}
+        : `<div class="vacio">${E.filtro === 'pendientes' ? '¡No te quedan tareas pendientes! Mirá qué más podés hacer hoy.' : 'No hay tareas para mostrar.'}</div>`}
+      ${E.dia && !E.dia.hoy.pendientes && E.filtro === 'pendientes' ? bloqueIdeas(E.dia, 3) : ''}
     </div></div>`;
   }
 
@@ -501,7 +510,19 @@
       <p class="bajada">Tocá una persona para ver el detalle${tiene('admin') ? ' y ajustar sus objetivos' : ''}.</p>
       ${R.personas.length ? `<div class="envoltura-tabla"><table class="tabla"><thead><tr><th>#</th><th>Persona</th><th>Puntaje</th><th>Cumpl.</th><th>Reten.</th><th>Ventas</th><th>Exper.</th><th>Nuevos</th><th>Mostrador</th><th>Tareas</th></tr></thead><tbody>${filas}</tbody></table></div>`
         : '<div class="vacio">No hay recepcionistas cargados en esta sede.</div>'}
-      ${aclaracionDatos(R)}${bloqueProfes()}${bloqueCierres()}`;
+      ${aclaracionDatos(R)}${bloqueEficiencia(R)}${bloqueProfes()}${bloqueCierres()}`;
+  }
+
+  // Solo admin: lo que rinde cada hora de turno
+  function bloqueEficiencia(R) {
+    const filas = R.personas.filter(p => p.eficiencia);
+    if (!filas.length) return '';
+    const orden = filas.slice().sort((a, b) => (b.eficiencia.indice == null ? -1 : b.eficiencia.indice) - (a.eficiencia.indice == null ? -1 : a.eficiencia.indice));
+    const coma = n => (n == null ? '—' : String(n).replace('.', ','));
+    return `<section class="bloque"><div class="bloque-cab"><h2>Eficiencia por hora de turno</h2><span class="sello">${nombreMes(R.mes)}</span></div>
+      <div class="envoltura-tabla"><table class="tabla compacta"><thead><tr><th>Persona</th><th>Nivel</th><th>Horas</th><th>Tareas por hora</th><th>Puntos de venta por hora</th><th>Turno usando la app</th></tr></thead>
+      <tbody>${orden.map(p => { const e = p.eficiencia; const [c] = estadoDe(e.indice == null ? null : e.indice / 100); return `<tr><td><b>${esc(p.nombre)}</b></td><td><span class="sello ${c}">${e.indice == null ? '—' : e.indice}</span></td><td class="num">${e.horas}</td><td class="num">${coma(e.tareas_hora)}</td><td class="num">${coma(e.ventas_hora)}</td><td class="num">${e.uso_pct == null ? '—' : e.uso_pct + '%'}</td></tr>`; }).join('')}</tbody></table></div>
+      <p class="aclara">Nivel de 0 a 100: la mitad son tareas por hora (referencia 4), un cuarto puntos de venta por hora (referencia 1) y un cuarto el turno usando la app (referencia 60%). Las horas salen de los días con actividad o caja por las horas del turno cargado: no hay fichaje. Atender a alguien en persona no se ve en la app, y cada sede tiene distinta cantidad de tareas: sirve para conversar, no para sacar conclusiones solo con el número.</p></section>`;
   }
 
   // Llegada de los profes: sale sola del QR. Regla del equipo: fichar 15 minutos antes de la primera clase.
@@ -559,6 +580,35 @@
     }).join('')}</section>`;
   }
 
+  // Lo que ya completó en un formulario queda guardado en esta PC hasta enviarlo
+  function guardarBorrador(form, clave) {
+    const datos = {};
+    form.querySelectorAll('input, textarea').forEach(c => {
+      if (c.type === 'radio') { if (c.checked) datos[c.name] = c.value; }
+      else if (c.type === 'checkbox') datos['✓' + (c.dataset.check || c.name)] = c.checked;
+      else if (c.name) datos[c.name] = c.value;
+    });
+    try { almacenSeguro().setItem(clave, JSON.stringify(datos)); } catch (e) { /* sin almacenamiento no hay borrador */ }
+  }
+
+  function restaurarBorrador(form, clave) {
+    let datos = null;
+    try { datos = JSON.parse(almacenSeguro().getItem(clave) || 'null'); } catch (e) { datos = null; }
+    if (!datos) return;
+    form.querySelectorAll('input, textarea').forEach(c => {
+      if (c.type === 'radio') c.checked = datos[c.name] === c.value;
+      else if (c.type === 'checkbox') c.checked = !!datos['✓' + (c.dataset.check || c.name)];
+      else if (c.name && datos[c.name] != null) c.value = datos[c.name];
+    });
+  }
+
+  // El fondo oscuro de un diálogo es el propio <dialog>: se reconoce porque el toque cae fuera de su caja
+  function tocoAfuera(ev, d) {
+    if (ev.target !== d) return false;
+    const r = d.getBoundingClientRect();
+    return ev.clientX < r.left || ev.clientX > r.right || ev.clientY < r.top || ev.clientY > r.bottom;
+  }
+
   // Cierre de turno: 15 minutos antes de terminar, unas preguntas según lo que pasó en el día
   function dialogoCierre(prueba) {
     if (document.querySelector('dialog')) return;
@@ -587,8 +637,16 @@
         <p class="aclara" style="margin:0">Lo lee coordinación: sirve para ayudarte y para mejorar el club, no para retarte.</p>
         <div class="botones"><button class="boton verde">Enviar</button><button type="button" class="boton claro" data-ir>Primero completo lo que falta</button></div>
       </form>`, d => {
-      d.querySelector('[data-ir]').onclick = () => { E.cierrePospuesto = Date.now() + 10 * 60000; d.close(); };
-      d.querySelector('form').onsubmit = async ev => {
+      const form = d.querySelector('form');
+      const claveBorrador = 'pulso_cierre_' + cliente.sesion().nombre + '_' + E.hoy;
+      restaurarBorrador(form, claveBorrador);
+      form.addEventListener('input', () => guardarBorrador(form, claveBorrador));
+      form.addEventListener('change', () => guardarBorrador(form, claveBorrador));
+      const salir = () => { guardarBorrador(form, claveBorrador); E.cierrePospuesto = Date.now() + 10 * 60000; d.close(); };
+      d.querySelector('[data-ir]').onclick = salir;
+      d.addEventListener('cancel', ev => { ev.preventDefault(); salir(); });   // Escape
+      d.addEventListener('click', ev => { if (tocoAfuera(ev, d)) salir(); });
+      form.onsubmit = async ev => {
         ev.preventDefault();
         const f = new FormData(ev.target);
         const respuestas = {};
@@ -602,6 +660,7 @@
         try {
           await cliente.llamar('cierre_guardar', { animo: Number(f.get('animo')), [delDia.nota.clave]: Number(f.get(delDia.nota.clave)), lo_mejor: String(f.get('lo_mejor') || '').trim(), pregunta: delDia.abierta, respuestas, comentario: String(f.get('comentario') || '').trim() });
           D.cierre_hecho = true;
+          try { almacenSeguro().removeItem(claveBorrador); } catch (e) { /* sin almacenamiento no hay borrador */ }
           if (tareaCierre) {
             await cliente.marcar({ tarea_id: tareaCierre.id, abierta_en: new Date().toISOString(), canal: 'PR', resultado: 'HECHO', fecha: '', detalle: respuestas.checklist || '' });
             tareaCierre.estado = 'hecha';
@@ -668,7 +727,7 @@
     const a = proximoAviso({
       nombre: cliente.sesion().nombre, minuto: ahora.getHours() * 60 + ahora.getMinutes(), inicio: min(D.hora_inicio), fin: min(D.hora_fin), hechas: D.hoy.hechas, pendientes: D.hoy.pendientes,
       nuevaMedalla: medallaNueva(D), diaSemana: ahora.getDay(), prioritarias: D.prioritarias, volvieron: D.volvieron, equipoHechas: D.equipo ? D.equipo.hechas : 0, equipoFaltan: D.equipo ? D.equipo.faltan : 0,
-      minutosSinUso: (Date.now() - ultimaInteraccion) / 60000, enviados: enviados, siguiente: D.siguiente, ayer: D.ayer, racha: D.racha, adelantar: D.para_adelantar, diasSinPlan: D.dias_sin_plan,
+      minutosSinUso: (Date.now() - ultimaInteraccion) / 60000, enviados: enviados, siguiente: D.siguiente, ayer: D.ayer, racha: D.racha, adelantar: D.para_adelantar, idea: (D.ideas || [])[0], diasSinPlan: D.dias_sin_plan,
     });
     if (!a) return;
     enviados[a.clave] = 1;
@@ -742,7 +801,7 @@
     if (falta <= 15 && falta > -60) dialogoCierre();
   }
 
-  function dialogoRegistrar() {
+  function dialogoRegistrar(tipo) {
     const opciones = (lista) => lista.map(v => `<option>${esc(v)}</option>`).join('');
     const ORIGEN = ['Local', 'WhatsApp', 'Instagram', 'Recomendación', 'Ex socio'];
     const CATEGORIA = ['Bienvenida', 'Recordatorio de pago', 'Deuda', 'Promoción', 'Seguimiento', 'Encuesta', 'Felicitación', 'Información general'];
@@ -763,6 +822,7 @@
       const form = d.querySelector('form');
       const mostrar = () => d.querySelectorAll('[data-solo]').forEach(l => { l.hidden = l.dataset.solo.split(' ').indexOf(form.tipo.value) < 0; });
       form.tipo.onchange = mostrar;
+      if (tipo) form.tipo.value = tipo;
       mostrar();
       d.querySelector('[data-cerrar]').onclick = () => d.close();
       form.onsubmit = async ev => {
@@ -1287,7 +1347,7 @@
     else if (a === 'garantia') dialogoGarantia();
     else if (a === 'trajo-socio') dialogoTrajoSocio();
     else if (a === 'reintentar') { E.errorCarga = ''; render(); cargarVista(); }
-    else if (a === 'registrar') dialogoRegistrar();
+    else if (a === 'registrar') dialogoRegistrar(el.dataset.tipo);
     else if (a === 'rend-mes') { E.rendMes = el.dataset.m; E.rend = null; render(); cargarVista(); }
     else if (a === 'rend-sede') { E.sedeElegida = el.dataset.s; E.rend = null; E.rendDni = null; render(); cargarVista(); }
     else if (a === 'rend-persona') { E.rendDni = el.dataset.dni; render(); window.scrollTo(0, 0); }

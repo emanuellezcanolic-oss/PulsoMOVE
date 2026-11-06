@@ -381,6 +381,58 @@ function medallasDelMes(c) {
   });
 }
 
+// Qué más se puede hacer además de las tareas (Emanuel, 05/11/2026): un poco de todo. Primero lo más lejos del objetivo del mes;
+// lo que ya hizo hoy va al final y, a igual avance, la rotación cambia cada día. Son ideas: el texto lo escribe cada persona.
+const IDEAS_SUMAR = [
+  { clave: 'resena', emoji: '⭐', titulo: 'Pedí una reseña de Google', como: 'A alguien que hoy se vaya contento.', valor: 'resenas', tipo: 'resena' },
+  { clave: 'referido', emoji: '🤝', titulo: 'Preguntá por un referido', como: 'A un socio con buena onda: ¿quién más podría venir?', valor: 'referidos', tipo: 'referido' },
+  { clave: 'plan', emoji: '🎁', titulo: 'Ofrecé un plan de 3 meses', como: 'Al próximo que venga a renovar.', valor: 'planes_largos', tipo: '' },
+  { clave: 'tienda', emoji: '🛍️', titulo: 'Mostrá indumentaria o suplementos', como: 'A quien salga de entrenar.', valor: 'tienda', tipo: '' },
+  { clave: 'prueba', emoji: '🎟️', titulo: 'Invitá a un día de prueba', como: 'A quien venga a averiguar por un servicio.', valor: 'dias_prueba', tipo: 'prueba', objetivo: 2 },
+  { clave: 'mensaje', emoji: '💬', titulo: 'Escribile a un socio fuera de tu lista', como: 'A alguien a quien hace rato no le hablás.', valor: 'mensajes', tipo: 'mensaje' },
+];
+
+// c: {valores, objetivos, hechoHoy: {tipo: cantidad}, fecha}
+function ideasParaSumar(c) {
+  const objetivo = i => {
+    const propio = c.objetivos && c.objetivos[i.valor];
+    if (propio != null) return Number(propio);
+    if (i.objetivo) return i.objetivo;
+    const m = METRICAS.find(x => x.clave === i.valor);
+    return m ? m.objetivo : 1;
+  };
+  const dia = Math.floor(Date.parse(c.fecha + 'T12:00:00Z') / 86400000) || 0;
+  const hoy = c.hechoHoy || {};
+  return IDEAS_SUMAR.map((i, n) => {
+    const llevas = Number((c.valores || {})[i.valor]) || 0, meta = objetivo(i);
+    return { clave: i.clave, emoji: i.emoji, titulo: i.titulo, como: i.como, tipo: i.tipo, llevas: llevas, meta: meta,
+             puntos: PUNTOS[i.valor] || 0, hecha: !!(i.tipo && hoy[i.tipo]), avance: meta > 0 ? llevas / meta : 1, turno: (n + dia) % IDEAS_SUMAR.length };
+  }).filter(i => i.avance < 1)
+    .sort((a, b) => (a.hecha - b.hecha) || (Math.round(a.avance * 4) - Math.round(b.avance * 4)) || (a.turno - b.turno))
+    .map(i => ({ clave: i.clave, emoji: i.emoji, titulo: i.titulo, como: i.como, tipo: i.tipo, llevas: i.llevas, meta: i.meta, puntos: i.puntos }));
+}
+
+// Nivel de eficiencia: lo que rinde cada hora de turno. Referencias propuestas por Claude (05/11/2026) con los primeros días de uso y las ventas de octubre: se ajustan acá.
+const EFICIENCIA = [
+  { clave: 'tareas_hora', objetivo: 4, peso: 50 },    // una tarea cada 15 minutos, contando el tiempo de atender
+  { clave: 'ventas_hora', objetivo: 1, peso: 25 },    // octubre: la mejor persona hizo cerca de 1 punto de venta por hora
+  { clave: 'uso_pct', objetivo: 0.6, peso: 25 },      // atender en persona no se ve en la app: no se le pide el 100%
+];
+
+// c: {horas, horasApp, horasCaja, tareas, puntosVenta, minutosActivos, minutosConSenal}. Las tareas se miden sobre los días que usó la app y las ventas sobre los días de caja.
+// Si no hubo días de app o de caja, esa parte no resta; un cero en días trabajados sí cuenta.
+function eficienciaDe(c) {
+  if (!(c.horas > 0)) return null;
+  const valores = { tareas_hora: c.horasApp > 0 ? (c.tareas || 0) / c.horasApp : null, ventas_hora: c.horasCaja > 0 ? (c.puntosVenta || 0) / c.horasCaja : null, uso_pct: c.minutosConSenal > 0 ? c.minutosActivos / c.minutosConSenal : null };
+  const con = EFICIENCIA.filter(e => valores[e.clave] != null);
+  const pesos = con.reduce((a, e) => a + e.peso, 0);
+  const uno = n => (n == null ? null : Math.round(n * 10) / 10);
+  return {
+    horas: Math.round(c.horas), tareas_hora: uno(valores.tareas_hora), ventas_hora: uno(valores.ventas_hora), uso_pct: valores.uso_pct == null ? null : Math.round(valores.uso_pct * 100),
+    indice: pesos ? Math.round(con.reduce((a, e) => a + Math.min(1, valores[e.clave] / e.objetivo) * e.peso, 0) / pesos * 100) : null,
+  };
+}
+
 // Media hora antes del fin del turno: una recomendación para ir cerrando, que cambia cada día (Emanuel, 04/11/2026).
 const IDEAS_CIERRE = [
   'empezás a revisar los baños y a acomodar tu área de trabajo',
@@ -538,6 +590,7 @@ function proximoAviso(c) {
   if (c.equipoHechas >= 10 && c.equipoFaltan > 0 && transcurrido >= 0.5) candidatos.push(dale('equipo-' + Math.floor(c.equipoHechas / 10), '🤝 Entre todos ya van ' + c.equipoHechas, 'En tu sede hoy quedan ' + c.equipoFaltan + '. ¡Se nota cuando tiramos para el mismo lado!'));
   if (c.pendientes > 0 && c.hechas > 0 && falta <= 60 && falta > 30) candidatos.push(dale('ultima-hora', '⏳ ' + pila + ', última hora de tu turno', 'Te ' + (c.pendientes === 1 ? 'queda 1 tarea' : 'quedan ' + c.pendientes + ' tareas') + '.' + (sig ? ' La próxima: ' + sig + '.' : '')));
   if (c.ayer > 0 && c.hechas > c.ayer) candidatos.push(dale('supero-ayer', '🏆 ¡Superaste a tu yo de ayer, ' + pila + '!', c.hechas + ' tareas hoy contra ' + c.ayer + ' ayer. Excelente.'));
+  if (c.pendientes === 0 && c.idea) candidatos.push(dale('idea-' + c.idea.clave, c.idea.emoji + ' ' + pila + ', estás al día: ¿sumamos algo distinto?', c.idea.titulo + '. ' + c.idea.como));
   if (c.pendientes === 0 && c.adelantar > 0) candidatos.push(dale('adelantar', '✅ ' + pila + ', estás al día', 'Hay ' + c.adelantar + ' tareas para adelantar, y cada una suma un punto extra. ¿Sumamos unas más?'));
   if (c.hechas > 0 && c.hechas % 5 === 0) candidatos.push(dale('cuenta-' + c.hechas, '💪 ¡Ya van ' + c.hechas + ', ' + pila + '!', c.pendientes ? 'Cada contacto cuenta. ' + (sig ? 'Seguí con ' + sig + '.' : '') : 'Vas al día.'));
   if (transcurrido >= 0.5 && total > 0 && c.hechas / total < 0.4) candidatos.push(dale('ritmo', '⏱️ ' + pila + ', ya pasó la mitad de tu turno', 'Llevás ' + c.hechas + ' de ' + total + '. Con unos minutos ahora, llegás bien.' + (sig ? ' Seguí con ' + sig + '.' : '')));

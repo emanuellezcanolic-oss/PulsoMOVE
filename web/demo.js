@@ -37,8 +37,8 @@
   const PIMIENTA = 'demo';
   const PIN = '2580';
   const USUARIOS = [
-    { dni: '11111111', nombre: 'Rocío (práctica)', sede: 'bolson', turno: 'manana', roles: 'recepcion' },
-    { dni: '11111112', nombre: 'Tomás (práctica)', sede: 'bolson', turno: 'tarde', roles: 'recepcion' },
+    { dni: '11111111', nombre: 'Rocío (práctica)', sede: 'bolson', turno: 'manana', roles: 'recepcion', hora_inicio: '08:00', hora_fin: '14:00' },
+    { dni: '11111112', nombre: 'Tomás (práctica)', sede: 'bolson', turno: 'tarde', roles: 'recepcion', hora_inicio: '15:00', hora_fin: '21:00' },
     { dni: '22222222', nombre: 'Responsable de sede (práctica)', sede: 'bolson', turno: 'manana', roles: 'recepcion,coordinador' },
     { dni: '44444444', nombre: 'Coordinación general (práctica)', sede: 'bolson', turno: 'manana', roles: 'recepcion,coordinador,admin' },
     { dni: '33333333', nombre: 'Admin (práctica)', sede: 'bolson', turno: 'manana', roles: 'admin' },

@@ -262,6 +262,13 @@ label.campo .opcional { text-transform: none; letter-spacing: 0; font-weight: 50
 .coach { background: var(--hoja); border: 1px solid var(--linea); border-left: 4px solid #f58a07; border-radius: 10px; padding: 4px 12px; }
 .coach p { margin: 8px 0; font-size: 13.5px; font-weight: 500; }
 .coach p.logro { display: block; background: none; border: 0; padding: 0; color: var(--verde-texto); font-weight: 700; }
+.ideas { background: var(--hoja); border: 1px solid var(--linea); border-left: 4px solid #0e9594; border-radius: 10px; padding: 10px 12px; margin: 10px 0; }
+.ideas > b { font-size: 13.5px; }
+.idea { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-top: 8px; }
+.idea-txt { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.idea-txt strong { font-size: 13.5px; }
+.idea-txt small { font-size: 12.5px; color: var(--apagado, #666); }
+.idea .boton { flex: none; padding: 6px 10px; font-size: 13px; }
 .boton.adelantar { background: #0e9594; color: #fff; }
 .consejo-audio { background: #fff4e0; border-left: 4px solid #f58a07; padding: 8px 10px; border-radius: 6px; font-size: 13px; }
 .estado.adelanto { background: #d9f0ef; color: #0a6b6a; }

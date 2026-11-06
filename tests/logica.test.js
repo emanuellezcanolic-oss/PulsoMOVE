@@ -402,3 +402,28 @@ test('avisos nuevos: medalla, lunes, prioritarias, los que volvieron y el equipo
   assert.equal(L.proximoAviso(ctxAviso({ volvieron: 2 })).clave, 'volvieron-2');
   assert.equal(L.proximoAviso(ctxAviso({ equipoHechas: 24, equipoFaltan: 5, minuto: 12 * 60 })).clave, 'equipo-2');
 });
+
+test('ideas: primero lo más lejos del objetivo, lo de hoy al final y lo cumplido no aparece', () => {
+  const v = { resenas: 8, referidos: 0, planes_largos: 9, tienda: 4, dias_prueba: 0, mensajes: 90 };
+  const i = L.ideasParaSumar({ valores: v, objetivos: {}, fecha: '2026-11-05', hechoHoy: { referido: 1 } });
+  assert.ok(!i.some(x => x.clave === 'resena'));
+  assert.equal(i[0].clave, 'prueba');
+  assert.equal(i[i.length - 1].clave, 'referido');
+  // Con el mismo avance, cambia con el día
+  const orden = f => L.ideasParaSumar({ valores: {}, fecha: f })[0].clave;
+  assert.notEqual(orden('2026-11-05'), orden('2026-11-06'));
+  // Objetivo propio
+  assert.equal(L.ideasParaSumar({ valores: {}, objetivos: { resenas: 3 }, fecha: '2026-11-05' }).find(x => x.clave === 'resena').meta, 3);
+});
+
+test('eficiencia por hora de turno', () => {
+  assert.equal(L.eficienciaDe({ horas: 0, tareas: 5 }), null);
+  const e = L.eficienciaDe({ horas: 10, horasApp: 10, horasCaja: 10, tareas: 20, puntosVenta: 10, minutosActivos: 180, minutosConSenal: 600 });
+  assert.deepEqual(e, { horas: 10, tareas_hora: 2, ventas_hora: 1, uso_pct: 30, indice: 63 });
+  // Sin días de caja, las ventas no restan; pasar la referencia no da más de 100
+  assert.equal(L.eficienciaDe({ horas: 10, horasApp: 10, tareas: 80 }).indice, 100);
+  // Sin días de app, las tareas no restan; un cero en días trabajados sí cuenta
+  assert.equal(L.eficienciaDe({ horas: 10, horasCaja: 10, puntosVenta: 10 }).indice, 100);
+  assert.equal(L.eficienciaDe({ horas: 10, horasApp: 10, horasCaja: 10, tareas: 0, puntosVenta: 10 }).indice, 33);
+  assert.equal(L.eficienciaDe({ horas: 10 }).indice, null);
+});

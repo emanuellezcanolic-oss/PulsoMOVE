@@ -751,6 +751,7 @@ function miDia(req, deps) {
     saludo: saludo(usuario.nombre, hora), puntos: calcularPuntos(valores), racha: racha,
     hoy: { hechas: deHoy.hechas, pendientes: pendientes.length, atrasadas: atrasadas, mensajes: deHoy.mensajes, consultas: deHoy.consultas },
     coach: mensajesCoach(valores, propios, { hoy: hoy, atrasadas: atrasadas, racha: racha }),
+    ideas: ideasParaSumar({ valores: valores, objetivos: propios, fecha: hoy, hechoHoy: actividad.filter(a => a.dni === usuario.dni && fechaArgentina(a.ts) === hoy).reduce((o, a) => { o[a.tipo] = (o[a.tipo] || 0) + 1; return o; }, {}) }),
     ventas_largas: ventasLargasDe(usuario, usuarios, deps), hora_fin: usuario.hora_fin || '', cierre_hecho: deps.repo.leer('cierres').some(c => c.dni === usuario.dni && c.fecha === hoy),
   };
 }
@@ -826,6 +827,26 @@ function respaldo(req, deps) {
   return out;
 }
 
+// Horas: cada día con actividad o caja, por las horas de su turno. No hay fichaje: si un día trabajó distinto, el número no lo sabe.
+function eficienciaDelMes(u, mes, valores, uso, registro, filasVentas, deps) {
+  const inicio = aMinutoDelDia(u.hora_inicio), fin = aMinutoDelDia(u.hora_fin);
+  if (inicio == null || fin == null || fin <= inicio) return null;
+  const hoy = deps.hoy();
+  const app = {}, caja = {};
+  uso.forEach(d => { app[d.fecha] = true; });
+  filasVentas.forEach(f => { if (f.dni === u.dni && String(f.fecha).indexOf(mes) === 0) caja[f.fecha] = true; });
+  const delDia = f => (f === hoy ? Math.max(0, Math.min(fin, minutoAhora(deps)) - inicio) : fin - inicio);
+  const horasDe = dias => Object.keys(dias).reduce((a, f) => a + delDia(f), 0) / 60;
+  const conSenal = uso.filter(d => d.con_senal);
+  return eficienciaDe({
+    horas: horasDe(Object.assign({}, app, caja)), horasApp: horasDe(app), horasCaja: horasDe(caja),
+    tareas: marcasDeTrabajo(registro, u.dni).filter(r => delMes(r.ts, mes)).length,
+    puntosVenta: calcularPuntos(Object.assign({}, valores, { tareas_hechas: 0, adelantadas: 0 })),
+    minutosActivos: conSenal.reduce((a, d) => a + d.activo, 0),
+    minutosConSenal: conSenal.reduce((a, d) => a + delDia(d.fecha), 0),
+  });
+}
+
 function vistaRendimiento(req, deps) {
   const { usuario, usuarios } = sesion(req, deps);
   const mes = /^\d{4}-\d{2}$/.test(texto(req.mes)) ? texto(req.mes) : deps.hoy().slice(0, 7);
@@ -862,6 +883,7 @@ function vistaRendimiento(req, deps) {
       out.tiempos = tiemposDe(u.dni, mes, registro, u.hora_fin);
       out.uso = usoDelMes(u, mes, filasUso, registro, deps);
     }
+    if (tieneRol(usuario, 'admin')) out.eficiencia = eficienciaDelMes(u, mes, valores, out.uso, registro, filasVentas, deps);
     return out;
   }).sort((a, b) => (b.puntaje.total == null ? -1 : b.puntaje.total) - (a.puntaje.total == null ? -1 : a.puntaje.total));
   return { mes: mes, hoy: deps.hoy(), actualizado: actualizado, personas: personas, metricas: METRICAS };

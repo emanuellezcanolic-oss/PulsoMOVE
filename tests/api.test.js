@@ -785,3 +785,19 @@ test('venta de 3 meses: queda para quien cobró, se puede dar o pedir, y suma a 
   pedir(d, { accion: 'venta_larga_responder', token: ana, id: '3', acepta: false });
   assert.deepEqual(diaDe(tarde).cobradas.map(v => v.id), ['3']);
 });
+
+test('la eficiencia solo la ve admin, y mi_dia trae ideas', () => {
+  const d = equipo({ tareas: [], actividad: [], objetivos: [], rendimiento: [], cierres: [],
+    registro: [{ ts: '2026-11-06T12:00:00.000Z', dni: '30123456', canal: 'LL', resultado: 'RESERVA', tipo: 'x', segundos: '60' }] });
+  const usuarios = d.repo.leer('usuarios');
+  usuarios.find(u => u.dni === '30123456').hora_inicio = '08:00';
+  usuarios.find(u => u.dni === '30123456').hora_fin = '14:00';
+  d.repo.escribir('usuarios', usuarios);
+  const de = dni => pedir(d, { accion: 'rendimiento', token: entrar(d, dni, '0907'), sede: 'bolson' }).data.personas.find(p => p.dni === '30123456');
+  const e = de('20000001').eficiencia;
+  assert.equal(e.horas, 6);
+  assert.equal(e.tareas_hora, 0.2);
+  assert.ok(!('eficiencia' in de('25111222')));
+  const ideas = pedir(d, { accion: 'mi_dia', token: entrar(d) }).data.ideas;
+  assert.ok(ideas.length >= 3 && ideas[0].titulo);
+});
