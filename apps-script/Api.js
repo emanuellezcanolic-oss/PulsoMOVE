@@ -107,6 +107,8 @@ function misTareas(req, deps) {
     .filter(t => t.estado !== 'cerrada')
     .sort(ordenTareas)
     .map(t => conDias(t, hoy));
+  const historial = historialDeSocios(deps.repo.leer('registro'), deps.repo.leer('reservas_qr'));
+  tareas.forEach(t => { t.historial = historial[idDeSocio(t.socio_id)] || []; });
   return { hoy: hoy, tareas: tareas, para_adelantar: todas.filter(futuras).length };
 }
 

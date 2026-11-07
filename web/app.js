@@ -54,6 +54,10 @@
 
   const app = document.getElementById('app');
   const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+  // Solo los formularios de Google se vuelven link: es lo único que la app le pide mandar
+  const conLinks = s => esc(s).replace(/https:\/\/docs\.google\.com\/forms\/[A-Za-z0-9_\-\/]+/g, u => `<a href="${u}" target="_blank" rel="noopener">${u}</a>`);
+  const historialSocio = t => (t.historial && t.historial.length ? `<details class="historial-socio"><summary>Lo que ya sabemos (${t.historial.length})</summary>${t.historial.map(h => `<span class="nota"><b>${esc(ddmmDe(h.ts))} · ${esc(h.tipo)}${h.resultado ? ' · ' + esc(NOMBRE_RESULTADO[h.resultado] || h.resultado) : ''}</b>${h.detalle ? ': “' + esc(h.detalle) + '”' : ''}</span>`).join('')}</details>` : '');
+  const ddmmDe = ts => { const d = new Date(ts); return isNaN(d) ? '' : String(d.getDate()).padStart(2, '0') + '/' + String(d.getMonth() + 1).padStart(2, '0'); };
   const ddmm = iso => (iso ? iso.slice(8, 10) + '/' + iso.slice(5, 7) : '');
   const tituloDia = iso => { const d = new Date(iso + 'T12:00:00'); return DIAS[d.getDay()] + ' ' + d.getDate() + '/' + (d.getMonth() + 1); };
   const roles = () => ((cliente.sesion() || {}).roles || []);
@@ -228,7 +232,7 @@
     return `<article class="tarjeta${t.estado === 'hecha' ? ' hecha' : ''}" style="--i:${i}"><div class="cabeza">
         <span class="socio">${esc(t.socio_nombre)}</span>${etiquetaEstado(t)}
         <span class="situacion">${esc(t.situacion)}</span>
-        <span class="accion">${esc(t.accion)}</span>
+        <span class="accion">${conLinks(t.accion)}</span>
         ${t.estado === 'hecha' ? '' : '<span class="nota">No se marca acá: cuando esté cargado en MOVE, se cierra sola a la mañana siguiente.</span>'}
       </div></article>`;
   }
@@ -239,8 +243,8 @@
         <span class="socio">${esc(t.socio_nombre)}</span>${etiquetaEstado(t)}
         <span class="profe">Profe: ${esc(t.profe || '—')}</span>
         <span class="situacion">${esc(t.situacion)}</span>
-        <span class="accion">${esc(t.accion)}</span>
-        ${t.ultima_anotacion ? `<span class="nota">Última anotación: “${esc(t.ultima_anotacion)}”</span>` : ''}
+        <span class="accion">${conLinks(t.accion)}</span>
+        ${t.ultima_anotacion ? `<span class="nota">Última anotación: “${esc(t.ultima_anotacion)}”</span>` : ''}${historialSocio(t)}
         ${m ? `<span class="nota"><b>Marcó${m.ts ? ' a las ' + horaLocal(m.ts) : ''}${m.segundos ? ' · ' + duracion(Number(m.segundos)) : ''}${m.adelantada ? ' · adelantada' : ''}:</b> ${esc(NOMBRE_CANAL[m.canal] || m.canal)} · ${esc(m.resultado)}${m.fecha ? ' ' + ddmm(m.fecha) : ''}${m.detalle ? ' · ' + esc(m.detalle) : ''}</span>` : ''}
       </div></article>`;
   }
@@ -257,8 +261,8 @@
         <span class="socio">${esc(t.socio_nombre)}</span>${etiquetaEstado(t)}
         ${t.profe ? `<span class="profe">Profe: ${esc(t.profe)}</span>` : ''}
         ${String(t.tipo).indexOf('Entrena en otra sede') === 0 ? `<span class="cartel-sede">🏠 ${esc(t.situacion)}</span>` : `<span class="situacion">${esc(t.situacion)}</span>`}
-        <span class="accion">${esc(t.accion)}</span>
-        ${t.ultima_anotacion ? `<span class="nota">Última anotación: “${esc(t.ultima_anotacion)}”</span>` : ''}
+        <span class="accion">${conLinks(t.accion)}</span>
+        ${t.ultima_anotacion ? `<span class="nota">Última anotación: “${esc(t.ultima_anotacion)}”</span>` : ''}${historialSocio(t)}
       </button>
       ${abierta ? formularioMarca(t) : ''}
     </article>`;
@@ -1042,7 +1046,7 @@
         <div class="cabeza" style="display:grid;grid-template-columns:1fr auto;gap:2px 10px;padding:12px 14px">
           <span class="socio">${esc(t.socio_nombre)}</span><span class="estado atrasada">${t.dias_pendiente} días</span>
           <span class="profe">${esc(t.tipo)} · tiene ${esc(t.asignado_nombre || nombre(t.asignado_dni))}</span>
-          <span class="accion">${esc(t.accion)}</span></div>
+          <span class="accion">${conLinks(t.accion)}</span></div>
         <div class="fila-accion"><select data-reasignar="${esc(t.id)}" aria-label="Pasar a">${S.personas.filter(p => p.dni !== t.asignado_dni).map(p => `<option value="${esc(p.dni)}">Pasar a ${esc(p.nombre)}</option>`).join('')}</select>
           <button class="boton claro" data-accion="reasignar" data-id="${esc(t.id)}">Reasignar</button></div></article>`).join('')
       : '<div class="vacio">Sin tareas atrasadas. Todo al día.</div>';

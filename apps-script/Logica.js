@@ -101,6 +101,7 @@ const NO_SE_PUDO = ['No se pudo hablar', [['NO CONTESTA', 'No contesta'], ['TEL 
 const MOTIVOS = t => [t, [['PRECIO', 'Por el precio'], ['HORARIOS', 'No le sirven los horarios'], ['SALUD', 'Por salud'], ['PAUSA', 'Hace una pausa'], ['BAJA', 'Se da de baja']]];
 const AVISADO = ['Solo se le avisó', [['NOTIFICADO', 'Le escribí: espero respuesta']]];
 const RESULTADOS_POR_TIPO = [
+  ['Recordar turno', [['Respondió', [['RESPONDIÓ', 'Confirmó que viene'], ['REPROGRAMADA', 'Lo cambiamos de día']]], AVISADO, NO_SE_PUDO]],
   ['Preguntar cómo sigue', [['Respondió', [['RESPONDIÓ', 'Ya está mejor']]], ['Sigue igual', [['SALUD', 'Sigue con el problema: volver a preguntar en una semana']]], AVISADO, ['Se va', [['BAJA', 'Se da de baja']]], NO_SE_PUDO]],
   ['Socio nuevo · semana 2', [['Respondió', [['RESPONDIÓ', 'Respondió el mensaje'], ['RESERVA', 'Respondió y quedó con turnos']]], AVISADO, MOTIVOS('Qué le pasa'), NO_SE_PUDO]],
   ['Socio nuevo', [['Ya se resolvió', [['RESERVA', 'Quedó con turnos reservados']]], AVISADO, MOTIVOS('Por qué no reserva'), NO_SE_PUDO]],
@@ -210,6 +211,26 @@ function reservasVisibles(filas, c, minuto) {
         puede_escanear: minuto - ini < RESERVA_LIMITE_QR_MIN, termino: fin != null && minuto >= fin };
     })
     .sort((a, b) => String(a.hora).localeCompare(String(b.hora)) || String(a.socio).localeCompare(String(b.socio)));
+}
+
+// Lo que el equipo fue anotando de un socio, sea cual sea la tarea. Las tareas guardan el id con un prefijo (eval-123, salud-123-20261109).
+const HISTORIAL_MAXIMO = 5;
+function idDeSocio(id) {
+  const m = /^(?:[a-záéíóúñ]+-)?(\d+)(?:-\d+)?$/.exec(String(id));
+  return m ? m[1] : '';
+}
+
+function historialDeSocios(registro, reservas) {
+  const porSocio = {};
+  const sumar = (id, ts, tipo, resultado, detalle) => {
+    const i = idDeSocio(id);
+    if (!i || (!detalle && !resultado)) return;
+    (porSocio[i] = porSocio[i] || []).push({ ts: String(ts), tipo: String(tipo || '').split(':')[0], resultado: String(resultado || ''), detalle: String(detalle || '') });
+  };
+  registro.forEach(r => sumar(r.socio_id, r.ts, r.tipo, r.resultado, r.detalle));
+  reservas.filter(r => r.resultado === 'contacto' && r.detalle).forEach(r => sumar(r.socio_id, r.resuelta_ts, 'Reserva sin QR', '', r.detalle));
+  Object.keys(porSocio).forEach(i => { porSocio[i] = porSocio[i].sort((a, b) => b.ts.localeCompare(a.ts)).slice(0, HISTORIAL_MAXIMO); });
+  return porSocio;
 }
 
 function seVerificaEnMove(tipo) {

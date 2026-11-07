@@ -861,6 +861,19 @@ test('reservas sin QR: fases, sede, turno, cierre solo y marcas', () => {
   assert.equal(pedir(d, { accion: 'reserva_marcar', token: entrar(d), id: 'a', que: 'cualquiera' }).error, 'datos_invalidos');
 });
 
+test('cada tarea trae lo que el equipo ya anotó de ese socio', () => {
+  const hist = L.historialDeSocios([
+    { socio_id: 'eval-77', ts: '2026-11-02T10:00:00Z', tipo: 'Coordinar evaluación: x', resultado: 'AGENDADA', detalle: '' },
+    { socio_id: '77', ts: '2026-11-05T10:00:00Z', tipo: 'Riesgo alto', resultado: 'SALUD', detalle: 'Resfrío' },
+    { socio_id: 'apertura-30123456-2026-11-05', ts: '2026-11-05T10:00:00Z', tipo: 'Apertura', resultado: 'HECHO', detalle: '' },
+    { socio_id: 'PRUEBA-1', ts: '2026-11-05T10:00:00Z', tipo: 'x', resultado: 'HECHO', detalle: 'no' },
+  ], [{ socio_id: '77', resuelta_ts: '2026-11-06T10:00:00Z', resultado: 'contacto', detalle: 'Se olvidó' }]);
+  assert.deepEqual(Object.keys(hist), ['77']);
+  assert.deepEqual(hist['77'].map(h => h.detalle || h.resultado), ['Se olvidó', 'Resfrío', 'AGENDADA']);
+  assert.equal(L.idDeSocio('salud-77-20261109'), '77');
+  assert.equal(L.idDeSocio('consulta-abc'), '');
+});
+
 test('reservas sin QR: fuera de turno no se ven', () => {
   const d = entorno([{ ...usuario(), hora_inicio: '00:00', hora_fin: '00:00' }]);
   pedir(d, { accion: 'cargar_fichajes', clave: 'clave-prueba', fecha: d.dia, filas: [], reservas: [{ id: 'a', sede: 'bolson', socio_id: '1', socio: 'S', clase: '', profe: '', hora: '00:00', fin: '23:59' }] });
