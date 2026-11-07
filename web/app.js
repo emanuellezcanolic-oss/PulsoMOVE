@@ -25,6 +25,10 @@
   const NOMBRE_RESULTADO = { NOTIFICADO: 'NOTIFICADO (ya se le avisó)' };
   const GUIA_ANTIGUO = ['Saludalo por su nombre y decile quién sos.', 'Contale que hace rato no lo ven y que te acordaste de él.', 'Preguntale cómo anda, si está entrenando, qué está haciendo.', 'Escuchá por qué dejó: si fue horario, precio o salud, ahí está la conversación.', 'Invitalo sin presión: una visita o un turno concreto. Decide él.'];
   const AVISO_AUDIO = 'Para este contacto, mejor un audio: obliga a abrirlo, y escuchar tu tono de voz cambia cómo llega el mensaje. Hablale con tus palabras: un texto armado se nota.';
+  // A personas mayores se les sugiere llamar. Es una recomendación razonable y no un resultado probado: la evidencia sobre canales con adultos mayores está dividida.
+  const AVISO_LLAMADA = 'Para personas mayores, mejor una llamada: es más directo que un mensaje y ahí mismo le preguntás cómo prefiere que lo contacten. Probá entre las 10 y las 13, ni temprano ni de noche. Hablale con tus palabras.';
+  const avisoDeCanal = t => (String(t.tipo).indexOf('Socio antiguo') === 0 && String(t.accion).indexOf('Llamarlo') === 0
+    ? `<div class="consejo-audio">📞 ${esc(AVISO_LLAMADA)}</div>` : recomiendaAudio(t.tipo) ? `<div class="consejo-audio">🎙️ ${esc(AVISO_AUDIO)}</div>` : '');
   function formularioDe(tipo) {
     const t = String(tipo);
     if (t.indexOf('Cumpleaños') === 0) return { resultado: 'SALUDADO', conCanal: true, detalle: 'Qué se hizo', boton: 'Listo, saludado' };
@@ -195,7 +199,7 @@
     const canal = f.conCanal ? `<label class="campo">Canal<select name="canal" required><option value="">Elegí…</option>${['AU', 'MP', 'LL', 'PR'].map(v => `<option value="${v}">${esc(NOMBRE_CANAL[v])}</option>`).join('')}</select></label>` : '<input type="hidden" name="canal" value="PR">';
     return `<form class="marca-form" data-form="marcar" data-id="${esc(t.id)}">
       ${f.opciones ? '' : `<input type="hidden" name="resultado" value="${esc(f.resultado)}">`}
-      ${recomiendaAudio(t.tipo) ? `<div class="consejo-audio">🎙️ ${esc(AVISO_AUDIO)}</div>` : ''}
+      ${avisoDeCanal(t)}
       ${f.consejo ? `<div class="consejo-audio">${esc(f.consejo)}</div>` : ''}
       ${f.checklist ? checklistHtml(itemsDe(t)) : ''}
       ${f.stock ? `<p class="aclara">Si no hay, poné 0.</p><div class="conteo-stock">${productosStockDe(t.sede).map(p => `<label class="campo">${esc(p)}<input type="number" min="0" max="99999" step="1" inputmode="numeric" required data-stock="${esc(p)}"></label>`).join('')}</div>` : ''}
@@ -214,7 +218,7 @@
     if (simple) return formularioSimple(t, simple);
     const opt = (lista, nombres) => lista.map(v => `<option value="${esc(v)}">${esc(nombres ? nombres[v] || v : v)}</option>`).join('');
     return `<form class="marca-form" data-form="marcar" data-id="${esc(t.id)}">
-      ${recomiendaAudio(t.tipo) ? `<div class="consejo-audio">🎙️ ${esc(AVISO_AUDIO)}</div>` : ''}
+      ${avisoDeCanal(t)}
       ${String(t.tipo).indexOf('Socio antiguo') === 0 ? `<div class="guia-audio"><b>Ideas para tu audio, con tus palabras</b><ol>${GUIA_ANTIGUO.map(g => `<li>${esc(g)}</li>`).join('')}</ol></div>` : ''}
       <div class="campos">
         <label class="campo">Canal<select name="canal" required><option value="">Elegí…</option>${opt(CANALES, NOMBRE_CANAL)}</select></label>
