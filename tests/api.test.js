@@ -4,6 +4,9 @@ const L = require('./cargar').cargar();
 const { repoFalso, depsFalsas, usuario } = require('./repo_falso');
 
 const MIN15 = 15 * 60 * 1000;
+const INICIO_REAL_VERDADERO = L.INICIO_REAL;
+L.INICIO_REAL = '2000-01-01';   // las pruebas viejas usan fechas de la semana de práctica
+const conInicioReal = f => { L.INICIO_REAL = INICIO_REAL_VERDADERO; try { f(); } finally { L.INICIO_REAL = '2000-01-01'; } };
 
 function entorno(usuarios = [usuario()], extra = {}) {
   return depsFalsas({ repo: repoFalso({ usuarios, ...extra }) });
@@ -872,6 +875,35 @@ test('cada tarea trae lo que el equipo ya anotó de ese socio', () => {
   assert.deepEqual(hist['77'].map(h => h.detalle || h.resultado), ['Se olvidó', 'Resfrío', 'AGENDADA']);
   assert.equal(L.idDeSocio('salud-77-20261109'), '77');
   assert.equal(L.idDeSocio('consulta-abc'), '');
+});
+
+test('las estadísticas arrancan de cero el 09/11: la práctica no cuenta ni penaliza', () => conInicioReal(() => {
+  const d = entorno([usuario(), ADMIN], { tareas: [
+    { id: 'p1', fecha: '2026-11-05', sede: 'bolson', socio_id: '1', socio_nombre: 'A', tipo: 'Socio nuevo', asignado_dni: '30123456', pendiente_desde: '2026-11-05', estado: 'hecha', hecha_en: '2026-11-05T15:00:00.000Z' },
+    { id: 'p2', fecha: '2026-11-06', sede: 'bolson', socio_id: '2', socio_nombre: 'B', tipo: 'Socio nuevo', asignado_dni: '30123456', pendiente_desde: '2026-11-06', estado: 'pendiente', hecha_en: '' },
+    { id: 'n1', fecha: '2026-11-09', sede: 'bolson', socio_id: '3', socio_nombre: 'C', tipo: 'Socio nuevo', asignado_dni: '30123456', pendiente_desde: '2026-11-09', estado: 'hecha', hecha_en: '2026-11-09T15:00:00.000Z' },
+  ] });
+  const dia = pedir(d, { accion: 'mi_dia', token: entrar(d) }).data;
+  assert.equal(dia.hoy.atrasadas, 0);          // lo pendiente de la práctica empieza a contar desde el lunes
+  assert.equal(dia.hoy.pendientes, 1);
+  const t = pedir(d, { accion: 'mis_tareas', token: entrar(d) }).data.tareas.find(x => x.id === 'p2');
+  assert.equal(t.dias_pendiente, 0);
+  assert.equal(dia.racha, 1);                  // el 05/11 no suma a la racha
+  const r = pedir(d, { accion: 'rendimiento', token: entrar(d) }).data.personas[0].valores;
+  assert.equal(r.tareas_hechas, 1);            // solo la del lunes
+  assert.equal(r.tareas_total, 2);             // la hecha del lunes y la pendiente que ahora cuenta desde el lunes
+}));
+
+test('cartel de inicio: lo ve quien atiende recepción hasta marcarlo visto, y no lo ve quien administra', () => {
+  const d = entorno([usuario(), ADMIN]);
+  const cartel = tk => pedir(d, { accion: 'mi_dia', token: tk }).data.cartel;
+  assert.deepEqual(cartel(entrar(d)), { clave: 'inicio-estadisticas-2026-11', visto: false });
+  assert.equal(pedir(d, { accion: 'aviso_visto', token: entrar(d), clave: 'otra' }).error, 'datos_invalidos');
+  assert.ok(pedir(d, { accion: 'aviso_visto', token: entrar(d), clave: 'inicio-estadisticas-2026-11' }).ok);
+  pedir(d, { accion: 'aviso_visto', token: entrar(d), clave: 'inicio-estadisticas-2026-11' });   // repetirlo no duplica
+  assert.equal(cartel(entrar(d)).visto, true);
+  assert.equal(d.repo.leer('avisos').length, 1);
+  assert.equal(cartel(entrar(d, ADMIN.dni, '0907')), null);
 });
 
 test('reservas sin QR: fuera de turno no se ven', () => {

@@ -402,6 +402,15 @@ const NIVELES = [
 const TIPOS_NIVEL_1 = ['Encargo', 'Controlar stock', 'Apertura', 'Pagó y no viene', 'Le vence el plan', 'Vence', 'Socio nuevo', 'Vencieron'];   // el orden de urgencia de Emanuel (03/11/2026)
 const TIPOS_NIVEL_3 = ['Socio antiguo', 'Revisar profesor', 'Completar ficha', 'Asignarle profesor', 'Cierre'];
 
+// La semana del 04 al 06/11/2026 fue de práctica: las estadísticas de recepción arrancan de cero el lunes 09/11 (Emanuel, 07/11/2026).
+// No se borra nada: lo anterior queda guardado pero no cuenta, y lo pendiente de la práctica empieza a contar desde el lunes.
+var INICIO_REAL = '2026-11-09';   // var: las pruebas lo mueven
+function pendienteDesde(t) {
+  const p = String(t.pendiente_desde);
+  return p < INICIO_REAL ? INICIO_REAL : p;
+}
+const CARTEL_INICIO = 'inicio-estadisticas-2026-11';
+
 // Lo que quedó de 2 días o más sube un escalón: lo no hecho no se pierde al fondo de la lista. El cierre siempre va al final.
 function nivelDeTarea(t) {
   const tipo = String(t.tipo);
@@ -493,7 +502,7 @@ const IDEAS_SUMAR = [
   { clave: 'plan', emoji: '🎁', titulo: 'Ofrecé un plan de 3 meses', como: 'Al próximo que venga a renovar.', valor: 'planes_largos', tipo: '' },
   { clave: 'tienda', emoji: '🛍️', titulo: 'Mostrá indumentaria o suplementos', como: 'A quien salga de entrenar.', valor: 'tienda', tipo: '' },
   { clave: 'prueba', emoji: '🎟️', titulo: 'Invitá a un día de prueba', como: 'A quien venga a averiguar por un servicio.', valor: 'dias_prueba', tipo: 'prueba', objetivo: 2 },
-  { clave: 'mensaje', emoji: '💬', titulo: 'Escribile a un socio fuera de tu lista', como: 'A alguien a quien hace rato no le hablás.', valor: 'mensajes', tipo: 'mensaje' },
+  { clave: 'mensaje', emoji: '💬', titulo: 'Recuperá a un socio que se alejó', como: 'Mejor con un audio corto y con tu voz: preguntale cómo anda, sin reproches ni hablar de cuotas. Si quiere volver, dejale el turno reservado.', valor: 'mensajes', tipo: 'mensaje' },
 ];
 
 // c: {valores, objetivos, hechoHoy: {tipo: cantidad}, fecha}

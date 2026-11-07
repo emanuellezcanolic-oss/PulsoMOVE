@@ -1098,6 +1098,30 @@
     return d;
   }
 
+  // Aviso de que desde el lunes 09/11 se miden las estadísticas. Se marca como visto y no vuelve.
+  function cartelInicio(clave) {
+    if (document.querySelector('dialog')) return;
+    dialogo(`<h3>Desde el lunes 9/11 empezamos a medir</h3>
+      <p>La primera semana fue de práctica: tus estadísticas empiezan de cero el lunes y nada de la práctica cuenta en tu contra.</p>
+      <p><b>Lo importante, todos los días:</b></p>
+      <ul>
+        <li>Hacé el checklist de apertura al llegar y el de cierre antes de irte.</li>
+        <li>Cumplí todas las tareas del día: es lo que más ayuda a los socios y a MOVE.</li>
+        <li>Si alguna no pudiste hacerla, contá por qué en el cierre del turno.</li>
+      </ul>
+      <label class="visto"><input type="checkbox" id="cartel-visto"> Lo leí y lo entendí</label>
+      <div class="botones"><button class="boton" id="cartel-ok" disabled>Listo</button></div>`, d => {
+      const caja = d.querySelector('#cartel-visto'), boton = d.querySelector('#cartel-ok');
+      caja.addEventListener('change', () => { boton.disabled = !caja.checked; });
+      boton.addEventListener('click', async () => {
+        boton.disabled = true;
+        try { await cliente.llamar('aviso_visto', { clave: clave }); if (E.dia && E.dia.cartel) E.dia.cartel.visto = true; d.close(); }
+        catch (e) { boton.disabled = false; aviso(PulsoApi.mensaje(e.codigo || e.message), true); }
+      });
+      d.addEventListener('cancel', ev => ev.preventDefault());
+    });
+  }
+
   function dialogoGarantia() {
     const nombres = (E.tareas || []).map(t => t.socio_nombre);
     dialogo(`<h3>Pedido de garantía</h3>
@@ -1185,6 +1209,7 @@
         E.paraAdelantar = r.para_adelantar || 0;
         E.dia = await cliente.llamar('mi_dia');
         actualizarRoles(E.dia.roles);
+        if (E.dia.cartel && !E.dia.cartel.visto) cartelInicio(E.dia.cartel.clave);
         if (!E.ultimaMarca) E.ultimaMarca = Date.now();
         saludarUnaVez();
         revisarAvisos();

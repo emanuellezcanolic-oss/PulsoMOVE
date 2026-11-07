@@ -420,6 +420,8 @@ details.grupo summary h2 { display: inline; }
 .fichaje span { font-size: 13.5px; }
 .fichaje-botones { display: flex; flex-wrap: wrap; gap: 6px; }
 .reservas-titulo { display: flex; justify-content: space-between; gap: 10px; width: 100%; padding: 10px 14px; border: 1px solid var(--linea); border-radius: 10px; background: var(--hoja); color: inherit; font: inherit; font-weight: 700; text-align: left; cursor: pointer; }
+.visto { display: flex; gap: 8px; align-items: center; margin: 14px 0 6px; font-weight: 600; }
+.visto input { width: 20px; height: 20px; }
 .historial-socio { margin-top: 6px; font-size: 13.5px; }
 .historial-socio summary { cursor: pointer; font-weight: 600; }
 .historial-socio .nota { display: block; margin-top: 4px; }
