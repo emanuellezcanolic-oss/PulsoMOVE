@@ -822,6 +822,13 @@ function cargarFichajes(req, deps) {
   const r = fusionarFichajes(deps.repo.leer('fichajes'), req.filas, fecha, ts);
   if (r.cambio) deps.repo.escribir('fichajes', r.filas);
   deps.repo.escribir('fichajes_control', [{ ts: ts }]);
+  // Sin el campo reservas no se toca nada: la PC no pudo mirarlas y lo vigente sigue vigente
+  if (req.reservas !== undefined) {
+    const buenaReserva = f => f && SEDES.indexOf(f.sede) >= 0 && texto(f.id) && texto(f.socio_id) && texto(f.socio) && aMinutoDelDia(f.hora) != null;
+    if (!Array.isArray(req.reservas) || !req.reservas.every(buenaReserva)) falla('datos_invalidos');
+    const rr = fusionarReservas(deps.repo.leer('reservas_qr'), req.reservas, fecha, ts);
+    if (rr.cambio) deps.repo.escribir('reservas_qr', rr.filas);
+  }
   return { faltan: req.filas.length };
 }
 
@@ -837,6 +844,7 @@ function fichajesVer(req, deps) {
   const m = minutoAhora(deps);
   return {
     filas: vigente ? fichajesVisibles(deps.repo.leer('fichajes'), contextoFichaje(usuario, deps)) : [],
+    reservas: vigente ? reservasVisibles(deps.repo.leer('reservas_qr'), contextoFichaje(usuario, deps), m) : [],
     detenido: control && !vigente && tieneRol(usuario, 'admin') && m >= 390 && m <= 1320 ? control.ts : '',
   };
 }
@@ -857,6 +865,23 @@ function fichajeMarcar(req, deps) {
   return { filas: fichajesVisibles(filas, c) };
 }
 
+// recordado: le recordó que escanee, sigue a la vista por si no lo hace. profe y contacto: ya está resuelta.
+function reservaMarcar(req, deps) {
+  const { usuario } = sesion(req, deps);
+  const que = texto(req.que);
+  if (['recordado', 'profe', 'contacto'].indexOf(que) < 0) falla('datos_invalidos');
+  const filas = deps.repo.leer('reservas_qr');
+  const f = filas.find(x => x.id === texto(req.id));
+  if (!f) falla('no_existe');
+  const c = contextoFichaje(usuario, deps);
+  if (!c.recepcion || !c.enTurno || f.sede !== c.sede) falla('prohibido');
+  const ts = new Date(deps.ahora()).toISOString();
+  if (que === 'recordado') { f.recordado_ts = ts; f.recordado_dni = usuario.dni; }
+  else { f.resuelta_ts = ts; f.resuelta_dni = usuario.dni; f.resultado = que; }
+  deps.repo.escribir('reservas_qr', filas);
+  return { reservas: reservasVisibles(filas, c, minutoAhora(deps)) };
+}
+
 function profesVer(req, deps) {
   const { usuario } = sesion(req, deps);
   const sede = sedePermitida(usuario, texto(req.sede));
@@ -867,7 +892,7 @@ function respaldo(req, deps) {
   exigirClave(req, deps);
   const usuarios = deps.repo.leer('usuarios').map(u => { const c = Object.assign({}, u); delete c.pin_hash; delete c.sal; return c; });
   const out = { usuarios: usuarios };
-  ['tareas', 'registro', 'garantia', 'actividad', 'rendimiento', 'objetivos', 'cierres', 'profes', 'fichajes', 'uso', 'beneficios', 'stock', 'ventas', 'ventas_largas'].forEach(h => { out[h] = deps.repo.leer(h); });
+  ['tareas', 'registro', 'garantia', 'actividad', 'rendimiento', 'objetivos', 'cierres', 'profes', 'fichajes', 'reservas_qr', 'uso', 'beneficios', 'stock', 'ventas', 'ventas_largas'].forEach(h => { out[h] = deps.repo.leer(h); });
   return out;
 }
 
@@ -1058,6 +1083,7 @@ const ACCIONES = {
   cargar_fichajes: cargarFichajes,
   fichajes_ver: fichajesVer,
   fichaje_marcar: fichajeMarcar,
+  reserva_marcar: reservaMarcar,
   servidor_ver: servidorVer,
   rendimiento: vistaRendimiento,
   objetivos_guardar: objetivosGuardar,

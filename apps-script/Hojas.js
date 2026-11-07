@@ -17,6 +17,7 @@ const COLUMNAS = {
   profes: ['fecha', 'sede', 'profe_id', 'profe', 'clase', 'qr', 'estado'],
   fichajes: ['id', 'fecha', 'sede', 'persona_id', 'persona', 'dni', 'momento', 'hora', 'estado', 'desde_ts', 'cerrada_ts', 'recordado_ts', 'recordado_dni', 'no_viene_ts', 'no_viene_dni'],
   fichajes_control: ['ts'],
+  reservas_qr: ['id', 'fecha', 'sede', 'socio_id', 'socio', 'clase', 'profe', 'hora', 'fin', 'estado', 'desde_ts', 'cerrada_ts', 'recordado_ts', 'recordado_dni', 'resuelta_ts', 'resuelta_dni', 'resultado'],
   servidor: ['ts', 'evento', 'accion', 'dueno', 'ms'],
   cierres: ['fecha', 'ts', 'dni', 'nombre', 'sede', 'animo', 'respuestas', 'comentario', 'hechas', 'pendientes', 'mensajes', 'consultas', 'sala', 'profes', 'lo_mejor', 'equipo', 'socios', 'pregunta'],
   garantia: ['id', 'ts', 'sede', 'socio_id', 'socio_nombre', 'profe', 'motivo', 'registra_dni', 'estado', 'decide_dni',

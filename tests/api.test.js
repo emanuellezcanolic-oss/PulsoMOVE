@@ -827,6 +827,44 @@ test('fichaje: fuera de turno no se ve; quien debe fichar lo ve aunque no sea re
   assert.deepEqual(propia.map(f => [f.id, f.propia]), [['b', true]]);
 });
 
+test('reservas sin QR: fases, sede, turno, cierre solo y marcas', () => {
+  const u = { ...usuario(), hora_inicio: '00:00', hora_fin: '23:59' };
+  const d = entorno([u, DE_PUELO]);
+  const m = L.minutoAhora(d);
+  const hhmm = x => String(Math.floor(x / 60)).padStart(2, '0') + ':' + String(x % 60).padStart(2, '0');
+  const fila = (id, ini, fin) => ({ id, sede: 'bolson', socio_id: id, socio: 'Socio ' + id, clase: 'Libre', profe: 'Sol', hora: hhmm(ini), fin: hhmm(fin) });
+  const carga = reservas => pedir(d, { accion: 'cargar_fichajes', clave: 'clave-prueba', fecha: d.dia, filas: [], reservas });
+  const ver = (dni, pin) => pedir(d, { accion: 'fichajes_ver', token: entrar(d, dni, pin) }).data.reservas;
+  const a = fila('a', m - 6, m + 54), b = fila('b', m - 20, m + 40), c = fila('c', m - 70, m - 10);
+  assert.ok(carga([a, b, c]).ok);
+  const r = ver('30123456', '4831');
+  assert.deepEqual(r.map(x => [x.id, x.puede_escanear, x.termino]), [['c', false, true], ['b', false, false], ['a', true, false]]);
+  assert.equal(ver(DE_PUELO.dni, '0907').length, 0);   // otra sede
+  // Se lo recordó: sigue a la vista. Le avisó al profe o le escribió: se va.
+  assert.ok(pedir(d, { accion: 'reserva_marcar', token: entrar(d), id: 'a', que: 'recordado' }).data.reservas.find(x => x.id === 'a').recordado);
+  assert.deepEqual(pedir(d, { accion: 'reserva_marcar', token: entrar(d), id: 'b', que: 'profe' }).data.reservas.map(x => x.id), ['c', 'a']);
+  assert.deepEqual(pedir(d, { accion: 'reserva_marcar', token: entrar(d), id: 'c', que: 'contacto' }).data.reservas.map(x => x.id), ['a']);
+  // MOVE mostró la asistencia: se cierra sola, sin marca de nadie
+  carga([b, c]);
+  assert.equal(ver('30123456', '4831').length, 0);
+  assert.equal(d.repo.leer('reservas_qr').find(x => x.id === 'a').estado, 'cerrada');
+  // La PC no pudo mirar: no se cierra nada de lo vigente
+  carga([a, b, c]);
+  pedir(d, { accion: 'cargar_fichajes', clave: 'clave-prueba', fecha: d.dia, filas: [] });
+  assert.deepEqual(ver('30123456', '4831').map(x => x.id), ['a']);
+  // Lo que MOVE no devuelve bien no entra, y otra sede no marca
+  assert.equal(carga([{ id: 'x', sede: 'bolson' }]).error, 'datos_invalidos');
+  assert.equal(pedir(d, { accion: 'reserva_marcar', token: entrar(d, DE_PUELO.dni, '0907'), id: 'a', que: 'contacto' }).error, 'prohibido');
+  assert.equal(pedir(d, { accion: 'reserva_marcar', token: entrar(d), id: 'a', que: 'cualquiera' }).error, 'datos_invalidos');
+});
+
+test('reservas sin QR: fuera de turno no se ven', () => {
+  const d = entorno([{ ...usuario(), hora_inicio: '00:00', hora_fin: '00:00' }]);
+  pedir(d, { accion: 'cargar_fichajes', clave: 'clave-prueba', fecha: d.dia, filas: [], reservas: [{ id: 'a', sede: 'bolson', socio_id: '1', socio: 'S', clase: '', profe: '', hora: '00:00', fin: '23:59' }] });
+  assert.equal(pedir(d, { accion: 'fichajes_ver', token: entrar(d) }).data.reservas.length, 0);
+  assert.equal(pedir(d, { accion: 'reserva_marcar', token: entrar(d), id: 'a', que: 'contacto' }).error, 'prohibido');
+});
+
 test('la eficiencia solo la ve admin, y mi_dia trae ideas', () => {
   const d = equipo({ tareas: [], actividad: [], objetivos: [], rendimiento: [], cierres: [],
     registro: [{ ts: '2026-11-06T12:00:00.000Z', dni: '30123456', canal: 'LL', resultado: 'RESERVA', tipo: 'x', segundos: '60' }] });

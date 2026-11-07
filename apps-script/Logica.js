@@ -172,6 +172,45 @@ function fichajesVisibles(filas, c) {
     .sort((a, b) => Number(b.urgente) - Number(a.urgente) || String(a.hora).localeCompare(String(b.hora)));
 }
 
+// Reservas sin QR: la PC sube cada 5 minutos quién reservó una clase ya empezada y sigue sin asistencia en MOVE.
+const RESERVA_LIMITE_QR_MIN = 15;   // pasado esto el socio ya no puede escanear: le toca al profe dar el presente
+
+function fusionarReservas(existentes, nuevas, fecha, ts) {
+  const llegan = {};
+  nuevas.forEach(n => { llegan[n.id] = n; });
+  const piso = sumarDias(fecha, -35);
+  let cambio = false;
+  const filas = existentes.filter(f => {
+    const queda = String(f.fecha) >= piso;
+    if (!queda) cambio = true;
+    return queda;
+  }).map(f => {
+    const c = Object.assign({}, f);
+    if (c.estado === 'falta' && !llegan[c.id]) { c.estado = 'cerrada'; c.cerrada_ts = ts; cambio = true; }
+    else if (c.estado === 'cerrada' && llegan[c.id]) { c.estado = 'falta'; c.cerrada_ts = ''; cambio = true; }
+    return c;
+  });
+  nuevas.forEach(n => {
+    if (filas.some(f => f.id === n.id)) return;
+    cambio = true;
+    filas.push({ id: n.id, fecha: fecha, sede: n.sede, socio_id: n.socio_id, socio: n.socio, clase: n.clase || '', profe: n.profe || '', hora: n.hora, fin: n.fin || '',
+      estado: 'falta', desde_ts: ts, cerrada_ts: '', recordado_ts: '', recordado_dni: '', resuelta_ts: '', resuelta_dni: '', resultado: '' });
+  });
+  return { filas: filas, cambio: cambio };
+}
+
+// Lo ve la recepción de esa sede en su turno, hasta que MOVE muestre la asistencia o ella lo resuelva. minuto: minuto actual del día.
+function reservasVisibles(filas, c, minuto) {
+  if (!c.recepcion || !c.enTurno) return [];
+  return filas.filter(f => f.fecha === c.hoy && f.estado === 'falta' && !f.resuelta_ts && f.sede === c.sede)
+    .map(f => {
+      const ini = aMinutoDelDia(f.hora), fin = aMinutoDelDia(f.fin);
+      return { id: f.id, socio: f.socio, clase: f.clase, profe: f.profe, hora: f.hora, recordado: f.recordado_ts,
+        puede_escanear: minuto - ini < RESERVA_LIMITE_QR_MIN, termino: fin != null && minuto >= fin };
+    })
+    .sort((a, b) => String(a.hora).localeCompare(String(b.hora)) || String(a.socio).localeCompare(String(b.socio)));
+}
+
 function seVerificaEnMove(tipo) {
   return SE_VERIFICAN_EN_MOVE.some(v => String(tipo).indexOf(v) === 0);
 }

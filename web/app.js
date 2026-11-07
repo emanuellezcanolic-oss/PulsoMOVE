@@ -1242,10 +1242,28 @@
       ${f.propia ? '' : `<div class="fichaje-botones">${f.urgente ? `<button class="boton" data-accion="fichaje" data-que="recordado" data-id="${esc(f.id)}">Ya se lo recordé</button>` : ''}<button class="boton claro" data-accion="fichaje" data-que="no_viene" data-id="${esc(f.id)}">${f.momento === 'entrada' ? 'Hoy no viene' : 'Ya se fue'}</button></div>`}</div>`;
     return `<section id="banda-fichajes" class="fichajes">${F.filas.map(fila).join('')}${F.detenido ? `<p class="fichaje-detenido">⚠️ El control de fichaje está frenado desde las ${horaLocal(F.detenido)}: recepción no recibe los recordatorios. Revisá que la PC esté prendida.</p>` : ''}</section>`;
   }
+  // Reservas sin QR: debajo del fichaje y plegable, para que no tape la lista del día.
+  function textoReserva(r) {
+    if (r.puede_escanear) return r.recordado ? `Se lo recordaste a las ${horaLocal(r.recordado)}: esperando el QR.` : 'Si está en la sala, recordale que escanee. Tiene hasta los 15 minutos.';
+    const profe = r.profe ? esc(r.profe) : 'su profe';
+    return r.termino ? 'Si no vino, preguntale qué pasó y recordale la importancia de venir o cancelar con anticipación.'
+      : `Ya no puede escanear. Si está en la sala, pedile a ${profe} el presente manual. Si no vino, preguntale qué pasó y recordale la importancia de venir o cancelar con anticipación.`;
+  }
+  function bandaReservas() {
+    const R = (E.fichajes && E.fichajes.reservas) || [];
+    if (!R.length) return '<section id="banda-reservas" hidden></section>';
+    const boton = (r, que, txt, claro) => `<button class="boton${claro ? ' claro' : ''}" data-accion="reserva" data-que="${que}" data-id="${esc(r.id)}">${txt}</button>`;
+    const botones = r => (r.puede_escanear ? (r.recordado ? '' : boton(r, 'recordado', 'Ya se lo recordé')) + boton(r, 'contacto', 'No vino: ya le escribí', true)
+      : (r.termino ? '' : boton(r, 'profe', 'Ya le avisé al profe')) + boton(r, 'contacto', 'No vino: ya le escribí', !r.termino));
+    const fila = r => `<div class="fichaje"><div><b>${esc(r.socio)}</b><span>${esc(r.clase)} de las ${esc(r.hora)}. ${textoReserva(r)}</span></div><div class="fichaje-botones">${botones(r)}</div></div>`;
+    return `<section id="banda-reservas" class="fichajes"><button class="reservas-titulo" data-accion="reservas-plegar" aria-expanded="${E.reservasPlegadas ? 'false' : 'true'}">Reservaron y no escanearon: ${R.length} <span>${E.reservasPlegadas ? 'Ver' : 'Ocultar'}</span></button>${E.reservasPlegadas ? '' : R.map(fila).join('')}</section>`;
+  }
   function mostrarFichajes(F) {
     E.fichajes = F;
     const banda = document.getElementById('banda-fichajes');
     if (banda) banda.outerHTML = bandaFichajes();
+    const reservas = document.getElementById('banda-reservas');
+    if (reservas) reservas.outerHTML = bandaReservas();
     const vistos = E.fichajesAvisados = E.fichajesAvisados || {};
     F.filas.filter(f => f.urgente && !vistos[f.id + '|' + f.recordado]).forEach(f => {
       vistos[f.id + '|' + f.recordado] = 1;
@@ -1269,7 +1287,7 @@
       : '<div class="vacio">Tu usuario no tiene ninguna vista asignada. Avisale a Emanuel.</div>';
     const sinDatos = { hoy: !E.tareas, sede: E.personaDni ? !E.persona : !E.sede, mes: !E.rend, rend: !E.rend, admin: !E.usuarios }[E.vista];
     const mostrar = E.errorCarga && sinDatos ? `<div class="vacio" style="margin-top:18px"><p>${esc(E.errorCarga)}</p><p>La pantalla vuelve a intentarlo sola. Tus marcas no se pierden.</p><button class="boton" data-accion="reintentar">Reintentar ahora</button></div>` : cuerpo;
-    app.innerHTML = encabezado() + `<main class="contenedor">${bandaFichajes()}${mostrar}</main>` + (E.vista === 'hoy' && turnoTerminando() ? `<button class="cerrar-app-fijo${DEMO ? ' con-cinta' : ''}" data-accion="cerrar-app">🚪 ${E.dia && E.dia.cierre_hecho ? 'Listo por hoy' : 'Se termina tu turno'}: cerrá la app antes de irte</button>` : '') + (DEMO ? '<div class="cinta-practica">Modo práctica · datos inventados</div>' : '');
+    app.innerHTML = encabezado() + `<main class="contenedor">${bandaFichajes()}${bandaReservas()}${mostrar}</main>` + (E.vista === 'hoy' && turnoTerminando() ? `<button class="cerrar-app-fijo${DEMO ? ' con-cinta' : ''}" data-accion="cerrar-app">🚪 ${E.dia && E.dia.cierre_hecho ? 'Listo por hoy' : 'Se termina tu turno'}: cerrá la app antes de irte</button>` : '') + (DEMO ? '<div class="cinta-practica">Modo práctica · datos inventados</div>' : '');
     const abierto = app.querySelector('.marca-form select');
     if (abierto && !E.errorForm) abierto.focus({ preventScroll: true });
   }
@@ -1383,9 +1401,17 @@
       el.disabled = true;
       try {
         const r = await cliente.llamar('fichaje_marcar', { id: el.dataset.id, que: el.dataset.que });
-        mostrarFichajes({ filas: r.filas, detenido: E.fichajes ? E.fichajes.detenido : '' });
+        mostrarFichajes({ filas: r.filas, reservas: E.fichajes ? E.fichajes.reservas : [], detenido: E.fichajes ? E.fichajes.detenido : '' });
       } catch (e) { el.disabled = false; aviso(PulsoApi.mensaje(e.codigo || e.message), true); }
     }
+    else if (a === 'reserva') {
+      el.disabled = true;
+      try {
+        const r = await cliente.llamar('reserva_marcar', { id: el.dataset.id, que: el.dataset.que });
+        mostrarFichajes(Object.assign({}, E.fichajes, { reservas: r.reservas }));
+      } catch (e) { el.disabled = false; aviso(PulsoApi.mensaje(e.codigo || e.message), true); }
+    }
+    else if (a === 'reservas-plegar') { E.reservasPlegadas = !E.reservasPlegadas; document.getElementById('banda-reservas').outerHTML = bandaReservas(); }
     else if (a === 'vista') irA(el.dataset.v);
     else if (a === 'filtro') { E.filtro = el.dataset.f; E.abierta = null; render(); }
     else if (a === 'abrir') { E.abierta = E.abierta === el.dataset.id ? null : el.dataset.id; E.abiertaEn = new Date().toISOString(); E.errorForm = ''; render(); }
