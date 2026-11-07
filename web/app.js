@@ -26,7 +26,7 @@
   const GUIA_ANTIGUO = ['Saludalo por su nombre y decile quién sos.', 'Contale que hace rato no lo ven y que te acordaste de él.', 'Preguntale cómo anda, si está entrenando, qué está haciendo.', 'Escuchá por qué dejó: si fue horario, precio o salud, ahí está la conversación.', 'Invitalo sin presión: una visita o un turno concreto. Decide él.'];
   const AVISO_AUDIO = 'Para este contacto, mejor un audio: obliga a abrirlo, y escuchar tu tono de voz cambia cómo llega el mensaje. Hablale con tus palabras: un texto armado se nota.';
   // A personas mayores se les sugiere llamar. Es una recomendación razonable y no un resultado probado: la evidencia sobre canales con adultos mayores está dividida.
-  const AVISO_LLAMADA = 'Para personas mayores, mejor una llamada: es más directo que un mensaje y ahí mismo le preguntás cómo prefiere que lo contacten. Probá entre las 10 y las 13, ni temprano ni de noche. Hablale con tus palabras.';
+  const AVISO_LLAMADA = 'Recomendación para personas mayores: que escuchen tu voz, en una llamada o en un audio. El audio lo pueden escuchar varias veces y con calma. Si llamás, probá entre las 10 y las 13, ni temprano ni de noche, y preguntale cómo prefiere que lo contacten. Hablale con tus palabras.';
   const avisoDeCanal = t => (String(t.tipo).indexOf('Socio antiguo') === 0 && String(t.accion).indexOf('Llamarlo') === 0
     ? `<div class="consejo-audio">📞 ${esc(AVISO_LLAMADA)}</div>` : recomiendaAudio(t.tipo) ? `<div class="consejo-audio">🎙️ ${esc(AVISO_AUDIO)}</div>` : '');
   function formularioDe(tipo) {
