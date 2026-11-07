@@ -1244,18 +1244,19 @@
   }
   // Reservas sin QR: debajo del fichaje y plegable, para que no tape la lista del día.
   function textoReserva(r) {
-    if (r.puede_escanear) return r.recordado ? `Se lo recordaste a las ${horaLocal(r.recordado)}: esperando el QR.` : 'Si está en la sala, recordale que escanee. Tiene hasta los 15 minutos.';
+    const mensaje = 'Mandale un mensaje con interés genuino: preguntale si pasó algo, sin reproches.';
+    if (r.puede_escanear) return r.recordado ? `Se lo pediste a las ${horaLocal(r.recordado)}: esperando el QR.` : `Fijate si está en la sala y pedile que escanee: tiene hasta los 15 minutos. Si no está, ${mensaje.charAt(0).toLowerCase() + mensaje.slice(1)}`;
     const profe = r.profe ? esc(r.profe) : 'su profe';
-    return r.termino ? 'Si no vino, preguntale qué pasó y recordale la importancia de venir o cancelar con anticipación.'
-      : `Ya no puede escanear. Si está en la sala, pedile a ${profe} el presente manual. Si no vino, preguntale qué pasó y recordale la importancia de venir o cancelar con anticipación.`;
+    return r.termino ? `Si no vino, ${mensaje.charAt(0).toLowerCase() + mensaje.slice(1)}`
+      : `Ya no puede escanear. Si lo viste, ${profe} le da el presente. Si no vino, ${mensaje.charAt(0).toLowerCase() + mensaje.slice(1)}`;
   }
   function bandaReservas() {
     const R = (E.fichajes && E.fichajes.reservas) || [];
     if (!R.length) return '<section id="banda-reservas" hidden></section>';
     const boton = (r, que, txt, claro) => `<button class="boton${claro ? ' claro' : ''}" data-accion="reserva" data-que="${que}" data-id="${esc(r.id)}">${txt}</button>`;
-    const botones = r => (r.puede_escanear ? (r.recordado ? '' : boton(r, 'recordado', 'Ya se lo recordé')) + boton(r, 'contacto', 'No vino: ya le escribí', true)
+    const botones = r => (r.puede_escanear ? (r.recordado ? '' : boton(r, 'recordado', 'Está: le pedí que escanee')) + boton(r, 'contacto', 'No está: ya le escribí', true)
       : (r.termino ? '' : boton(r, 'profe', 'Ya le avisé al profe')) + boton(r, 'contacto', 'No vino: ya le escribí', !r.termino));
-    const fila = r => `<div class="fichaje"><div><b>${esc(r.socio)}</b><span>${esc(r.clase)} de las ${esc(r.hora)}. ${textoReserva(r)}</span></div><div class="fichaje-botones">${botones(r)}</div></div>`;
+    const fila = r => `<div class="fichaje"><div><b>${esc(r.socio)}</b><span>${esc(r.clase)} de las ${esc(r.hora)}. ${textoReserva(r)}</span><input class="reserva-detalle" data-id="${esc(r.id)}" maxlength="300" placeholder="Si ya te contó qué pasó, anotalo (opcional)" aria-label="Qué pasó con ${esc(r.socio)}"></div><div class="fichaje-botones">${botones(r)}</div></div>`;
     return `<section id="banda-reservas" class="fichajes"><button class="reservas-titulo" data-accion="reservas-plegar" aria-expanded="${E.reservasPlegadas ? 'false' : 'true'}">Reservaron y no escanearon: ${R.length} <span>${E.reservasPlegadas ? 'Ver' : 'Ocultar'}</span></button>${E.reservasPlegadas ? '' : R.map(fila).join('')}</section>`;
   }
   function mostrarFichajes(F) {
@@ -1263,7 +1264,14 @@
     const banda = document.getElementById('banda-fichajes');
     if (banda) banda.outerHTML = bandaFichajes();
     const reservas = document.getElementById('banda-reservas');
-    if (reservas) reservas.outerHTML = bandaReservas();
+    if (reservas) {
+      // Se actualiza cada minuto: no se puede borrar lo que está escribiendo
+      const escrito = {};
+      reservas.querySelectorAll('.reserva-detalle').forEach(i => { if (i.value) escrito[i.dataset.id] = i.value; });
+      const enFoco = document.activeElement && document.activeElement.classList.contains('reserva-detalle') ? document.activeElement.dataset.id : '';
+      reservas.outerHTML = bandaReservas();
+      document.querySelectorAll('#banda-reservas .reserva-detalle').forEach(i => { if (escrito[i.dataset.id]) i.value = escrito[i.dataset.id]; if (i.dataset.id === enFoco) i.focus(); });
+    }
     const vistos = E.fichajesAvisados = E.fichajesAvisados || {};
     F.filas.filter(f => f.urgente && !vistos[f.id + '|' + f.recordado]).forEach(f => {
       vistos[f.id + '|' + f.recordado] = 1;
@@ -1407,7 +1415,8 @@
     else if (a === 'reserva') {
       el.disabled = true;
       try {
-        const r = await cliente.llamar('reserva_marcar', { id: el.dataset.id, que: el.dataset.que });
+        const campo = [...document.querySelectorAll('.reserva-detalle')].find(i => i.dataset.id === el.dataset.id);
+        const r = await cliente.llamar('reserva_marcar', { id: el.dataset.id, que: el.dataset.que, detalle: campo ? campo.value : '' });
         mostrarFichajes(Object.assign({}, E.fichajes, { reservas: r.reservas }));
       } catch (e) { el.disabled = false; aviso(PulsoApi.mensaje(e.codigo || e.message), true); }
     }

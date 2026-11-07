@@ -877,9 +877,15 @@ function reservaMarcar(req, deps) {
   if (!c.recepcion || !c.enTurno || f.sede !== c.sede) falla('prohibido');
   const ts = new Date(deps.ahora()).toISOString();
   if (que === 'recordado') { f.recordado_ts = ts; f.recordado_dni = usuario.dni; }
-  else { f.resuelta_ts = ts; f.resuelta_dni = usuario.dni; f.resultado = que; }
+  else { f.resuelta_ts = ts; f.resuelta_dni = usuario.dni; f.resultado = que; f.detalle = texto(req.detalle).slice(0, 300); }
   deps.repo.escribir('reservas_qr', filas);
   return { reservas: reservasVisibles(filas, c, minutoAhora(deps)) };
+}
+
+// Lo que contestaron los socios: la PC lo usa para volver a preguntar a la semana cuando hay un tema de salud
+function reservasBajar(req, deps) {
+  exigirClave(req, deps);
+  return { filas: deps.repo.leer('reservas_qr').filter(f => f.resultado === 'contacto' && f.detalle) };
 }
 
 function profesVer(req, deps) {
@@ -1084,6 +1090,7 @@ const ACCIONES = {
   fichajes_ver: fichajesVer,
   fichaje_marcar: fichajeMarcar,
   reserva_marcar: reservaMarcar,
+  reservas_bajar: reservasBajar,
   servidor_ver: servidorVer,
   rendimiento: vistaRendimiento,
   objetivos_guardar: objetivosGuardar,

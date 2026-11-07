@@ -843,7 +843,10 @@ test('reservas sin QR: fases, sede, turno, cierre solo y marcas', () => {
   // Se lo recordó: sigue a la vista. Le avisó al profe o le escribió: se va.
   assert.ok(pedir(d, { accion: 'reserva_marcar', token: entrar(d), id: 'a', que: 'recordado' }).data.reservas.find(x => x.id === 'a').recordado);
   assert.deepEqual(pedir(d, { accion: 'reserva_marcar', token: entrar(d), id: 'b', que: 'profe' }).data.reservas.map(x => x.id), ['c', 'a']);
-  assert.deepEqual(pedir(d, { accion: 'reserva_marcar', token: entrar(d), id: 'c', que: 'contacto' }).data.reservas.map(x => x.id), ['a']);
+  assert.deepEqual(pedir(d, { accion: 'reserva_marcar', token: entrar(d), id: 'c', que: 'contacto', detalle: 'Está resfriado' }).data.reservas.map(x => x.id), ['a']);
+  // Lo que contó queda guardado, y solo la PC con su clave lo baja
+  assert.deepEqual(pedir(d, { accion: 'reservas_bajar', clave: 'clave-prueba' }).data.filas.map(x => [x.id, x.detalle]), [['c', 'Está resfriado']]);
+  assert.ok(!pedir(d, { accion: 'reservas_bajar', clave: 'mala' }).ok);
   // MOVE mostró la asistencia: se cierra sola, sin marca de nadie
   carga([b, c]);
   assert.equal(ver('30123456', '4831').length, 0);

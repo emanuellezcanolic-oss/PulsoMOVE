@@ -101,6 +101,7 @@ const NO_SE_PUDO = ['No se pudo hablar', [['NO CONTESTA', 'No contesta'], ['TEL 
 const MOTIVOS = t => [t, [['PRECIO', 'Por el precio'], ['HORARIOS', 'No le sirven los horarios'], ['SALUD', 'Por salud'], ['PAUSA', 'Hace una pausa'], ['BAJA', 'Se da de baja']]];
 const AVISADO = ['Solo se le avisó', [['NOTIFICADO', 'Le escribí: espero respuesta']]];
 const RESULTADOS_POR_TIPO = [
+  ['Preguntar cómo sigue', [['Respondió', [['RESPONDIÓ', 'Ya está mejor']]], ['Sigue igual', [['SALUD', 'Sigue con el problema: volver a preguntar en una semana']]], AVISADO, ['Se va', [['BAJA', 'Se da de baja']]], NO_SE_PUDO]],
   ['Socio nuevo · semana 2', [['Respondió', [['RESPONDIÓ', 'Respondió el mensaje'], ['RESERVA', 'Respondió y quedó con turnos']]], AVISADO, MOTIVOS('Qué le pasa'), NO_SE_PUDO]],
   ['Socio nuevo', [['Ya se resolvió', [['RESERVA', 'Quedó con turnos reservados']]], AVISADO, MOTIVOS('Por qué no reserva'), NO_SE_PUDO]],
   ['Le vence el plan', [['Ya se resolvió', [['PAGÓ', 'Renovó'], ['RESERVA', 'Dejó turnos reservados']]], ['Quedó en una fecha', [['PAGA', 'Va a renovar'], ['VACACIONES', 'Se va de vacaciones']]], AVISADO, MOTIVOS('Por qué no renueva'), NO_SE_PUDO]],
@@ -194,7 +195,7 @@ function fusionarReservas(existentes, nuevas, fecha, ts) {
     if (filas.some(f => f.id === n.id)) return;
     cambio = true;
     filas.push({ id: n.id, fecha: fecha, sede: n.sede, socio_id: n.socio_id, socio: n.socio, clase: n.clase || '', profe: n.profe || '', hora: n.hora, fin: n.fin || '',
-      estado: 'falta', desde_ts: ts, cerrada_ts: '', recordado_ts: '', recordado_dni: '', resuelta_ts: '', resuelta_dni: '', resultado: '' });
+      estado: 'falta', desde_ts: ts, cerrada_ts: '', recordado_ts: '', recordado_dni: '', resuelta_ts: '', resuelta_dni: '', resultado: '', detalle: '' });
   });
   return { filas: filas, cambio: cambio };
 }

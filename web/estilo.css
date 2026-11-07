@@ -420,5 +420,6 @@ details.grupo summary h2 { display: inline; }
 .fichaje span { font-size: 13.5px; }
 .fichaje-botones { display: flex; flex-wrap: wrap; gap: 6px; }
 .reservas-titulo { display: flex; justify-content: space-between; gap: 10px; width: 100%; padding: 10px 14px; border: 1px solid var(--linea); border-radius: 10px; background: var(--hoja); color: inherit; font: inherit; font-weight: 700; text-align: left; cursor: pointer; }
+.reserva-detalle { display: block; width: 100%; max-width: 480px; margin-top: 8px; padding: 8px 10px; border: 1px solid var(--linea); border-radius: 8px; font: inherit; font-size: 14px; box-sizing: border-box; }
 .reservas-titulo span { font-weight: 600; font-size: 13.5px; }
 .fichaje-detenido { margin: 0; padding: 10px 12px; border-radius: 10px; background: var(--hoja); border: 1px solid var(--linea); font-size: 13.5px; }
