@@ -282,8 +282,19 @@ label.campo .opcional { text-transform: none; letter-spacing: 0; font-weight: 50
 .celebracion.grande .celebracion-caja { text-align: center; max-width: 420px; padding: 26px; border-top-color: #f2542d; }
 .celebracion.grande .celebracion-caja b { font-size: 30px; }
 .celebracion:not(.grande) .boton { display: none; }
-.celebracion i { position: absolute; top: -14px; width: 10px; height: 16px; border-radius: 2px; animation: cae linear forwards; }
-@keyframes cae { to { transform: translateY(105vh) rotate(720deg); opacity: .8; } }
+/* Papelitos: caen con vaivén y girando sobre sí mismos, cada uno con su desvío (--x) y su ritmo */
+.celebracion.papelitos { pointer-events: none; background: none; z-index: 120; }
+.celebracion i { position: absolute; top: -20px; width: 10px; height: 16px; border-radius: 2px; animation: vuela cubic-bezier(.35, .1, .5, 1) forwards; will-change: transform; }
+@keyframes vuela {
+  0% { transform: translate3d(0, 0, 0) rotate(0) scaleX(1); opacity: 1; }
+  20% { transform: translate3d(calc(var(--x, 0px) * .75), 22vh, 0) rotate(190deg) scaleX(-.35); }
+  40% { transform: translate3d(calc(var(--x, 0px) * -.45), 44vh, 0) rotate(390deg) scaleX(.85); }
+  60% { transform: translate3d(calc(var(--x, 0px) * .9), 65vh, 0) rotate(600deg) scaleX(-.55); }
+  80% { transform: translate3d(calc(var(--x, 0px) * -.2), 85vh, 0) rotate(820deg) scaleX(.95); }
+  100% { transform: translate3d(var(--x, 0px), 108vh, 0) rotate(1040deg) scaleX(-.3); opacity: .85; }
+}
+/* A quien le molesta el movimiento, el cartel le llega igual */
+@media (prefers-reduced-motion: reduce) { .celebracion i { display: none; } }
 
 .profes-hoy { background: var(--hoja); border: 1px solid var(--linea); border-radius: 10px; padding: 10px 12px; font-size: 13.5px; }
 .profes-hoy b { font-weight: 700; }

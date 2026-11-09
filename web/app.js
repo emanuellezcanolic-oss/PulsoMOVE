@@ -80,13 +80,32 @@
   }
   const avisosPendientes = () => window.Notification && Notification.permission === 'default';
 
+  // Papelitos de verdad: caen con vaivén y giro, cada uno con su desvío y su ritmo. No son emojis (Emanuel, 09/11/2026).
+  const COLORES_PAPEL = ['#f2b705', '#f2542d', '#0e9594', '#798254', '#f58a07', '#b8392e'];
+  function trozosHtml(cuantos) {
+    const al = (a, b) => a + Math.random() * (b - a);
+    return Array.from({ length: cuantos }, (_, i) => {
+      const izq = al(-4, 104), desvio = Math.round(al(-130, 130)), ancho = Math.round(al(6, 12));
+      return `<i style="left:${izq.toFixed(1)}%;--x:${desvio}px;width:${ancho}px;height:${Math.round(ancho * al(1.1, 1.9))}px;background:${COLORES_PAPEL[i % COLORES_PAPEL.length]};border-radius:${i % 4 === 0 ? '50%' : '2px'};animation-delay:${al(0, 1.1).toFixed(2)}s;animation-duration:${al(2.4, 4.6).toFixed(2)}s"></i>`;
+    }).join('');
+  }
+
+  // Solo los papelitos, sin cartel: sirve detrás de un diálogo que ya dice lo suyo
+  function papelitos(cuantos) {
+    document.querySelectorAll('.papelitos').forEach(x => x.remove());
+    const c = document.createElement('div');
+    c.className = 'celebracion papelitos';
+    c.innerHTML = trozosHtml(cuantos || 90);
+    document.body.appendChild(c);
+    setTimeout(() => c.remove(), 6500);
+  }
+
   function celebrar(titulo, texto, grande) {
     push(titulo, texto);
     document.querySelectorAll('.celebracion').forEach(x => x.remove());
     const c = document.createElement('div');
     c.className = 'celebracion' + (grande ? ' grande' : '');
-    const colores = ['#f2b705', '#f2542d', '#0e9594', '#798254', '#f58a07'];
-    const trozos = grande ? Array.from({ length: 70 }, (_, i) => `<i style="left:${Math.random() * 100}%;background:${colores[i % 5]};animation-delay:${Math.random() * 0.7}s;animation-duration:${2 + Math.random() * 1.6}s"></i>`).join('') : '';
+    const trozos = grande ? trozosHtml(90) : '';
     c.innerHTML = `${trozos}<div class="celebracion-caja"><b>${esc(titulo)}</b><span>${esc(texto)}</span>${grande && E.paraAdelantar ? '<button class="boton" data-celebra="adelantar">Adelantar tareas de mañana</button>' : ''}<button class="boton claro" data-celebra="cerrar">Seguir</button></div>`;
     document.body.appendChild(c);
     c.addEventListener('click', ev => {
@@ -636,7 +655,11 @@
     let preguntas = [];
     if (!D.hoy.consultas) preguntas.push(['consultas', 'Hoy no registraste consultas. ¿No vino nadie a averiguar por los servicios?']);
     if (!D.hoy.mensajes) preguntas.push(['mensajes', 'Hoy no registraste mensajes. ¿Qué pasó?']);
-    if (D.hoy.pendientes) preguntas.push(['pendientes', `Te ${D.hoy.pendientes === 1 ? 'quedó 1 tarea pendiente' : `quedaron ${D.hoy.pendientes} tareas pendientes`}. ¿Por qué motivo?`]);
+    // Cumplir la meta y tener pendientes no se contradice, pero leído así confunde: la pregunta lo dice (Emanuel, 09/11/2026)
+    const cumplioMeta = D.hoy.meta && D.hoy.hechas >= D.hoy.meta;
+    if (D.hoy.pendientes) preguntas.push(['pendientes', cumplioMeta
+      ? `Cumpliste tu meta de hoy: ${D.hoy.hechas} de ${D.hoy.meta}. ¡Bien ahí! La meta es lo mínimo del día, no toda la lista, así que igual ${D.hoy.pendientes === 1 ? 'quedó 1 tarea sin hacer' : `quedaron ${D.hoy.pendientes} tareas sin hacer`}. ¿Qué pasó con esas?`
+      : `Te ${D.hoy.pendientes === 1 ? 'quedó 1 tarea pendiente' : `quedaron ${D.hoy.pendientes} tareas pendientes`}. ¿Por qué motivo?`]);
     preguntas = preguntas.slice(-1);
     dialogo(`<h3>Cierre de turno</h3>
       <form class="marca-form" style="border:0;padding:0">
@@ -683,7 +706,9 @@
           render();
           revisarLogros();
           const dia = Number(f.get('animo'));
-          dialogoCerrarApp(dia >= 4 ? '¡Gracias por contarlo! 🙌 Qué bueno que fue un buen día.' : dia <= 2 ? 'Gracias por contarlo. Coordinación lo va a ver para ayudarte.' : '¡Gracias por contarlo!');
+          // Si cumplió la meta, el cierre termina felicitando: es lo último que ve del día (Emanuel, 09/11/2026)
+          if (cumplioMeta) papelitos();
+          dialogoCerrarApp((cumplioMeta ? `¡Cumpliste tu meta de hoy: ${D.hoy.hechas} de ${D.hoy.meta}! ` : '') + (dia >= 4 ? '¡Gracias por contarlo! 🙌 Qué bueno que fue un buen día.' : dia <= 2 ? 'Gracias por contarlo. Coordinación lo va a ver para ayudarte.' : '¡Gracias por contarlo!'));
         } catch (e) { btn.disabled = false; falla(e); }
       };
     });
@@ -769,6 +794,25 @@
     });
   }
 
+  // Muchos se iban sin hacer el cierre del turno, así que no se sale de largo: primero se lo recuerda (Emanuel, 09/11/2026).
+  // No lo obliga: si de verdad tiene que irse, puede, pero tiene que decirlo a propósito.
+  function faltaElCierre() {
+    const D = E.dia;
+    return !!(D && cliente.sesion() && tiene('recepcion') && !D.cierre_hecho);
+  }
+
+  // Pregunta cada vez que intenta irse, no una sola: irse sin cerrar tiene que costar un clic a propósito
+  function recordarCierre(seguir) {
+    dialogo(`<h3>Te falta la última tarea</h3>
+      <p>Todavía no hiciste el <b>cierre del turno</b>: el checklist de antes de irte y las preguntas del día.</p>
+      <p class="aclara">Son dos minutos y es lo que mira coordinación para saber cómo estuvo el día y en qué darte una mano.</p>
+      <button class="boton verde ancho" data-ahora>Hacerlo ahora</button>
+      <button type="button" class="boton claro ancho" data-igual style="margin-top:8px">Hoy no puedo, me voy igual</button>`, d => {
+      d.querySelector('[data-ahora]').onclick = () => { d.close(); E.cierrePospuesto = 0; dialogoCierre(); };
+      d.querySelector('[data-igual]').onclick = () => { d.close(); seguir(); };
+    });
+  }
+
   function salirDeLaApp() {
     if (cliente.pendientesDeEnvio() && !confirm('Hay marcas que todavía no se enviaron. Si salís, se pierden. ¿Salir igual?')) return false;
     enviarUso();
@@ -779,6 +823,7 @@
 
   // El navegador solo deja cerrar solas algunas pestañas: si no se cierra, la sesión igual queda cerrada y se lo decimos
   function cerrarApp() {
+    if (faltaElCierre()) return recordarCierre(cerrarApp);
     if (!salirDeLaApp()) return;
     E.mensajeLogin = '✅ Listo, cerraste tu turno. Ya podés cerrar esta pestaña. ¡Que descanses!';
     render();
@@ -1347,7 +1392,10 @@
     const hechas = delDia.filter(t => t.estado === 'hecha').length;
     const total = delDia.length;
     const falta = total - hechas;
+    const meta = (E.dia && E.dia.hoy && E.dia.hoy.meta) || 0;
     const una = (k, fn) => { const c = E.hoy + k; if (!E.celebrado[c]) { E.celebrado[c] = true; fn(); } };
+    // La meta es el mínimo del día, así que se festeja aunque queden tareas: es el logro que más se repite (Emanuel, 09/11/2026)
+    if (meta && hechas >= meta) una('meta', () => celebrar('¡Cumpliste tu meta de hoy!', `Llegaste a ${hechas} de ${meta}.` + (falta ? ` Te quedan ${falta}: cada una que sumes es de más.` : ' Y no te quedó ninguna pendiente.'), true));
     if (total && !falta) una('todo', () => celebrar('¡Lista completa!', 'Dejaste todas las tareas de hoy al día. Excelente trabajo.', true));
     else if (falta === 3) una('3', () => celebrar('¡Te faltan 3!', 'Ya casi está: cerrá estas y dejás todo al día.'));
     else if (total >= 4 && hechas / total >= 0.5) una('mitad', () => celebrar('¡Mitad del día hecha!', `Vas ${hechas} de ${total}. Seguí así.`));
@@ -1444,7 +1492,8 @@
     if (!el || el.tagName === 'SELECT') return;
     const a = el.dataset.accion;
     if (a === 'salir') {
-      if (salirDeLaApp()) render();
+      const irse = () => { if (salirDeLaApp()) render(); };
+      if (faltaElCierre()) recordarCierre(irse); else irse();
     } else if (a === 'cerrar-app') cerrarApp();
     else if (a === 'fichaje') {
       el.disabled = true;
