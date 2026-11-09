@@ -577,8 +577,21 @@ function bajarRegistro(req, deps) {
 
 function usuariosResumen(req, deps) {
   exigirClave(req, deps);
+  // El horario y lo que ya tiene cargado cada día: con eso el proceso de la PC reparte las tareas nuevas
+  // hasta la meta de cada persona y ningún día le queda con 113 (Emanuel, 09/11/2026).
+  const carga = {};
+  deps.repo.leer('tareas').forEach(t => {
+    if (t.estado !== 'pendiente') return;
+    const k = t.asignado_dni + '|' + String(t.fecha).slice(0, 10);
+    carga[k] = (carga[k] || 0) + 1;
+  });
   return deps.repo.leer('usuarios').filter(u => esVerdad(u.activo))
-    .map(u => ({ dni: u.dni, nombre: u.nombre, sede: u.sede, turno: u.turno, roles: u.roles }));
+    .map(u => ({
+      dni: u.dni, nombre: u.nombre, sede: u.sede, turno: u.turno, roles: u.roles,
+      hora_inicio: u.hora_inicio || '', hora_fin: u.hora_fin || '',
+      pendientes_por_fecha: Object.keys(carga).filter(k => k.indexOf(u.dni + '|') === 0)
+        .reduce((o, k) => { o[k.split('|')[1]] = carga[k]; return o; }, {}),
+    }));
 }
 
 // ---------- Registro manual: lo que MOVE no ve ----------

@@ -195,7 +195,25 @@ test('usuarios_resumen sin hash ni sal y solo activos', () => {
   const d = entorno([usuario(), usuario({ dni: '27000111', activo: false })]);
   const r = pedir(d, { accion: 'usuarios_resumen', clave: 'clave-prueba' });
   assert.deepEqual(r.data.map(u => u.dni), ['30123456']);
-  assert.deepEqual(Object.keys(r.data[0]).sort(), ['dni', 'nombre', 'roles', 'sede', 'turno']);
+  // Lleva el horario y lo que ya tiene cargado cada día: con eso el proceso de la PC reparte sin pasarse de la meta
+  assert.deepEqual(Object.keys(r.data[0]).sort(), ['dni', 'hora_fin', 'hora_inicio', 'nombre', 'pendientes_por_fecha', 'roles', 'sede', 'turno']);
+  assert.ok(!('pin_hash' in r.data[0]) && !('sal' in r.data[0]));
+});
+
+test('usuarios_resumen cuenta lo pendiente de cada día, no lo hecho ni lo de otra persona', () => {
+  const t = (id, dni, fecha, estado) => ({ id, fecha, sede: 'bolson', socio_id: id, socio_nombre: 'S', tipo: 'Socio nuevo',
+    asignado_dni: dni, pendiente_desde: fecha, estado, hecha_en: estado === 'hecha' ? fecha + 'T15:00:00.000Z' : '' });
+  const d = entorno([usuario(), usuario({ dni: '28999888', nombre: 'Otra' })], { tareas: [
+    t('a', '30123456', '2026-11-09', 'pendiente'),
+    t('b', '30123456', '2026-11-09', 'pendiente'),
+    t('c', '30123456', '2026-11-10', 'pendiente'),
+    t('d', '30123456', '2026-11-09', 'hecha'),
+    t('e', '28999888', '2026-11-09', 'pendiente'),
+  ] });
+  const r = pedir(d, { accion: 'usuarios_resumen', clave: 'clave-prueba' });
+  const mia = r.data.find(u => u.dni === '30123456');
+  assert.deepEqual(mia.pendientes_por_fecha, { '2026-11-09': 2, '2026-11-10': 1 });
+  assert.deepEqual(r.data.find(u => u.dni === '28999888').pendientes_por_fecha, { '2026-11-09': 1 });
 });
 
 // ---------- Task 6: sede, alertas, reasignar, garantía ----------

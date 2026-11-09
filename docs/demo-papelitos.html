@@ -1,0 +1,84 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Papelitos de PulsoMOVE</title>
+<link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@400;700;800&display=swap" rel="stylesheet">
+<style>
+/* Mismos colores, mismo cartel y misma animación que PulsoMOVE: esto no es una maqueta aparte,
+   es el código de la app puesto en una página sola para poder mirarlo cuando uno quiere. */
+:root {
+  --papel: #f4f3f2; --hoja: #fbfaf9; --tinta: #1e1e1b; --gris: #6c6a66; --linea: #dcdad8;
+  --display: 'Montserrat', 'Helvetica Neue', Arial, sans-serif;
+  --sombra: 0 1px 0 rgba(29,29,27,.06), 0 6px 18px -10px rgba(29,29,27,.25);
+}
+* { box-sizing: border-box; }
+body { margin: 0; min-height: 100vh; background: var(--papel); color: var(--tinta);
+       font: 400 15px/1.5 var(--display); display: grid; place-items: center; padding: 24px 16px; overflow-x: hidden; }
+.panel { text-align: center; max-width: 440px; display: grid; gap: 14px; }
+h1 { font: 800 24px/1.15 var(--display); margin: 0; }
+p { margin: 0; color: var(--gris); font-size: 14px; }
+.boton { font: 700 15px var(--display); background: #798254; color: #fff; border: 0; border-radius: 10px;
+         padding: 13px 22px; cursor: pointer; box-shadow: var(--sombra); }
+.boton:hover { filter: brightness(1.08); }
+.boton.claro { background: var(--hoja); color: var(--tinta); border: 1px solid var(--linea); }
+
+/* --- tal cual está en estilo.css --- */
+.celebracion { position: fixed; inset: 0; z-index: 50; pointer-events: none; display: grid; place-items: center; padding: 76px 24px; overflow: hidden; }
+.celebracion.grande { pointer-events: auto; background: rgba(30, 30, 27, .55); }
+.celebracion-caja { pointer-events: auto; background: var(--hoja); border-radius: 14px; padding: 26px; display: grid; gap: 8px;
+                    max-width: 420px; text-align: center; box-shadow: 0 20px 50px -14px rgba(0,0,0,.55); border-top: 6px solid #f2542d; animation: entra .3s both; }
+.celebracion-caja b { font: 800 30px/1.15 var(--display); }
+@keyframes entra { from { opacity: 0; transform: translateY(14px); } }
+.celebracion.papelitos { pointer-events: none; background: none; z-index: 120; }
+.celebracion i { position: absolute; top: -20px; width: 10px; height: 16px; border-radius: 2px; animation: vuela cubic-bezier(.35, .1, .5, 1) forwards; will-change: transform; }
+@keyframes vuela {
+  0%   { transform: translate3d(0, 0, 0) rotate(0) scaleX(1); opacity: 1; }
+  20%  { transform: translate3d(calc(var(--x, 0px) * .75), 22vh, 0) rotate(190deg) scaleX(-.35); }
+  40%  { transform: translate3d(calc(var(--x, 0px) * -.45), 44vh, 0) rotate(390deg) scaleX(.85); }
+  60%  { transform: translate3d(calc(var(--x, 0px) * .9), 65vh, 0) rotate(600deg) scaleX(-.55); }
+  80%  { transform: translate3d(calc(var(--x, 0px) * -.2), 85vh, 0) rotate(820deg) scaleX(.95); }
+  100% { transform: translate3d(var(--x, 0px), 108vh, 0) rotate(1040deg) scaleX(-.3); opacity: .85; }
+}
+@media (prefers-reduced-motion: reduce) { .celebracion i { display: none; } }
+</style>
+</head>
+<body>
+<div class="panel">
+  <h1>Así se ve al cumplir la meta</h1>
+  <p>Es la misma animación que corre dentro de PulsoMOVE. Tocá el botón las veces que quieras.</p>
+  <button class="boton" id="ver">Cumplir la meta</button>
+  <button class="boton claro" id="solo">Solo los papelitos (sin cartel)</button>
+</div>
+<script>
+const COLORES = ['#f2b705', '#f2542d', '#0e9594', '#798254', '#f58a07', '#b8392e'];
+function trozosHtml(cuantos) {
+  const al = (a, b) => a + Math.random() * (b - a);
+  return Array.from({ length: cuantos }, (_, i) => {
+    const izq = al(-4, 104), desvio = Math.round(al(-130, 130)), ancho = Math.round(al(6, 12));
+    return `<i style="left:${izq.toFixed(1)}%;--x:${desvio}px;width:${ancho}px;height:${Math.round(ancho * al(1.1, 1.9))}px;background:${COLORES[i % COLORES.length]};border-radius:${i % 4 === 0 ? '50%' : '2px'};animation-delay:${al(0, 1.1).toFixed(2)}s;animation-duration:${al(2.4, 4.6).toFixed(2)}s"></i>`;
+  }).join('');
+}
+function papelitos(cuantos) {
+  document.querySelectorAll('.papelitos').forEach(x => x.remove());
+  const c = document.createElement('div');
+  c.className = 'celebracion papelitos';
+  c.innerHTML = trozosHtml(cuantos || 90);
+  document.body.appendChild(c);
+  setTimeout(() => c.remove(), 6500);
+}
+function celebrar(titulo, texto) {
+  document.querySelectorAll('.celebracion').forEach(x => x.remove());
+  const c = document.createElement('div');
+  c.className = 'celebracion grande';
+  c.innerHTML = trozosHtml(90) + `<div class="celebracion-caja"><b>${titulo}</b><span>${texto}</span><button class="boton claro" data-cerrar>Seguir</button></div>`;
+  document.body.appendChild(c);
+  c.addEventListener('click', ev => { if (ev.target.closest('[data-cerrar]')) c.remove(); });
+}
+document.getElementById('ver').onclick = () => celebrar('¡Cumpliste tu meta de hoy!', 'Llegaste a 42 de 42. Te quedan 8: cada una que sumes es de más.');
+document.getElementById('solo').onclick = () => papelitos();
+celebrar('¡Cumpliste tu meta de hoy!', 'Llegaste a 42 de 42. Te quedan 8: cada una que sumes es de más.');
+</script>
+</body>
+</html>
