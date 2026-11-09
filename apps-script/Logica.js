@@ -159,18 +159,16 @@ function fusionarFichajes(existentes, nuevas, fecha, ts) {
   return { filas: filas, cambio: cambio };
 }
 
-// Lo ve quien tiene que fichar y la recepción de esa sede que está en su turno. c: {dni, recepcion, sede, enTurno, hoy, ahora (ms)}
+// Lo ve la recepción de esa sede que está en su turno, y solo de otras personas: a nadie se le recuerda su propio
+// fichaje en la app, porque el QR de ingreso lo escanea cada uno y el cartel era ruido (Emanuel, 09/11/2026).
+// Se sigue registrando quién fichó y quién no: lo que se saca es el aviso, no la medición.
 function fichajesVisibles(filas, c) {
   const noViene = {};
   filas.forEach(f => { if (f.fecha === c.hoy && f.no_viene_ts) noViene[f.sede + '|' + f.persona_id] = true; });
   return filas.filter(f => f.fecha === c.hoy && f.estado === 'falta' && !noViene[f.sede + '|' + f.persona_id]
-      && (f.dni === c.dni || (c.recepcion && c.enTurno && f.sede === c.sede)))
-    .map(f => {
-      const propia = f.dni === c.dni;
-      const recordado = propia ? '' : f.recordado_ts;
-      return { id: f.id, persona: f.persona, momento: f.momento, hora: f.hora, propia: propia, recordado: recordado,
-        urgente: !recordado || c.ahora - Date.parse(recordado) > FICHAJE_REAVISAR_MIN * 60000 };
-    })
+      && f.dni !== c.dni && c.recepcion && c.enTurno && f.sede === c.sede)
+    .map(f => ({ id: f.id, persona: f.persona, momento: f.momento, hora: f.hora, recordado: f.recordado_ts,
+      urgente: !f.recordado_ts || c.ahora - Date.parse(f.recordado_ts) > FICHAJE_REAVISAR_MIN * 60000 }))
     .sort((a, b) => Number(b.urgente) - Number(a.urgente) || String(a.hora).localeCompare(String(b.hora)));
 }
 

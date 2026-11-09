@@ -796,7 +796,7 @@ test('fichaje: recepción en turno ve el recordatorio, se cierra solo y se puede
   const carga = filas => pedir(d, { accion: 'cargar_fichajes', clave: 'clave-prueba', fecha: d.dia, filas });
   assert.ok(carga([fila]).ok);
   const ver = (dni, pin) => pedir(d, { accion: 'fichajes_ver', token: entrar(d, dni, pin) }).data;
-  assert.deepEqual(ver('30123456', '4831').filas.map(f => [f.persona, f.urgente, f.propia]), [['Sol', true, false]]);
+  assert.deepEqual(ver('30123456', '4831').filas.map(f => [f.persona, f.urgente]), [['Sol', true]]);
   assert.equal(ver(DE_PUELO.dni, '0907').filas.length, 0);   // otra sede
   // Lo marca: deja de ser urgente y a los 15 minutos vuelve a serlo
   const m = pedir(d, { accion: 'fichaje_marcar', token: entrar(d), id: 'f1', que: 'recordado' });
@@ -817,17 +817,25 @@ test('fichaje: recepción en turno ve el recordatorio, se cierra solo y se puede
   assert.equal(ver('30123456', '4831').filas.length, 0);
 });
 
-test('fichaje: fuera de turno no se ve; quien debe fichar lo ve aunque no sea recepción', () => {
-  const u = { ...usuario(), hora_inicio: '00:00', hora_fin: '00:00' };
-  const d = entorno([u, ADMIN]);
-  pedir(d, { accion: 'cargar_fichajes', clave: 'clave-prueba', fecha: d.dia, filas: [
+test('fichaje: fuera de turno no se ve, y a nadie se le recuerda su propio fichaje', () => {
+  const fuera = { ...usuario(), hora_inicio: '00:00', hora_fin: '00:00' };
+  const d = entorno([fuera, ADMIN]);
+  const carga = () => pedir(d, { accion: 'cargar_fichajes', clave: 'clave-prueba', fecha: d.dia, filas: [
     { id: 'a', sede: 'bolson', persona_id: 'x', persona: 'X', dni: '', momento: 'entrada', hora: '08:00' },
-    { id: 'b', sede: 'puelo', persona_id: 'adm', persona: ADMIN.nombre, dni: ADMIN.dni, momento: 'entrada', hora: '08:00' },
+    { id: 'b', sede: 'bolson', persona_id: 'ana', persona: 'Ana Prueba', dni: '30123456', momento: 'entrada', hora: '08:00' },
   ] });
-  assert.equal(pedir(d, { accion: 'fichajes_ver', token: entrar(d) }).data.filas.length, 0);
+  carga();
+  assert.equal(pedir(d, { accion: 'fichajes_ver', token: entrar(d) }).data.filas.length, 0);   // fuera de turno
   assert.equal(pedir(d, { accion: 'fichaje_marcar', token: entrar(d), id: 'a', que: 'recordado' }).error, 'prohibido');
-  const propia = pedir(d, { accion: 'fichajes_ver', token: entrar(d, ADMIN.dni, '0907') }).data.filas;
-  assert.deepEqual(propia.map(f => [f.id, f.propia]), [['b', true]]);
+  // En turno ve el de la otra persona, nunca el suyo
+  const dentro = entorno([{ ...usuario(), hora_inicio: '00:00', hora_fin: '23:59' }, ADMIN]);
+  pedir(dentro, { accion: 'cargar_fichajes', clave: 'clave-prueba', fecha: dentro.dia, filas: [
+    { id: 'a', sede: 'bolson', persona_id: 'x', persona: 'X', dni: '', momento: 'entrada', hora: '08:00' },
+    { id: 'b', sede: 'bolson', persona_id: 'ana', persona: 'Ana Prueba', dni: '30123456', momento: 'entrada', hora: '08:00' },
+  ] });
+  assert.deepEqual(pedir(dentro, { accion: 'fichajes_ver', token: entrar(dentro) }).data.filas.map(f => f.id), ['a']);
+  // se sigue registrando: la fila del propio fichaje queda guardada
+  assert.equal(dentro.repo.leer('fichajes').filter(f => f.dni === '30123456').length, 1);
 });
 
 test('reservas sin QR: fases, sede, turno, cierre solo y marcas', () => {

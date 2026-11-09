@@ -1269,12 +1269,12 @@
   // ---------- Render ----------
 
   // Fichaje en vivo: primera acción de recepción. Se va solo cuando MOVE muestra el QR.
-  const tituloFichaje = f => (f.propia ? `${cliente.sesion().nombre.split(' ')[0]}, recordá fichar tu ${f.momento}` : `Recordale a ${f.persona} que fiche su ${f.momento}`);
+  const tituloFichaje = f => `Recordale a ${f.persona} que fiche su ${f.momento}`;
   function bandaFichajes() {
     const F = E.fichajes || { filas: [], detenido: '' };
     const fila = f => `<div class="fichaje${f.urgente ? ' urgente' : ''}"><div><b>${f.urgente ? '🔴 ' : ''}${esc(tituloFichaje(f))}</b>
-      <span>${f.momento === 'entrada' ? 'Empezaba' : 'Terminaba'} a las ${esc(f.hora)}. ${f.propia ? 'Escaneá el QR.' : f.urgente ? 'Todavía no escaneó el QR.' : `Se lo recordaste a las ${horaLocal(f.recordado)}: esperando el QR.`}</span></div>
-      ${f.propia ? '' : `<div class="fichaje-botones">${f.urgente ? `<button class="boton" data-accion="fichaje" data-que="recordado" data-id="${esc(f.id)}">Ya se lo recordé</button>` : ''}<button class="boton claro" data-accion="fichaje" data-que="no_viene" data-id="${esc(f.id)}">${f.momento === 'entrada' ? 'Hoy no viene' : 'Ya se fue'}</button></div>`}</div>`;
+      <span>${f.momento === 'entrada' ? 'Empezaba' : 'Terminaba'} a las ${esc(f.hora)}. ${f.urgente ? 'Todavía no escaneó el QR.' : `Se lo recordaste a las ${horaLocal(f.recordado)}: esperando el QR.`}</span></div>
+      <div class="fichaje-botones">${f.urgente ? `<button class="boton" data-accion="fichaje" data-que="recordado" data-id="${esc(f.id)}">Ya se lo recordé</button>` : ''}<button class="boton claro" data-accion="fichaje" data-que="no_viene" data-id="${esc(f.id)}">${f.momento === 'entrada' ? 'Hoy no viene' : 'Ya se fue'}</button></div></div>`;
     return `<section id="banda-fichajes" class="fichajes">${F.filas.map(fila).join('')}${F.detenido ? `<p class="fichaje-detenido">⚠️ El control de fichaje está frenado desde las ${horaLocal(F.detenido)}: recepción no recibe los recordatorios. Revisá que la PC esté prendida.</p>` : ''}</section>`;
   }
   // Reservas sin QR: debajo del fichaje y plegable, para que no tape la lista del día.
@@ -1310,7 +1310,7 @@
     const vistos = E.fichajesAvisados = E.fichajesAvisados || {};
     F.filas.filter(f => f.urgente && !vistos[f.id + '|' + f.recordado]).forEach(f => {
       vistos[f.id + '|' + f.recordado] = 1;
-      push('🔴 ' + tituloFichaje(f), f.propia ? 'Escaneá el QR.' : 'Todavía no escaneó el QR.');
+      push('🔴 ' + tituloFichaje(f), 'Todavía no escaneó el QR.');
       aviso(tituloFichaje(f));
     });
   }
