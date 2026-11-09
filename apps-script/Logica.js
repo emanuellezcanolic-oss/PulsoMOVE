@@ -243,12 +243,13 @@ function esContactoConSocio(marca) {
 // Meta del día, al estilo de la meta automática de Garmin (Emanuel, 09/11/2026).
 // Fija por las horas de turno, y se mueve sola: sube despacio cuando cumplen, baja poco cuando fallan una vez
 // y más cuando fallan dos seguidas. Nunca baja del piso ni pasa del techo.
+// El movimiento es a propósito asimétrico: empuja para arriba y afloja poco para abajo (Emanuel, 09/11/2026).
 const META_POR_HORA = 6;        // la base: una tarea cada 10 minutos
-const META_PISO_POR_HORA = 4;   // el piso también depende de las horas que trabaja
-const META_TECHO = 60;          // tope por día
-const META_SUBE_MAX = 2;
+const META_PISO_POR_HORA = 5;   // el piso también depende de las horas que trabaja, y queda cerca de la base
+const META_TECHO = 70;          // tope por día
+const META_SUBE_MAX = 3;        // sube más rápido de lo que baja
 const META_BAJA_UNA = 1;
-const META_BAJA_SEGUIDAS = 3;
+const META_BAJA_SEGUIDAS = 2;
 
 function horasDeTurno(usuario) {
   const a = aMinutoDelDia(usuario.hora_inicio), b = aMinutoDelDia(usuario.hora_fin);

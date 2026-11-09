@@ -953,16 +953,16 @@ test('sede: separa lo que le queda hoy de lo de los próximos días', () => {
 });
 
 test('la meta del día sale de las horas y se mueve como la de Garmin', () => {
-  // 6 horas: base 36, piso 24, techo 60
+  // 6 horas: base 36, piso 30, techo 70. Sube más rápido de lo que baja.
   assert.equal(L.metaDelDia(6, []), 36);
   assert.equal(L.metaDelDia(8, []), 48);
   assert.equal(L.metaDelDia(6, [40]), 37);          // se pasó por 4: sube 1
-  assert.equal(L.metaDelDia(6, [60]), 38);          // se pasó mucho: sube el tope, 2
+  assert.equal(L.metaDelDia(6, [60]), 39);          // se pasó mucho: sube el tope, 3
   assert.equal(L.metaDelDia(6, [36]), 37);          // justo en la meta: igual empuja 1
   assert.equal(L.metaDelDia(6, [30]), 35);          // no llegó una vez: baja 1
-  assert.equal(L.metaDelDia(6, [30, 20]), 32);      // dos seguidas: baja más (35 - 3)
-  assert.equal(L.metaDelDia(6, [0, 0, 0, 0, 0, 0, 0, 0, 0, 0]), 24);   // nunca baja del piso
-  assert.equal(L.metaDelDia(6, Array(20).fill(99)), 60);               // nunca pasa del techo
+  assert.equal(L.metaDelDia(6, [30, 20]), 33);      // dos seguidas: baja más, pero poco (35 - 2)
+  assert.equal(L.metaDelDia(6, [0, 0, 0, 0, 0, 0, 0, 0, 0, 0]), 30);   // nunca baja del piso
+  assert.equal(L.metaDelDia(6, Array(20).fill(99)), 70);               // nunca pasa del techo
   assert.equal(L.metaDelDia(0, [10]), 0);           // sin horas cargadas, sin meta
 });
 
