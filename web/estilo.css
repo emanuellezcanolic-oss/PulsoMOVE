@@ -159,15 +159,17 @@ label.campo .opcional { text-transform: none; letter-spacing: 0; font-weight: 50
 }
 
 /* ---------- Sede y admin ---------- */
-.personas { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 8px; }
-.persona { background: var(--hoja); border: 1px solid var(--linea); border-radius: var(--radio); padding: 12px 14px; box-shadow: var(--sombra); }
+.personas { display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: 8px; }
+.persona { background: var(--hoja); border: 1px solid var(--linea); border-radius: var(--radio); padding: 12px 14px; box-shadow: var(--sombra); min-width: 0; }
 .persona b { font: 700 15px/1.2 var(--display); display: block; }
 .persona .turno { font-size: 12px; color: var(--gris); }
-.persona .cifras { display: flex; gap: 14px; margin-top: 8px; }
-.persona .cifras div { display: grid; }
+/* Dos por fila: las cuatro cifras en fila se salían de la tarjeta y el texto quedaba cortado (Emanuel, 09/11/2026) */
+.persona .cifras { display: grid; grid-template-columns: 1fr 1fr; gap: 10px 12px; margin-top: 8px; }
+.persona .cifras div { display: grid; align-content: start; min-width: 0; }
 .persona .cifras strong { font: 800 21px/1 var(--display); }
-.persona .cifras span { font-size: 11px; color: var(--gris); text-transform: uppercase; letter-spacing: .05em; }
+.persona .cifras span { font-size: 11px; line-height: 1.25; color: var(--gris); text-transform: uppercase; letter-spacing: .05em; overflow-wrap: anywhere; }
 .persona .cifras .mal strong { color: var(--rojo); }
+.persona .cifras .bien strong { color: var(--verde-texto); }
 .persona .ver-lista { margin-top: 10px; }
 .tarjeta > .cabeza { display: grid; grid-template-columns: 1fr auto; gap: 2px 10px; padding: 12px 14px; }
 .fila-accion { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; padding: 0 14px 12px; }
