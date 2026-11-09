@@ -187,7 +187,10 @@ function vistaSede(req, deps) {
       ...enVivo,
       dni: u.dni, nombre: u.nombre, sede: u.sede, turno: u.turno,
       hechas_hoy: hechas.filter(f => f === hoy).length,
-      pendientes: suyas.filter(t => t.estado === 'pendiente').length,
+      // "Pendientes" contaba también lo de los próximos días y daba más de 200: ahora va separado (Emanuel, 09/11/2026)
+      pendientes_hoy: suyas.filter(t => t.estado === 'pendiente' && String(t.fecha) <= hoy).length,
+      atrasadas: suyas.filter(t => t.estado === 'pendiente' && String(t.fecha) < hoy).length,
+      proximos_dias: suyas.filter(t => t.estado === 'pendiente' && String(t.fecha) > hoy).length,
       hechas_semana: hechas.filter(f => f >= lunes && f <= hoy).length,
     };
   });

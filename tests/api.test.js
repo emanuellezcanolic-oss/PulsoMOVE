@@ -223,7 +223,7 @@ test('sede: alertas desde 2 días hábiles', () => {
   assert.equal(r.data.alertas[0].dias_pendiente, 2);
   assert.equal(r.data.alertas[0].asignado_nombre, 'Ana Prueba');
   const ana = r.data.personas.find(p => p.dni === '30123456');
-  assert.deepEqual([ana.hechas_hoy, ana.pendientes, ana.hechas_semana], [1, 2, 1]);
+  assert.deepEqual([ana.hechas_hoy, ana.pendientes_hoy, ana.hechas_semana], [1, 2, 1]);
   assert.ok(!r.data.personas.some(p => p.sede === 'puelo' || p.dni === '26555666'));
 });
 
@@ -330,7 +330,7 @@ test('sede: una tarea de otra sede se ve con quien la tiene', () => {
   const d = equipo({ tareas: [tarea({ id: 'online', sede: 'puelo', pendiente_desde: '2026-11-02' }), tarea({ id: 'suya', sede: 'bolson', asignado_dni: '26555666', pendiente_desde: '2026-11-02' })] });
   const r = pedir(d, { accion: 'sede', token: entrar(d, '25111222', '0907') });
   assert.deepEqual(r.data.alertas.map(t => t.id), ['online']);
-  assert.equal(r.data.personas.find(p => p.dni === '30123456').pendientes, 1);
+  assert.equal(r.data.personas.find(p => p.dni === '30123456').pendientes_hoy, 1);
 });
 
 test('sede: permisos', () => {
@@ -632,7 +632,7 @@ test('Profes de hoy no se marca ni cuenta como tarea', () => {
   assert.equal(pedir(d, { accion: 'marcar', token, tarea_id: 'P', id_marca: 'x', canal: 'PR', resultado: 'HECHO' }).error, 'datos_invalidos');
   assert.equal(pedir(d, { accion: 'mi_dia', token }).data.hoy.pendientes, 1);
   assert.equal(pedir(d, { accion: 'rendimiento', token }).data.personas[0].valores.tareas_total, 1);
-  assert.equal(pedir(d, { accion: 'sede', token: entrar(d, '25111222', '0907') }).data.personas.find(p => p.dni === '30123456').pendientes, 1);
+  assert.equal(pedir(d, { accion: 'sede', token: entrar(d, '25111222', '0907') }).data.personas.find(p => p.dni === '30123456').pendientes_hoy, 1);
   assert.equal(pedir(d, { accion: 'mis_tareas', token }).data.tareas.length, 2);   // la ve como recordatorio
 });
 
@@ -932,6 +932,24 @@ test('borrar reconocimientos: solo los pendientes y solo con la clave', () => {
   assert.equal(pedir(d, { accion: 'beneficios_borrar', clave: 'clave-prueba' }).error, 'datos_invalidos');
   assert.equal(pedir(d, { accion: 'beneficios_borrar', clave: 'clave-prueba', ids: ['1', '2', 'noexiste'] }).data.borradas, 1);
   assert.deepEqual(d.repo.leer('beneficios').map(x => x.id), ['2', '3']);
+});
+
+test('sede: separa lo que le queda hoy de lo de los próximos días', () => {
+  const t = (id, fecha, estado) => ({ id, fecha, sede: 'bolson', socio_id: id, socio_nombre: 'S', tipo: 'Socio nuevo', asignado_dni: '30123456',
+    pendiente_desde: fecha, estado, hecha_en: estado === 'hecha' ? fecha + 'T15:00:00.000Z' : '' });
+  const d = entorno([usuario(), COORD], { tareas: [
+    t('a', '2026-11-09', 'pendiente'),   // de hoy
+    t('b', '2026-11-06', 'pendiente'),   // atrasada
+    t('c', '2026-11-11', 'pendiente'),   // de los próximos días
+    t('e', '2026-11-12', 'pendiente'),
+    t('f', '2026-11-09', 'hecha'),
+  ] });
+  const p = pedir(d, { accion: 'sede', token: entrar(d, COORD.dni, '0907') }).data.personas.find(x => x.dni === '30123456');
+  assert.equal(p.hechas_hoy, 1);
+  assert.equal(p.pendientes_hoy, 2);     // la de hoy y la atrasada
+  assert.equal(p.atrasadas, 1);
+  assert.equal(p.proximos_dias, 2);
+  assert.equal(p.hechas_semana, 1);
 });
 
 test('reservas sin QR: fuera de turno no se ven', () => {
