@@ -491,6 +491,18 @@ function cargarBeneficios(req, deps) {
   return { nuevos: n };
 }
 
+// Saca reconocimientos que quedaron sin efecto, por ejemplo los de antes de que arrancara la promo (Emanuel, 09/11/2026).
+// Solo los que nadie decidió: uno ya autorizado o rechazado no se toca.
+function beneficiosBorrar(req, deps) {
+  exigirClave(req, deps);
+  const ids = Array.isArray(req.ids) ? req.ids.map(texto).filter(Boolean) : [];
+  if (!ids.length) falla('datos_invalidos');
+  const filas = deps.repo.leer('beneficios');
+  const quedan = filas.filter(b => !(ids.indexOf(b.id) >= 0 && b.estado === 'pendiente'));
+  if (quedan.length !== filas.length) deps.repo.escribir('beneficios', quedan);
+  return { borradas: filas.length - quedan.length };
+}
+
 function beneficiosParaAutorizar(usuario, deps) {
   if (!tieneRol(usuario, 'admin')) return [];
   const desde = new Date(deps.ahora() - DIAS_VER_BENEFICIOS * 86400000).toISOString();
@@ -1132,6 +1144,7 @@ const ACCIONES = {
   uso: registrarUso,
   beneficio_crear: beneficioCrear,
   beneficio_decidir: beneficioDecidir,
+  beneficios_borrar: beneficiosBorrar,
   cargar_beneficios: cargarBeneficios,
   cargar_ventas: cargarVentas,
   cargar_ventas_largas: cargarVentasLargas,

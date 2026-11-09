@@ -925,6 +925,15 @@ test('el ingreso de un socio nuevo se reclama igual, pero no cuenta como plan la
   assert.equal(pedir(d, { accion: 'rendimiento', token: entrar(d, TARDE.dni, '0907') }).data.personas[0].valores.nuevos, 0);
 });
 
+test('borrar reconocimientos: solo los pendientes y solo con la clave', () => {
+  const b = (id, estado) => ({ id, ts: '2026-11-09T10:00:00.000Z', tipo: 'constancia', sede: 'bolson', socio_nombre: 'A', detalle: 'x', estado });
+  const d = entorno([usuario()], { beneficios: [b('1', 'pendiente'), b('2', 'aprobada'), b('3', 'pendiente')] });
+  assert.equal(pedir(d, { accion: 'beneficios_borrar', ids: ['1'] }).error, 'clave');
+  assert.equal(pedir(d, { accion: 'beneficios_borrar', clave: 'clave-prueba' }).error, 'datos_invalidos');
+  assert.equal(pedir(d, { accion: 'beneficios_borrar', clave: 'clave-prueba', ids: ['1', '2', 'noexiste'] }).data.borradas, 1);
+  assert.deepEqual(d.repo.leer('beneficios').map(x => x.id), ['2', '3']);
+});
+
 test('reservas sin QR: fuera de turno no se ven', () => {
   const d = entorno([{ ...usuario(), hora_inicio: '00:00', hora_fin: '00:00' }]);
   pedir(d, { accion: 'cargar_fichajes', clave: 'clave-prueba', fecha: d.dia, filas: [], reservas: [{ id: 'a', sede: 'bolson', socio_id: '1', socio: 'S', clase: '', profe: '', hora: '00:00', fin: '23:59' }] });
