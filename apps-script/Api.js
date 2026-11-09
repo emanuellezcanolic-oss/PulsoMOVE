@@ -303,6 +303,13 @@ function ventasDePersona(dni, mes, coordina, filas) {
 
 const DIAS_PARA_REASIGNAR = 7;
 
+// Desde cuándo se puede reclamar una venta: los últimos 7 días, pero nunca antes del arranque de cero,
+// porque una venta anterior no cuenta en las estadísticas de nadie (Emanuel, 09/11/2026).
+function desdeReasignar(deps) {
+  const d = sumarDias(deps.hoy(), -DIAS_PARA_REASIGNAR);
+  return d > INICIO_REAL ? d : INICIO_REAL;
+}
+
 function cargarVentasLargas(req, deps) {
   exigirClave(req, deps);
   if (!Array.isArray(req.filas) || req.filas.some(f => !f || !texto(f.id) || !/^\d{4}-\d{2}-\d{2}$/.test(texto(f.fecha)))) falla('datos_invalidos');
@@ -318,7 +325,7 @@ function cargarVentasLargas(req, deps) {
     const v = ya[texto(f.id)];
     if (v) { if (!v.sugerido_dni) v.sugerido_dni = texto(f.sugerido_dni); return; }
     nuevas++;
-    filas.push({ id: texto(f.id), fecha: texto(f.fecha), sede: texto(f.sede), dni_cobro: texto(f.dni_cobro), nombre_cobro: texto(f.nombre_cobro), socio_id: texto(f.socio_id), socio_nombre: texto(f.socio_nombre), plan: texto(f.plan), tipo: texto(f.tipo), sugerido_dni: texto(f.sugerido_dni), estado: 'cobro', pide_dni: '', responde_dni: '', hacia_dni: '', dni_vendio: '', ts_pedido: '', ts_decidido: '', decide_dni: '' });
+    filas.push({ id: texto(f.id), fecha: texto(f.fecha), sede: texto(f.sede), dni_cobro: texto(f.dni_cobro), nombre_cobro: texto(f.nombre_cobro), socio_id: texto(f.socio_id), socio_nombre: texto(f.socio_nombre), largo: texto(f.largo), plan: texto(f.plan), tipo: texto(f.tipo), sugerido_dni: texto(f.sugerido_dni), estado: 'cobro', pide_dni: '', responde_dni: '', hacia_dni: '', dni_vendio: '', ts_pedido: '', ts_decidido: '', decide_dni: '' });
   });
   deps.repo.escribir('ventas_largas', filas);
   return { nuevas: nuevas };
@@ -336,7 +343,7 @@ function ventaLargaPedir(req, deps) {
   if (!tieneRol(usuario, 'recepcion')) falla('prohibido');
   const filas = deps.repo.leer('ventas_largas');
   const v = ventaLargaBuscar(filas, req.id);
-  if (v.estado !== 'cobro' || v.sede !== usuario.sede || String(v.fecha) < sumarDias(deps.hoy(), -DIAS_PARA_REASIGNAR)) falla('datos_invalidos');
+  if (v.estado !== 'cobro' || v.sede !== usuario.sede || String(v.fecha) < desdeReasignar(deps)) falla('datos_invalidos');
   const ts = new Date(deps.ahora()).toISOString();
   if (usuario.dni === v.dni_cobro) {
     const otro = usuarios.find(u => u.dni === normalizarDni(req.dni) && esVerdad(u.activo) && tieneRol(u, 'recepcion') && u.sede === v.sede && u.dni !== usuario.dni);
@@ -380,7 +387,9 @@ function ajustarVentasLargas(valores, dni, mes, filas) {
     const signo = dni === v.dni_vendio ? 1 : dni === v.dni_cobro ? -1 : 0;
     if (!signo) return;
     const clave = v.tipo === 'nuevo' ? 'nuevos' : 'renovaciones';
-    valores.planes_largos = Math.max(0, (Number(valores.planes_largos) || 0) + signo);
+    // 'no' es el ingreso de un socio nuevo con un plan corto: mueve los nuevos, no los planes largos.
+    // Las filas de antes del 09/11/2026 no tienen el campo y son todas de 3 meses o más.
+    if (v.largo !== 'no') valores.planes_largos = Math.max(0, (Number(valores.planes_largos) || 0) + signo);
     valores[clave] = Math.max(0, (Number(valores[clave]) || 0) + signo);
   });
   return valores;
@@ -388,7 +397,7 @@ function ajustarVentasLargas(valores, dni, mes, filas) {
 
 function ventasLargasDe(usuario, usuarios, deps) {
   if (!tieneRol(usuario, 'recepcion')) return null;
-  const hoy = deps.hoy(), desde = sumarDias(hoy, -DIAS_PARA_REASIGNAR);
+  const hoy = deps.hoy(), desde = desdeReasignar(deps);
   const nombre = dni => (usuarios.find(u => u.dni === dni) || {}).nombre || '';
   const ver = v => ({ id: v.id, estado: v.estado, fecha: v.fecha, socio_nombre: v.socio_nombre, plan: v.plan, nombre_cobro: v.nombre_cobro, sugerido_dni: v.sugerido_dni === usuario.dni ? '' : v.sugerido_dni, sugerido: v.sugerido_dni === usuario.dni ? '' : nombre(v.sugerido_dni), pide: nombre(v.pide_dni), cobro_pide: v.pide_dni === v.dni_cobro, responde: nombre(v.responde_dni), te_sugiere: v.sugerido_dni === usuario.dni });
   const filas = deps.repo.leer('ventas_largas').filter(v => v.sede === usuario.sede);

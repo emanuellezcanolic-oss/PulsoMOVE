@@ -906,6 +906,25 @@ test('cartel de inicio: lo ve quien atiende recepción hasta marcarlo visto, y n
   assert.equal(cartel(entrar(d, ADMIN.dni, '0907')), null);
 });
 
+test('el ingreso de un socio nuevo se reclama igual, pero no cuenta como plan largo', () => {
+  const venta = (id, extra) => ({ id, fecha: '2026-11-09', sede: 'bolson', dni_cobro: TARDE.dni, nombre_cobro: TARDE.nombre, socio_id: '9', socio_nombre: 'Carla',
+    plan: 'ingreso', tipo: 'nuevo', largo: 'no', estado: 'asignada', dni_vendio: '30123456', ...extra });
+  const valores = filas => {
+    const d = entorno([usuario(), TARDE], { ventas_largas: filas });
+    return pedir(d, { accion: 'rendimiento', token: entrar(d) }).data.personas[0].valores;
+  };
+  const ingreso = valores([venta('i1')]);
+  assert.equal(ingreso.nuevos, 1);
+  assert.equal(ingreso.planes_largos, undefined);
+  // un plan de 3 meses sí mueve los dos, y las filas viejas no traen el campo
+  const largo = valores([venta('l1', { plan: 'plan de 3 meses', largo: '1' })]);
+  assert.equal(largo.planes_largos, 1);
+  assert.equal(valores([venta('v1', { plan: 'plan de 3 meses', largo: undefined })]).planes_largos, 1);
+  // quien solo cobró deja de tener ese ingreso
+  const d = entorno([usuario(), TARDE], { ventas_largas: [venta('i2')] });
+  assert.equal(pedir(d, { accion: 'rendimiento', token: entrar(d, TARDE.dni, '0907') }).data.personas[0].valores.nuevos, 0);
+});
+
 test('reservas sin QR: fuera de turno no se ven', () => {
   const d = entorno([{ ...usuario(), hora_inicio: '00:00', hora_fin: '00:00' }]);
   pedir(d, { accion: 'cargar_fichajes', clave: 'clave-prueba', fecha: d.dia, filas: [], reservas: [{ id: 'a', sede: 'bolson', socio_id: '1', socio: 'S', clase: '', profe: '', hora: '00:00', fin: '23:59' }] });

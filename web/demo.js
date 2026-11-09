@@ -136,6 +136,7 @@
       larga({ id: 'VL2', dni_cobro: R, nombre_cobro: 'Rocío (práctica)', socio_nombre: 'Martín Suárez', sugerido_dni: T }),
       larga({ id: 'VL3', dni_cobro: T, nombre_cobro: 'Tomás (práctica)', socio_nombre: 'Julia Ponce', sugerido_dni: R }),
       larga({ id: 'VL4', dni_cobro: T, nombre_cobro: 'Tomás (práctica)', socio_nombre: 'Andrés Rey', estado: 'disputa', pide_dni: R, responde_dni: T, hacia_dni: R }),
+      larga({ id: 'VL5', dni_cobro: T, nombre_cobro: 'Tomás (práctica)', socio_nombre: 'Lucas Prieto', plan: 'ingreso', tipo: 'nuevo', largo: 'no', sugerido_dni: R }),
     ];
     // Una clase recién empezada y otra de hace media hora, según la hora en que se abra la práctica
     const reservasDemo = dia => {

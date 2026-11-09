@@ -11,7 +11,7 @@ const COLUMNAS = {
   uso: ['ts', 'dni', 'fecha', 'activos', 'quieta', 'otra'],
   stock: ['ts', 'fecha', 'sede', 'dni', 'nombre', 'producto', 'cantidad'],
   ventas: ['fecha', 'sede', 'dni', 'nombre', 'planes', 'planes_monto', 'nuevos', 'renovaciones', 'largos', 'mostrador', 'mostrador_monto', 'efectivo', 'transferencia', 'mercadopago', 'otros_medios', 'productos', 'sin_clasificar'],
-  ventas_largas: ['id', 'fecha', 'sede', 'dni_cobro', 'nombre_cobro', 'socio_id', 'socio_nombre', 'plan', 'tipo', 'sugerido_dni', 'estado', 'pide_dni', 'responde_dni', 'hacia_dni', 'dni_vendio', 'ts_pedido', 'ts_decidido', 'decide_dni'],
+  ventas_largas: ['id', 'fecha', 'sede', 'dni_cobro', 'nombre_cobro', 'socio_id', 'socio_nombre', 'plan', 'tipo', 'largo', 'sugerido_dni', 'estado', 'pide_dni', 'responde_dni', 'hacia_dni', 'dni_vendio', 'ts_pedido', 'ts_decidido', 'decide_dni'],
   beneficios: ['id', 'ts', 'tipo', 'sede', 'socio_nombre', 'nuevo_socio', 'detalle', 'registra_dni', 'estado', 'decide_dni', 'comentario', 'decidido_en'],
   objetivos: ['dni', 'clave', 'valor'],
   profes: ['fecha', 'sede', 'profe_id', 'profe', 'clase', 'qr', 'estado'],
