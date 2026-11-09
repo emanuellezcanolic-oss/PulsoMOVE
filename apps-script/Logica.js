@@ -233,6 +233,46 @@ function historialDeSocios(registro, reservas) {
   return porSocio;
 }
 
+// Tareas internas: no hay ningún socio del otro lado, así que no cuentan como contacto (Emanuel, 09/11/2026).
+// Todo lo demás que se marcó con un canal real sí cuenta: felicitar, invitar a escanear, recordarle que reserve, etc.
+const TAREAS_INTERNAS = /^(Controlar stock|Encargo|Apertura|Cierre|Profes de hoy|Corregir calendario)/;
+function esContactoConSocio(marca) {
+  return marca.canal && marca.canal !== 'SIN CONTACTO' && !TAREAS_INTERNAS.test(String(marca.tipo));
+}
+
+// Meta del día, al estilo de la meta automática de Garmin (Emanuel, 09/11/2026).
+// Fija por las horas de turno, y se mueve sola: sube despacio cuando cumplen, baja poco cuando fallan una vez
+// y más cuando fallan dos seguidas. Nunca baja del piso ni pasa del techo.
+const META_POR_HORA = 6;        // la base: una tarea cada 10 minutos
+const META_PISO_POR_HORA = 4;   // el piso también depende de las horas que trabaja
+const META_TECHO = 60;          // tope por día
+const META_SUBE_MAX = 2;
+const META_BAJA_UNA = 1;
+const META_BAJA_SEGUIDAS = 3;
+
+function horasDeTurno(usuario) {
+  const a = aMinutoDelDia(usuario.hora_inicio), b = aMinutoDelDia(usuario.hora_fin);
+  return a == null || b == null || b <= a ? 0 : (b - a) / 60;
+}
+
+// hechas: cuántas hizo en cada día hábil anterior, del más viejo al más nuevo
+function metaDelDia(horas, hechas) {
+  if (!horas) return 0;
+  const base = Math.round(META_POR_HORA * horas), piso = Math.round(META_PISO_POR_HORA * horas);
+  let meta = base, seguidas = 0;
+  (hechas || []).forEach(n => {
+    if (n >= meta) {
+      meta += Math.max(1, Math.min(META_SUBE_MAX, Math.ceil((n - meta) * 0.25)));
+      seguidas = 0;
+    } else {
+      seguidas++;
+      meta -= seguidas >= 2 ? Math.min(META_BAJA_SEGUIDAS, Math.ceil((meta - n) * 0.25)) : META_BAJA_UNA;
+    }
+    meta = Math.max(piso, Math.min(META_TECHO, meta));
+  });
+  return meta;
+}
+
 function seVerificaEnMove(tipo) {
   return SE_VERIFICAN_EN_MOVE.some(v => String(tipo).indexOf(v) === 0);
 }

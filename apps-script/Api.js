@@ -187,6 +187,7 @@ function vistaSede(req, deps) {
       ...enVivo,
       dni: u.dni, nombre: u.nombre, sede: u.sede, turno: u.turno,
       hechas_hoy: hechas.filter(f => f === hoy).length,
+      meta: metaDe(u, tareas, hoy),
       // "Pendientes" contaba también lo de los próximos días y daba más de 200: ahora va separado (Emanuel, 09/11/2026)
       pendientes_hoy: suyas.filter(t => t.estado === 'pendiente' && String(t.fecha) <= hoy).length,
       atrasadas: suyas.filter(t => t.estado === 'pendiente' && String(t.fecha) < hoy).length,
@@ -620,7 +621,7 @@ function valoresEnApp(dni, mes, tareas, registro, actividad, hoy) {
   const hechas = suyas.filter(t => t.estado === 'hecha');
   const aTiempo = hechas.filter(t => diasHabiles(pendienteDesde(t), fechaArgentina(t.hecha_en)) === 0);
   const marcas = registro.filter(r => r.dni === dni && delMes(r.ts, mes));
-  const contactos = marcas.filter(r => r.canal !== 'SIN CONTACTO' && !/^(Controlar stock|Encargo|Felicitar|Invitar a escanear|Profes de hoy|Apertura|Cierre|Coordinar|Evaluación sin cargar|Entrena en otra sede|Revisar plan)/.test(r.tipo));
+  const contactos = marcas.filter(esContactoConSocio);
   const CON_FECHA = ['RESERVA', 'VUELVE', 'PAGA', 'PAGÓ', 'VOLVIÓ', 'VACACIONES'];
   const reten = marcas.filter(r => !/^(Controlar stock|Encargo|Felicitar|Invitar a escanear|Cumpleaños|Encuesta de baja|Revisar profesor|Seguimiento de consulta|Profes de hoy|Apertura|Cierre|Socio antiguo|Coordinar|Evaluación sin cargar|Entrena en otra sede|Revisar plan)/.test(r.tipo));
   const act = actividad.filter(a => a.dni === dni && delMes(a.ts, mes));
@@ -720,6 +721,27 @@ function tiemposDe(dni, mes, registro, horaFin) {
 
 // ---------- Mi día: lo que motiva ----------
 
+// Cuántas hizo en cada uno de los últimos días hábiles, del más viejo al más nuevo
+function hechasPorDia(dni, tareas, hoy, dias) {
+  const cuenta = {};
+  tareas.filter(t => t.asignado_dni === dni && t.estado === 'hecha' && fechaArgentina(t.hecha_en) >= INICIO_REAL)
+    .forEach(t => { const f = fechaArgentina(t.hecha_en); cuenta[f] = (cuenta[f] || 0) + 1; });
+  const out = [];
+  let d = hoy;
+  for (let i = 0; i < 40 && out.length < dias; i++) {
+    d = sumarDias(d, -1);
+    if (d < INICIO_REAL) break;
+    const dia = new Date(d + 'T12:00:00Z').getUTCDay();
+    if (dia === 0 || dia === 6) continue;
+    out.unshift(cuenta[d] || 0);
+  }
+  return out;
+}
+
+function metaDe(usuario, tareas, hoy) {
+  return metaDelDia(horasDeTurno(usuario), hechasPorDia(usuario.dni, tareas, hoy, 10));
+}
+
 function rachaDe(dni, tareas, hoy) {
   const dias = {};
   tareas.filter(t => t.asignado_dni === dni && t.estado === 'hecha' && fechaArgentina(t.hecha_en) >= INICIO_REAL).forEach(t => { dias[fechaArgentina(t.hecha_en)] = true; });
@@ -776,7 +798,7 @@ function miDia(req, deps) {
     para_adelantar: suyas.filter(t => t.estado === 'pendiente' && String(t.fecha) > hoy).length, hora_inicio: usuario.hora_inicio || '',
     dias_sin_plan: Number(valores.dias_sin_plan_largo) || 0,
     cartel: cartelDe(usuario, deps), saludo: saludo(usuario.nombre, hora), puntos: calcularPuntos(valores), racha: racha,
-    hoy: { hechas: deHoy.hechas, pendientes: pendientes.length, atrasadas: atrasadas, mensajes: deHoy.mensajes, consultas: deHoy.consultas },
+    hoy: { hechas: deHoy.hechas, pendientes: pendientes.length, atrasadas: atrasadas, mensajes: deHoy.mensajes, consultas: deHoy.consultas, meta: metaDe(usuario, tareas, hoy) },
     coach: mensajesCoach(valores, propios, { hoy: hoy, atrasadas: atrasadas, racha: racha }),
     ideas: ideasParaSumar({ valores: valores, objetivos: propios, fecha: hoy, hechoHoy: actividad.filter(a => a.dni === usuario.dni && fechaArgentina(a.ts) === hoy).reduce((o, a) => { o[a.tipo] = (o[a.tipo] || 0) + 1; return o; }, {}) }),
     ventas_largas: ventasLargasDe(usuario, usuarios, deps), hora_fin: usuario.hora_fin || '', cierre_hecho: deps.repo.leer('cierres').some(c => c.dni === usuario.dni && c.fecha === hoy),
@@ -802,7 +824,7 @@ function valoresEnAppDia(dni, hoy, tareas, registro, actividad) {
   const esHoy = ts => fechaArgentina(ts) === hoy;
   return {
     hechas: tareas.filter(t => t.asignado_dni === dni && t.estado === 'hecha' && esHoy(t.hecha_en)).length,
-    mensajes: registro.filter(r => r.dni === dni && esHoy(r.ts) && r.canal !== 'SIN CONTACTO' && !/^(Controlar stock|Encargo|Felicitar|Invitar a escanear|Profes de hoy|Apertura|Cierre|Coordinar|Evaluación sin cargar|Entrena en otra sede|Revisar plan)/.test(r.tipo)).length
+    mensajes: registro.filter(r => r.dni === dni && esHoy(r.ts) && esContactoConSocio(r)).length
       + actividad.filter(a => a.dni === dni && a.tipo === 'mensaje' && esHoy(a.ts)).length,
     consultas: actividad.filter(a => a.dni === dni && a.tipo === 'consulta' && esHoy(a.ts)).length,
   };

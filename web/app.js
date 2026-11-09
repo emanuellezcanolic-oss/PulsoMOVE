@@ -171,11 +171,14 @@
 
   // ---------- Mis tareas ----------
 
+  // La meta del día manda el avance: el total de tareas pendientes es mucho más de lo que entra en un turno
   function avance(hechas, total) {
-    const pct = total ? Math.round(100 * hechas / total) : 0;
+    const meta = (E.dia && E.dia.hoy && E.dia.hoy.meta) || 0;
+    const sobre = meta || total;
+    const pct = sobre ? Math.min(100, Math.round(100 * hechas / sobre)) : 0;
     const enCola = cliente.pendientesDeEnvio();
     return `<section class="avance" aria-label="Avance del día">
-      <div class="numeros"><b>${hechas}/${total}</b><span>hechas hoy · ${pct}%</span>
+      <div class="numeros"><b>${hechas}/${sobre}</b><span>${meta ? (hechas >= meta ? '¡meta de hoy cumplida! · seguí sumando' : 'tu meta de hoy · ' + pct + '%') : 'hechas hoy · ' + pct + '%'}</span>
         ${enCola ? `<span class="cola">${enCola} sin enviar todavía</span>` : ''}</div>
       <svg viewBox="0 0 600 40" preserveAspectRatio="none" aria-hidden="true">
         <path class="base" d="${PULSO_LARGO}" pathLength="100"/>
@@ -1046,7 +1049,7 @@
     const nombre = dni => (S.personas.find(p => p.dni === dni) || {}).nombre || 'Otra persona';
     const aclaracion = '<p class="bajada">“Le quedan hoy” son las de hoy y las que arrastra de días anteriores. “Próximos días” son las del resto de la semana, que todavía no le tocan.</p>';
     const personas = S.personas.length ? aclaracion + `<div class="personas">${S.personas.map(p => `<div class="persona ${p.en_vivo ? 'vivo-' + esc(p.en_vivo.color) : ''}"><b>${esc(p.nombre)}</b><span class="turno">${esc(TURNOS[p.turno] || '')}</span>${p.en_vivo ? `<span class="en-vivo">${p.en_vivo.color === 'rojo' ? '🔴' : p.en_vivo.color === 'verde' ? '🟢' : '⚪'} ${esc(p.en_vivo.texto)}</span>` : ''}${p.uso_hoy && p.uso_hoy.con_senal ? `<span class="uso-hoy">Hoy: ${horas(p.uso_hoy.activo)} usando la app · ${horas(p.uso_hoy.completando)} completando</span>` : ''}
-        <div class="cifras"><div><strong>${p.hechas_hoy}</strong><span>Hechas hoy</span></div><div class="${p.pendientes_hoy > 15 ? 'mal' : ''}"><strong>${p.pendientes_hoy}</strong><span>Le quedan hoy</span></div><div><strong>${p.hechas_semana}</strong><span>Hechas esta semana</span></div><div><strong>${p.proximos_dias}</strong><span>Próximos días</span></div></div>
+        <div class="cifras"><div class="${p.meta && p.hechas_hoy >= p.meta ? 'bien' : ''}"><strong>${p.hechas_hoy}${p.meta ? '/' + p.meta : ''}</strong><span>Hechas hoy${p.meta ? ' · meta' : ''}</span></div><div class="${p.pendientes_hoy > 15 ? 'mal' : ''}"><strong>${p.pendientes_hoy}</strong><span>Le quedan hoy</span></div><div><strong>${p.hechas_semana}</strong><span>Hechas esta semana</span></div><div><strong>${p.proximos_dias}</strong><span>Próximos días</span></div></div>
         ${p.atrasadas ? `<span class="aclara">De lo que le queda hoy, ${p.atrasadas === 1 ? '1 viene atrasada de días anteriores' : p.atrasadas + ' vienen atrasadas de días anteriores'}.</span>` : ''}
         <button class="chip ver-lista" data-accion="ver-persona" data-dni="${esc(p.dni)}">Ver su lista</button></div>`).join('')}</div>`
       : '<div class="vacio">No hay recepcionistas cargados en esta sede.</div>';

@@ -952,6 +952,32 @@ test('sede: separa lo que le queda hoy de lo de los próximos días', () => {
   assert.equal(p.hechas_semana, 1);
 });
 
+test('la meta del día sale de las horas y se mueve como la de Garmin', () => {
+  // 6 horas: base 36, piso 24, techo 60
+  assert.equal(L.metaDelDia(6, []), 36);
+  assert.equal(L.metaDelDia(8, []), 48);
+  assert.equal(L.metaDelDia(6, [40]), 37);          // se pasó por 4: sube 1
+  assert.equal(L.metaDelDia(6, [60]), 38);          // se pasó mucho: sube el tope, 2
+  assert.equal(L.metaDelDia(6, [36]), 37);          // justo en la meta: igual empuja 1
+  assert.equal(L.metaDelDia(6, [30]), 35);          // no llegó una vez: baja 1
+  assert.equal(L.metaDelDia(6, [30, 20]), 32);      // dos seguidas: baja más (35 - 3)
+  assert.equal(L.metaDelDia(6, [0, 0, 0, 0, 0, 0, 0, 0, 0, 0]), 24);   // nunca baja del piso
+  assert.equal(L.metaDelDia(6, Array(20).fill(99)), 60);               // nunca pasa del techo
+  assert.equal(L.metaDelDia(0, [10]), 0);           // sin horas cargadas, sin meta
+});
+
+test('cuenta como mensaje todo contacto con un socio, no solo algunos tipos', () => {
+  const m = (tipo, canal) => ({ tipo: tipo, canal: canal });
+  assert.ok(L.esContactoConSocio(m('Felicitar por la constancia', 'AU')));
+  assert.ok(L.esContactoConSocio(m('Invitar a escanear el QR', 'MP')));
+  assert.ok(L.esContactoConSocio(m('Entrena en otra sede', 'PR')));
+  assert.ok(L.esContactoConSocio(m('Le vence el plan esta semana', 'MG')));
+  assert.ok(!L.esContactoConSocio(m('Apertura del turno', 'PR')));
+  assert.ok(!L.esContactoConSocio(m('Controlar stock', 'PR')));
+  assert.ok(!L.esContactoConSocio(m('Socio antiguo', 'SIN CONTACTO')));
+  assert.ok(!L.esContactoConSocio(m('Socio antiguo', '')));
+});
+
 test('reservas sin QR: fuera de turno no se ven', () => {
   const d = entorno([{ ...usuario(), hora_inicio: '00:00', hora_fin: '00:00' }]);
   pedir(d, { accion: 'cargar_fichajes', clave: 'clave-prueba', fecha: d.dia, filas: [], reservas: [{ id: 'a', sede: 'bolson', socio_id: '1', socio: 'S', clase: '', profe: '', hora: '00:00', fin: '23:59' }] });
