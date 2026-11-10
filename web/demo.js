@@ -42,6 +42,8 @@
     { dni: '22222222', nombre: 'Responsable de sede (práctica)', sede: 'bolson', turno: 'manana', roles: 'recepcion,coordinador' },
     { dni: '44444444', nombre: 'Coordinación general (práctica)', sede: 'bolson', turno: 'manana', roles: 'recepcion,coordinador,admin' },
     { dni: '33333333', nombre: 'Admin (práctica)', sede: 'bolson', turno: 'manana', roles: 'admin' },
+    { dni: '55555555', nombre: 'Profe Mañana (práctica)', sede: 'bolson', turno: 'manana', roles: 'profe' },
+    { dni: '55555556', nombre: 'Profe Tarde (práctica)', sede: 'bolson', turno: 'tarde', roles: 'profe' },
   ];
 
   function semilla() {
@@ -202,7 +204,26 @@
       });
       return filas;
     };
-    return { proximas: proximasDemo(), fichajes: [fichajeDemo('FI1', 'Profe Sol', '', '08:00'), fichajeDemo('FI2', 'Rocío (práctica)', R, '08:00')], fichajes_control: [{ ts: new Date().toISOString() }], reservas_qr: reservasDemo(hoy), ventas, ventas_largas, stock: [{ ts: new Date().toISOString(), fecha: hoy, sede: 'bolson', dni: R, nombre: 'Rocío (práctica)', producto: 'Proteína ENA 930 g', cantidad: '5' }], beneficios: [{ id: 'B-demo', ts: new Date().toISOString(), tipo: 'referido', sede: 'bolson', socio_nombre: 'Marta Quiroga', nuevo_socio: 'Juan Paz', detalle: '', registra_dni: R, estado: 'pendiente', decide_dni: '', comentario: '', decidido_en: '' }, { id: 'B-demo2', ts: new Date().toISOString(), tipo: 'constancia', sede: 'puelo', socio_nombre: 'Rosa Medina', nuevo_socio: '', detalle: '14 días con QR en 4 semanas', registra_dni: '', estado: 'pendiente', decide_dni: '', comentario: '', decidido_en: '' }], uso: [{ ts: hoy + 'T12:00:00.000Z', dni: R, fecha: hoy, activos: rango(480, 50) + ',' + rango(600, 70), quieta: rango(530, 30), otra: rango(560, 25) }], ocupacion: ocupacionDemo(), usuarios, tareas, registro: [], garantia, rendimiento, actividad: [], objetivos: [], cierres: [
+    // PulsoMOVE Profes: la agenda que armaría pulso_profes.py, con socios inventados
+    const pp = (n, profe, dni, fecha, tipo, vence, extra) => Object.assign({ id: 'pp-D' + n, fecha, sede: 'bolson', profe, profe_dni: dni, socio_id: 'P' + n,
+      socio_nombre: ['Lucía Ferro', 'Martín Ibarra', 'Carla Sosa', 'Pedro Gómez', 'Ana Ríos', 'Jorge Paz', 'Nora Díaz', 'Iván Molina', 'Sara Luna', 'Raúl Vera', 'Elsa Cano', 'Tito Rey'][n % 12],
+      tipo, accion: { 'Plan nuevo': 'Socio nuevo: armarle el plan hoy', 'Plan vencido': 'El plan ya venció: renovarlo', 'Renovar plan': 'Le vence el plan: renovarlo antes del vencimiento' }[tipo],
+      vence, alta: '', estado: 'pendiente', hecha_en: '', hecha_dni: '', nota: '', cargada: hoy, cerrada_en: '' }, extra || {});
+    const B = '55555555', Z = '55555556';
+    const profe_tareas = [
+      pp(1, 'Profe Mañana (práctica)', B, hoy, 'Plan nuevo', '', { alta: hoy }),
+      pp(2, 'Profe Mañana (práctica)', B, diaHabilAntes(hoy, 1), 'Plan vencido', diaHabilAntes(hoy, 6)),
+      pp(3, 'Profe Mañana (práctica)', B, hoy, 'Plan vencido', diaHabilAntes(hoy, 3)),
+      pp(4, 'Profe Mañana (práctica)', B, hoy, 'Renovar plan', diaHabilDespues(hoy, 2)),
+      pp(5, 'Profe Mañana (práctica)', B, diaHabilDespues(hoy, 1), 'Renovar plan', diaHabilDespues(hoy, 3)),
+      pp(6, 'Profe Mañana (práctica)', B, diaHabilDespues(hoy, 1), 'Renovar plan', diaHabilDespues(hoy, 4)),
+      pp(7, 'Profe Mañana (práctica)', B, diaHabilDespues(hoy, 2), 'Renovar plan', diaHabilDespues(hoy, 5)),
+      pp(8, 'Profe Mañana (práctica)', B, diaHabilDespues(hoy, 3), 'Renovar plan', diaHabilDespues(hoy, 6)),
+      pp(9, 'Profe Tarde (práctica)', Z, hoy, 'Plan vencido', diaHabilAntes(hoy, 2)),
+      pp(10, 'Profe Tarde (práctica)', Z, hoy, 'Renovar plan', diaHabilDespues(hoy, 1), { estado: 'hecha', hecha_en: new Date().toISOString(), hecha_dni: Z }),
+      pp(11, 'Profe Tarde (práctica)', Z, diaHabilDespues(hoy, 2), 'Renovar plan', diaHabilDespues(hoy, 4)),
+    ];
+    return { profe_tareas, proximas: proximasDemo(), fichajes: [fichajeDemo('FI1', 'Profe Sol', '', '08:00'), fichajeDemo('FI2', 'Rocío (práctica)', R, '08:00')], fichajes_control: [{ ts: new Date().toISOString() }], reservas_qr: reservasDemo(hoy), ventas, ventas_largas, stock: [{ ts: new Date().toISOString(), fecha: hoy, sede: 'bolson', dni: R, nombre: 'Rocío (práctica)', producto: 'Proteína ENA 930 g', cantidad: '5' }], beneficios: [{ id: 'B-demo', ts: new Date().toISOString(), tipo: 'referido', sede: 'bolson', socio_nombre: 'Marta Quiroga', nuevo_socio: 'Juan Paz', detalle: '', registra_dni: R, estado: 'pendiente', decide_dni: '', comentario: '', decidido_en: '' }, { id: 'B-demo2', ts: new Date().toISOString(), tipo: 'constancia', sede: 'puelo', socio_nombre: 'Rosa Medina', nuevo_socio: '', detalle: '14 días con QR en 4 semanas', registra_dni: '', estado: 'pendiente', decide_dni: '', comentario: '', decidido_en: '' }], uso: [{ ts: hoy + 'T12:00:00.000Z', dni: R, fecha: hoy, activos: rango(480, 50) + ',' + rango(600, 70), quieta: rango(530, 30), otra: rango(560, 25) }], ocupacion: ocupacionDemo(), usuarios, tareas, registro: [], garantia, rendimiento, actividad: [], objetivos: [], cierres: [
       { fecha: hoy, ts: hoy + 'T17:30:00.000Z', dni: T, nombre: 'Tomás (práctica)', sede: 'bolson', animo: '5', respuestas: '{}', comentario: '', hechas: '18', pendientes: '0', mensajes: '9', consultas: '2', sala: '4', profes: '', equipo: '', socios: '', pregunta: '😊 ¿Algún socio te alegró el día? Contanos.', lo_mejor: 'Un socio me contó que volvió a correr sin dolor.' },
       { fecha: hoy, ts: hoy + 'T13:30:00.000Z', dni: C, nombre: 'Responsable de sede (práctica)', sede: 'bolson', animo: '3', respuestas: '{}', comentario: 'A la tarde se llenó la sala de golpe.', hechas: '12', pendientes: '4', mensajes: '6', consultas: '1', sala: '2', profes: '', equipo: '', socios: '', pregunta: '', lo_mejor: '' },
     ] };

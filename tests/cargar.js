@@ -3,7 +3,7 @@ const fs = require('fs');
 const path = require('path');
 const vm = require('vm');
 
-const ARCHIVOS = ['Logica.js', 'Api.js'];
+const ARCHIVOS = ['Logica.js', 'Api.js', 'Profes.js'];
 
 function cargar() {
   const ctx = vm.createContext({});

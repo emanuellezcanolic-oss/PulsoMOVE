@@ -134,7 +134,7 @@
   // ---------- Login y PIN ----------
 
   function vistaLogin() {
-    const practica = DEMO ? `<div class="practica"><b>Modo práctica.</b> Probá con DNI <b>11111111</b> (recepción), <b>22222222</b> (responsable de sede) o <b>33333333</b> (admin). PIN <b>${PulsoDemo.PIN}</b>.</div>` : '';
+    const practica = DEMO ? `<div class="practica"><b>Modo práctica.</b> Probá con DNI <b>11111111</b> (recepción), <b>22222222</b> (responsable de sede), <b>55555555</b> (profe) o <b>33333333</b> (admin). PIN <b>${PulsoDemo.PIN}</b>.</div>` : '';
     return `<main class="login"><div class="caja">
       <img src="web/logo.png" alt="The Move Club">
       <svg class="gran-pulso" viewBox="0 0 380 56" aria-hidden="true"><path d="M2 32 H150 l10 -24 l12 44 l10 -32 l8 12 H378"/></svg>
@@ -168,11 +168,13 @@
 
   function pestanasDisponibles() {
     const p = [];
+    if (tiene('profe')) p.push(['planes', 'Mis planes']);   // PulsoMOVE Profes: profes y kinesiólogos
     if (tiene('recepcion')) p.push(['hoy', 'Mis tareas'], ['mes', 'Mi mes']);
     // La ve recepción: es la que contesta "¿a qué hora hay menos gente?" (Emanuel, 09/11/2026)
     if (tiene('recepcion') || tiene('coordinador') || tiene('admin')) p.push(['reservas', 'Reservas']);
     if (tiene('coordinador') || tiene('admin')) p.push(['sede', 'Sede']);
     if (tiene('coordinador') || tiene('admin')) p.push(['rend', 'Rendimiento']);
+    if (tiene('coordinador') || tiene('admin')) p.push(['profes', 'Profes']);
     if (tiene('admin')) p.push(['admin', 'Equipo']);
     return p;
   }
@@ -528,9 +530,86 @@
     </div></div>`;
   }
 
+  // ---------- PulsoMOVE Profes: planes a renovar (Profes.js) ----------
+  // Profes y kinesiólogos trabajan igual: el socio nuevo hace el plan ese día, después los vencidos y después lo que vence (Emanuel, 10/11/2026).
+
+  function estadoPlan(t) {
+    if (t.estado === 'hecha') return '<span class="estado hecha">Hecho</span>';
+    if (t.tipo === 'Plan nuevo') return '<span class="estado atrasada">Hoy</span>';
+    if (t.atraso > 0) return `<span class="estado atrasada">${t.atraso} día${t.atraso > 1 ? 's' : ''} de atraso</span>`;
+    return '';
+  }
+
+  function detallePlan(t) {
+    if (t.tipo === 'Plan nuevo') return `Socio nuevo${t.alta ? ' desde el ' + ddmm(t.alta) : ''}`;
+    if (t.vence) return (t.vence < E.planes.hoy ? 'Venció el ' : 'Vence el ') + ddmm(t.vence);
+    return t.tipo;
+  }
+
+  function tarjetaPlan(t, i, puedeMarcar) {
+    return `<article class="tarjeta${t.estado === 'hecha' ? ' hecha' : ''}" style="--i:${i}"><div class="cabeza">
+        <span class="socio">${esc(t.socio_nombre)}</span>${estadoPlan(t)}
+        <span class="situacion"><b>${esc(t.tipo)}</b> · ${esc(detallePlan(t))}</span>
+        <span class="accion">${esc(t.accion)}</span>
+        ${t.nota ? `<span class="nota">“${esc(t.nota)}”</span>` : ''}
+      </div>
+      ${puedeMarcar ? `<div class="fila-accion">${t.estado === 'hecha'
+        ? `<button class="boton claro" data-accion="plan-marcar" data-id="${esc(t.id)}" data-hecha="0">Deshacer</button><span class="aclara">Se cierra sola cuando MOVE muestre el plan nuevo.</span>`
+        : `<button class="boton verde" data-accion="plan-marcar" data-id="${esc(t.id)}" data-hecha="1">Listo, lo renové</button>`}</div>` : ''}
+    </article>`;
+  }
+
+  function cifrasPlanes(r) {
+    const c = (n, txt, clase) => `<div class="${clase || ''}"><strong>${n}</strong><span>${txt}</span></div>`;
+    return `<div class="cifras">${c(r.pendientes_hoy, 'para hoy', r.pendientes_hoy ? '' : 'bien')}${c(r.atrasadas, 'atrasados', r.atrasadas ? 'mal' : 'bien')}${c(r.hechas_hoy, 'hechos hoy', 'bien')}${c(r.hechas_mes, 'hechos este mes')}${c(r.proximas, 'próximos 7 días')}${c(r.en_agenda, 'en los próximos 30 días')}</div>`;
+  }
+
+  function vistaPlanes() {
+    if (!E.planes) return '<div class="cargando">Cargando tus planes…</div>';
+    const M = E.planes.mio;
+    if (!M) return '<div class="vacio">Tu usuario no tiene socios asignados como profe.</div>';
+    let i = 0;
+    const nuevos = M.hoy.filter(t => t.tipo === 'Plan nuevo');
+    const resto = M.hoy.filter(t => t.tipo !== 'Plan nuevo');
+    const porDia = {};
+    M.proximas.forEach(t => { (porDia[t.fecha] = porDia[t.fecha] || []).push(t); });
+    return `<div class="dos-columnas"><aside class="lado"><div class="persona"><b>Tu mes</b>${cifrasPlanes(M.resumen)}</div>
+        <p class="aclara">Cada día tenés una cantidad pareja de planes: así, a fin de mes, todos tus socios quedan con el plan al día. Lo que no llegás a hacer pasa al día siguiente.</p></aside>
+      <div class="principal">
+      <h1 class="titulo">${esc(tituloDia(E.planes.hoy))} <span>·</span> tus planes</h1>
+      <p class="bajada">Primero el socio nuevo, después los vencidos y después los que están por vencer.</p>
+      ${nuevos.length ? `<section class="grupo"><h2>🆕 Plan nuevo, hoy <span class="cuenta">${nuevos.length}</span></h2>${nuevos.map(t => tarjetaPlan(t, i++, true)).join('')}</section>` : ''}
+      ${resto.length ? `<section class="grupo"><h2>Para renovar hoy <span class="cuenta">${resto.length}</span></h2>${resto.map(t => tarjetaPlan(t, i++, true)).join('')}</section>`
+        : (nuevos.length ? '' : '<div class="vacio">Hoy no tenés planes para renovar. 🎉</div>')}
+      ${M.proximas.length ? `<section class="grupo"><h2>Próximos a renovar <span class="cuenta">${M.proximas.length}</span></h2>
+        ${Object.keys(porDia).sort().map(f => `<h3 class="dia-prox">${esc(tituloDia(f))}</h3>${porDia[f].map(t => tarjetaPlan(t, i++, false)).join('')}`).join('')}</section>` : ''}
+    </div></div>`;
+  }
+
+  function vistaProfes() {
+    if (!E.planes) return '<div class="cargando">Cargando los profes…</div>';
+    const eq = E.planes.equipo || [];
+    const selector = tiene('admin') ? `<div class="filtros">${Object.keys(SEDES).map(k => `<button class="chip" data-accion="planes-sede" data-s="${k}" aria-pressed="${E.sedeElegida === k}">${SEDES[k]}</button>`).join('')}</div>` : '';
+    if (E.profeVer) {
+      const p = eq.find(x => x.profe === E.profeVer);
+      if (p) {
+        let i = 0;
+        return `<button class="chip" data-accion="profe-volver">← Todos los profes</button>
+          <h1 class="titulo">${esc(p.profe)}</h1><div class="persona">${cifrasPlanes(p.resumen)}</div>
+          <section class="grupo"><h2>Lo de hoy <span class="cuenta">${p.hoy.length}</span></h2>${p.hoy.length ? p.hoy.map(t => tarjetaPlan(t, i++, false)).join('') : '<div class="vacio">Nada para hoy.</div>'}</section>`;
+      }
+    }
+    return `<h1 class="titulo">Profes <span>·</span> planes al día</h1>
+      <p class="bajada">Lo que cada profe y cada kinesiólogo tiene que renovar hoy, lo atrasado y lo que lleva hecho en el mes.</p>
+      ${selector}
+      ${eq.length ? `<div class="personas">${eq.map(p => `<div class="persona"><b>${esc(p.profe)}</b><span class="turno">${p.con_usuario ? 'Con usuario' : 'Todavía sin usuario en PulsoMOVE'}</span>${cifrasPlanes(p.resumen)}
+        <button class="chip ver-lista" data-accion="profe-ver" data-p="${esc(p.profe)}">Ver lo de hoy</button></div>`).join('')}</div>`
+        : '<div class="vacio">Todavía no hay planes cargados para esta sede.</div>'}`;
+  }
+
   // ---------- Rendimiento ----------
 
-  const MESES = ['enero', 'febrero', 'marzo', 'abril', 'mayo', 'junio', 'julio', 'agosto', 'septiembre', 'octubre', 'noviembre', 'diciembre'];
+  const MESES =['enero', 'febrero', 'marzo', 'abril', 'mayo', 'junio', 'julio', 'agosto', 'septiembre', 'octubre', 'noviembre', 'diciembre'];
   const nombreMes = m => MESES[Number(m.slice(5, 7)) - 1];
   const plata = n => '$' + Math.round(n || 0).toLocaleString('es-AR');
   const formato = (v, f) => (v == null ? '—' : f === 'pct' ? Math.round(v * 100) + '%' : Math.round(v * 10) / 10);
@@ -1449,6 +1528,8 @@
         E.rend = await cliente.llamar('rendimiento', Object.assign(E.rendMes ? { mes: E.rendMes } : {}, tiene('admin') ? { sede: E.sedeElegida } : {}));
       } else if (E.vista === 'reservas') {
         E.ocupacion = await cliente.llamar('ocupacion_ver', tiene('admin') || tiene('coordinador') ? { sede: E.sedeElegida } : {});
+      } else if (E.vista === 'planes' || E.vista === 'profes') {
+        E.planes = await cliente.llamar('profe_tareas', E.vista === 'profes' && tiene('admin') ? { sede: E.sedeElegida } : {});
       } else if (E.vista === 'admin') {
         E.usuarios = await cliente.llamar('usuarios_listar');
       }
@@ -1478,6 +1559,8 @@
     E.persona = null;
     E.rend = null;
     E.rendDni = null;
+    E.planes = null;
+    E.profeVer = null;
     render();
     cargarVista();
   }
@@ -1544,8 +1627,9 @@
     if (disponibles.indexOf(E.vista) < 0) { E.vista = disponibles[0] || null; setTimeout(cargarVista); }
     const cuerpo = E.vista === 'hoy' ? vistaHoy() : E.vista === 'sede' ? vistaSede() : E.vista === 'admin' ? vistaAdmin() : E.vista === 'mes' ? vistaMes() : E.vista === 'rend' ? vistaRendimiento()
       : E.vista === 'reservas' ? vistaReservas()
+      : E.vista === 'planes' ? vistaPlanes() : E.vista === 'profes' ? vistaProfes()
       : '<div class="vacio">Tu usuario no tiene ninguna vista asignada. Avisale a Emanuel.</div>';
-    const sinDatos = { hoy: !E.tareas, sede: E.personaDni ? !E.persona : !E.sede, mes: !E.rend, rend: !E.rend, admin: !E.usuarios, reservas: !E.ocupacion }[E.vista];
+    const sinDatos = { hoy: !E.tareas, sede: E.personaDni ? !E.persona : !E.sede, mes: !E.rend, rend: !E.rend, admin: !E.usuarios, reservas: !E.ocupacion, planes: !E.planes, profes: !E.planes }[E.vista];
     const mostrar = E.errorCarga && sinDatos ? `<div class="vacio" style="margin-top:18px"><p>${esc(E.errorCarga)}</p><p>La pantalla vuelve a intentarlo sola. Tus marcas no se pierden.</p><button class="boton" data-accion="reintentar">Reintentar ahora</button></div>` : cuerpo;
     const bandas = E.vista === 'hoy' ? bandaFichajes() + bandaReservas() : '';
     app.innerHTML = encabezado() + `<main class="contenedor">${bandas}${mostrar}</main>` + (E.vista === 'hoy' && turnoTerminando() ? `<button class="cerrar-app-fijo${DEMO ? ' con-cinta' : ''}" data-accion="cerrar-app">🚪 ${E.dia && E.dia.cierre_hecho ? 'Listo por hoy' : 'Se termina tu turno'}: cerrá la app antes de irte</button>` : '') + (DEMO ? '<div class="cinta-practica">Modo práctica · datos inventados</div>' : '');
@@ -1679,6 +1763,22 @@
     }
     else if (a === 'reservas-plegar') { E.reservasPlegadas = !E.reservasPlegadas; document.getElementById('banda-reservas').outerHTML = bandaReservas(); }
     else if (a === 'vista') irA(el.dataset.v);
+    else if (a === 'plan-marcar') {
+      el.disabled = true;
+      try {
+        const r = await cliente.llamar('profe_marcar', { id: el.dataset.id, hecha: el.dataset.hecha === '1' });
+        const M = E.planes && E.planes.mio;
+        if (M) {
+          const t = M.hoy.find(x => x.id === r.tarea.id);
+          if (t) { const antes = t.estado; Object.assign(t, r.tarea); if (antes !== t.estado) { const d = t.estado === 'hecha' ? 1 : -1; M.resumen.hechas_hoy += d; M.resumen.hechas_mes += d; M.resumen.pendientes_hoy -= d; if (t.atraso > 0) M.resumen.atrasadas -= d; } }
+        }
+        render();
+        if (el.dataset.hecha === '1') aviso('✅ ¡Bien! Plan renovado.');
+      } catch (e) { el.disabled = false; aviso(PulsoApi.mensaje(e.codigo || e.message), true); }
+    }
+    else if (a === 'planes-sede') { E.sedeElegida = el.dataset.s; E.planes = null; E.profeVer = null; render(); cargarVista(); }
+    else if (a === 'profe-ver') { E.profeVer = el.dataset.p; render(); window.scrollTo(0, 0); }
+    else if (a === 'profe-volver') { E.profeVer = null; render(); }
     else if (a === 'filtro') { E.filtro = el.dataset.f; E.abierta = null; render(); }
     else if (a === 'abrir') { E.abierta = E.abierta === el.dataset.id ? null : el.dataset.id; E.abiertaEn = new Date().toISOString(); E.errorForm = ''; render(); }
     else if (a === 'adelantar') { E.adelantar = !E.adelantar; cargarVista(); }

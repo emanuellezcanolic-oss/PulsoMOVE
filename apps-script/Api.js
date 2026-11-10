@@ -1147,7 +1147,7 @@ function cargarRendimiento(req, deps) {
 
 // ---------- Administración ----------
 
-const ROLES = ['recepcion', 'coordinador', 'admin', 'supervision'];
+const ROLES = ['recepcion', 'coordinador', 'admin', 'supervision', 'profe'];   // profe: también los kinesiólogos (Profes.js)
 
 function exigirAdmin(req, deps) {
   const s = sesion(req, deps);
@@ -1270,11 +1270,15 @@ const ACCIONES = {
   venta_larga_pedir: ventaLargaPedir,
   venta_larga_responder: ventaLargaResponder,
   venta_larga_decidir: ventaLargaDecidir,
+  // PulsoMOVE Profes (Profes.js). Se llaman al momento del pedido: así no importa en qué orden carga Apps Script los archivos
+  cargar_profe_tareas: (r, d) => cargarProfeTareas(r, d),
+  profe_tareas: (r, d) => profeTareas(r, d),
+  profe_marcar: (r, d) => profeMarcar(r, d),
 };
 
 // Las pantallas que solo miran no esperan turno: un pedido trabado no las frena. Lista cerrada: lo que no esté acá espera.
 // Respaldo, bajadas y lo que usan los procesos de la PC siguen con turno porque necesitan los datos completos y sin cambios a mitad.
-const SOLO_LECTURA = ['mis_tareas', 'mi_dia', 'sede', 'tareas_de', 'rendimiento', 'cierres_ver', 'profes_ver', 'fichajes_ver', 'usuarios_listar', 'servidor_ver', 'ocupacion_ver'];
+const SOLO_LECTURA = ['mis_tareas', 'mi_dia', 'sede', 'tareas_de', 'rendimiento', 'cierres_ver', 'profes_ver', 'fichajes_ver', 'usuarios_listar', 'servidor_ver', 'ocupacion_ver', 'profe_tareas'];
 const ESPERA_TURNO_MS = 20000;
 const PEDIDO_LENTO_MS = 15000;
 

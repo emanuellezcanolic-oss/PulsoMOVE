@@ -26,6 +26,8 @@ const COLUMNAS = {
   reservas_qr: ['id', 'fecha', 'sede', 'socio_id', 'socio', 'clase', 'profe', 'hora', 'fin', 'estado', 'desde_ts', 'cerrada_ts', 'recordado_ts', 'recordado_dni', 'resuelta_ts', 'resuelta_dni', 'resultado', 'detalle'],
   servidor: ['ts', 'evento', 'accion', 'dueno', 'ms'],
   cierres: ['fecha', 'ts', 'dni', 'nombre', 'sede', 'animo', 'respuestas', 'comentario', 'hechas', 'pendientes', 'mensajes', 'consultas', 'sala', 'profes', 'lo_mejor', 'equipo', 'socios', 'pregunta'],
+  // PulsoMOVE Profes: planes a renovar por profe. No confundir con `profes`, que es la llegada por QR
+  profe_tareas: ['id', 'fecha', 'sede', 'profe', 'profe_dni', 'socio_id', 'socio_nombre', 'tipo', 'accion', 'vence', 'alta', 'estado', 'hecha_en', 'hecha_dni', 'nota', 'cargada', 'cerrada_en'],
   garantia: ['id', 'ts', 'sede', 'socio_id', 'socio_nombre', 'profe', 'motivo', 'registra_dni', 'estado', 'decide_dni',
              'comentario', 'decidido_en'],
 };

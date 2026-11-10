@@ -491,3 +491,8 @@ details.grupo summary h2 { display: inline; }
 .reserva-detalle { display: block; width: 100%; max-width: 480px; margin-top: 8px; padding: 8px 10px; border: 1px solid var(--linea); border-radius: 8px; font: inherit; font-size: 14px; box-sizing: border-box; }
 .reservas-titulo span { font-weight: 600; font-size: 13.5px; }
 .fichaje-detenido { margin: 0; padding: 10px 12px; border-radius: 10px; background: var(--hoja); border: 1px solid var(--linea); font-size: 13.5px; }
+
+/* ---------- PulsoMOVE Profes ---------- */
+.dia-prox { font: 700 13px/1 var(--texto); color: var(--gris); text-transform: uppercase; letter-spacing: .06em; margin: 14px 0 8px; }
+.tarjeta .situacion b { font-weight: 700; }
+.tarjeta .fila-accion .aclara { margin: 0; }
