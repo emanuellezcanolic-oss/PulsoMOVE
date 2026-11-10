@@ -975,7 +975,7 @@ function respaldo(req, deps) {
   exigirClave(req, deps);
   const usuarios = deps.repo.leer('usuarios').map(u => { const c = Object.assign({}, u); delete c.pin_hash; delete c.sal; return c; });
   const out = { usuarios: usuarios };
-  ['tareas', 'registro', 'garantia', 'actividad', 'rendimiento', 'objetivos', 'cierres', 'profes', 'fichajes', 'reservas_qr', 'avisos', 'uso', 'beneficios', 'stock', 'ventas', 'ventas_largas'].forEach(h => { out[h] = deps.repo.leer(h); });
+  ['tareas', 'registro', 'garantia', 'actividad', 'rendimiento', 'objetivos', 'cierres', 'profes', 'fichajes', 'reservas_qr', 'avisos', 'uso', 'beneficios', 'stock', 'ventas', 'ventas_largas', 'ocupacion'].forEach(h => { out[h] = deps.repo.leer(h); });
   return out;
 }
 
@@ -1052,6 +1052,51 @@ function objetivosGuardar(req, deps) {
   claves.forEach(k => filas.push({ dni: dni, clave: k, valor: String(Number(valores[k])) }));
   deps.repo.escribir('objetivos', filas);
   return {};
+}
+
+// ---------- Mapa de calor de reservas ----------
+
+function cargarOcupacion(req, deps) {
+  exigirClave(req, deps);
+  if (!Array.isArray(req.filas)) falla('datos_invalidos');
+  const ts = new Date(deps.ahora()).toISOString();
+  deps.repo.escribir('ocupacion', req.filas.map(f => ({
+    sede: texto(f.sede), tipo: texto(f.tipo), clave: texto(f.clave), dia: texto(f.dia), hora: texto(f.hora),
+    dias: String(f.dias || 0), clases: String(f.clases || 0), cupo: String(f.cupo || 0), reservas: String(f.reservas || 0),
+    asistieron: String(f.asistieron || 0), ausentes: String(f.ausentes || 0),
+    ocupacion: f.ocupacion == null ? '' : String(f.ocupacion), sin_cupo: String(f.sin_cupo || 0), actualizado: ts,
+  })));
+  return { filas: req.filas.length };
+}
+
+// Franjas con más lugar de ese día: lo que recepción contesta cuando preguntan a qué hora hay menos gente.
+// Una franja medida un solo día no se recomienda, y tiene que quedar al menos un lugar libre (Emanuel, 09/11/2026).
+const MIN_DIAS_OCUPACION = 2;
+function recomendarFranjas(filas, dia, cuantas) {
+  return filas
+    .filter(f => f.tipo === 'patron' && String(f.clave) === String(dia) && Number(f.cupo) > 0 && f.ocupacion !== ''
+      && Number(f.dias) >= MIN_DIAS_OCUPACION && Number(f.cupo) - Number(f.reservas) >= 1)
+    .sort((a, b) => (Number(a.ocupacion) - Number(b.ocupacion)) || String(a.hora).localeCompare(String(b.hora)))
+    .slice(0, cuantas || 3);
+}
+
+function ocupacionVer(req, deps) {
+  const { usuario } = sesion(req, deps);
+  // Recepción ve la suya; quien coordina puede elegir. No es dato sensible de nadie: son cuántos lugares hay por hora.
+  const coordina = tieneRol(usuario, 'admin') || tieneRol(usuario, 'coordinador');
+  const sede = coordina ? sedePermitida(usuario, texto(req.sede)) : usuario.sede;
+  const todas = deps.repo.leer('ocupacion');
+  const filas = todas.filter(f => f.sede === sede);
+  const hoy = deps.hoy();
+  const dia = (new Date(hoy + 'T12:00:00Z').getUTCDay() + 6) % 7;   // 0 = lunes, como en el proceso de la PC
+  return {
+    sede: sede, hoy: hoy, dia: dia,
+    actualizado: filas.length ? filas[0].actualizado : '',
+    patron: filas.filter(f => f.tipo === 'patron'),
+    meses: filas.filter(f => f.tipo === 'mes'),
+    recomendadas: recomendarFranjas(filas, dia, 3),
+    sedes: tieneRol(usuario, 'admin') || tieneRol(usuario, 'coordinador') ? SEDES : [sede],
+  };
 }
 
 function cargarRendimiento(req, deps) {
@@ -1173,6 +1218,8 @@ const ACCIONES = {
   rendimiento: vistaRendimiento,
   objetivos_guardar: objetivosGuardar,
   cargar_rendimiento: cargarRendimiento,
+  cargar_ocupacion: cargarOcupacion,
+  ocupacion_ver: ocupacionVer,
   garantia_crear: garantiaCrear,
   garantia_decidir: garantiaDecidir,
   usuarios_cargar: usuariosCargar,
@@ -1193,7 +1240,7 @@ const ACCIONES = {
 
 // Las pantallas que solo miran no esperan turno: un pedido trabado no las frena. Lista cerrada: lo que no esté acá espera.
 // Respaldo, bajadas y lo que usan los procesos de la PC siguen con turno porque necesitan los datos completos y sin cambios a mitad.
-const SOLO_LECTURA = ['mis_tareas', 'mi_dia', 'sede', 'tareas_de', 'rendimiento', 'cierres_ver', 'profes_ver', 'fichajes_ver', 'usuarios_listar', 'servidor_ver'];
+const SOLO_LECTURA = ['mis_tareas', 'mi_dia', 'sede', 'tareas_de', 'rendimiento', 'cierres_ver', 'profes_ver', 'fichajes_ver', 'usuarios_listar', 'servidor_ver', 'ocupacion_ver'];
 const ESPERA_TURNO_MS = 20000;
 const PEDIDO_LENTO_MS = 15000;
 

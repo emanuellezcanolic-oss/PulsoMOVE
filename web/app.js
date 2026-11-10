@@ -55,7 +55,7 @@
 
   const E = {
     vista: null, hoy: '', tareas: null, filtro: 'pendientes', tipo: '', abierta: null, errorForm: '',
-    sede: null, sedeElegida: 'bolson', usuarios: null, mensajeLogin: '', personaDni: null, persona: null, rend: null, rendMes: null, rendDni: null, dia: null, adelantar: false, abiertaEn: null, cierres: null, cierrePospuesto: 0, paraAdelantar: 0, celebrado: {},
+    sede: null, ocupacion: null, sedeElegida: 'bolson', usuarios: null, mensajeLogin: '', personaDni: null, persona: null, rend: null, rendMes: null, rendDni: null, dia: null, adelantar: false, abiertaEn: null, cierres: null, cierrePospuesto: 0, paraAdelantar: 0, celebrado: {},
   };
 
   const app = document.getElementById('app');
@@ -169,6 +169,8 @@
   function pestanasDisponibles() {
     const p = [];
     if (tiene('recepcion')) p.push(['hoy', 'Mis tareas'], ['mes', 'Mi mes']);
+    // La ve recepción: es la que contesta "¿a qué hora hay menos gente?" (Emanuel, 09/11/2026)
+    if (tiene('recepcion') || tiene('coordinador') || tiene('admin')) p.push(['reservas', 'Reservas']);
     if (tiene('coordinador') || tiene('admin')) p.push(['sede', 'Sede']);
     if (tiene('coordinador') || tiene('admin')) p.push(['rend', 'Rendimiento']);
     if (tiene('admin')) p.push(['admin', 'Equipo']);
@@ -186,6 +188,75 @@
       </div>
       ${p.length > 1 ? `<nav class="pestanas" role="tablist">${p.map(([k, t]) => `<button role="tab" data-accion="vista" data-v="${k}" aria-selected="${E.vista === k}">${t}</button>`).join('')}</nav>` : ''}
     </header>`;
+  }
+
+  // ---------- Reservas: el mapa de calor ----------
+  // Para contestar "¿a qué hora hay menos gente?" con un dato y no de memoria (Emanuel, 09/11/2026).
+  const DIAS_SEM = ['Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado', 'Domingo'];
+  const VERDE_OC = .60, AMARILLO_OC = .85;
+
+  function colorOcup(o) {
+    if (o == null || o === '') return 'gris';
+    return Number(o) < VERDE_OC ? 'verde' : Number(o) < AMARILLO_OC ? 'amarillo' : 'rojo';
+  }
+
+  function vistaReservas() {
+    const O = E.ocupacion;
+    const selector = (tiene('admin') || tiene('coordinador')) && O && O.sedes.length > 1
+      ? `<div class="filtros">${O.sedes.map(k => `<button class="chip" data-accion="sede-elegir" data-s="${k}" aria-pressed="${(E.sedeElegida || O.sede) === k}">${SEDES[k]}</button>`).join('')}</div>` : '';
+    if (!O) return selector + '<div class="cargando">Cargando las reservas…</div>';
+    if (!O.patron.length) {
+      return selector + `<div class="vacio"><p>Todavía no se calcularon las reservas de ${esc(SEDES[O.sede] || O.sede)}.</p>
+        <p>Se arman a la mañana con lo que hay en MOVE. Si recién lo activamos, mañana ya vas a verlo.</p></div>`;
+    }
+    const horas = [...new Set(O.patron.map(f => f.hora))].sort();
+    const dias = [...new Set(O.patron.map(f => Number(f.clave)))].sort((a, b) => a - b);
+    const celda = {};
+    O.patron.forEach(f => { celda[f.clave + '|' + f.hora] = f; });
+    const pct = f => (f && f.ocupacion !== '' && f.ocupacion != null) ? Math.round(Number(f.ocupacion) * 100) + '%' : '—';
+
+    const filas = horas.map(h => `<tr><th scope="row">${esc(h)}</th>${dias.map(d => {
+      const f = celda[d + '|' + h];
+      if (!f) return '<td class="oc gris" title="Sin clases a esa hora"></td>';
+      const titulo = `${DIAS_SEM[d]} ${h}: ${f.reservas} de ${f.cupo} lugares · medido en ${f.dias} ${f.dias === 1 ? 'día' : 'días'}`;
+      return `<td class="oc ${colorOcup(f.ocupacion)}" title="${esc(titulo)}" tabindex="0" data-accion="franja" data-d="${d}" data-h="${esc(h)}"><b>${pct(f)}</b><span>${f.reservas}/${f.cupo}</span></td>`;
+    }).join('')}</tr>`).join('');
+
+    const rec = O.recomendadas || [];
+    const recomendadas = rec.length
+      ? `<div class="recomendadas"><b>Hoy hay más lugar a estas horas</b><div class="chips-hora">${rec.map(f =>
+          `<span class="hora-libre"><b>${esc(f.hora)}</b> ${Math.round(Number(f.ocupacion) * 100)}% lleno · entran ${Math.max(0, Math.round(Number(f.cupo) - Number(f.reservas)))} más</span>`).join('')}</div>
+        <span class="aclara">Si un socio te pregunta en qué horario hay menos gente, estas son. Es el promedio de los ${esc(DIAS_SEM[O.dia].toLowerCase())} de los últimos meses, no la reserva de hoy.</span></div>`
+      : '<div class="recomendadas"><b>Todavía no puedo recomendarte un horario</b><span class="aclara">Hace falta más de un día medido en cada franja. Con unas semanas de datos aparece solo.</span></div>';
+
+    const meses = (O.meses || []).slice(-8);
+    const tope = Math.max(1, ...meses.map(m => Number(m.reservas)));
+    const tendencia = meses.length > 1 ? `<section class="bloque"><div class="bloque-cab"><h2>Cómo viene mes a mes</h2></div>
+      <div class="barras-mes">${meses.map(m => `<div class="barra-mes"><span class="valor">${m.reservas}</span>
+        <i style="height:${Math.round(100 * Number(m.reservas) / tope)}%"></i><span class="mes">${esc(String(m.clave).slice(5))}</span></div>`).join('')}</div>
+      <span class="aclara">Reservas por mes en ${esc(SEDES[O.sede] || O.sede)}. El último mes puede estar incompleto.</span></section>` : '';
+
+    return selector + `<h1 class="titulo-dia">RESERVAS · ${esc((SEDES[O.sede] || O.sede).toUpperCase())}</h1>
+      <p class="bajada">Qué tan llena está cada franja horaria. Sale de las reservas de los últimos meses y del cupo de cada clase en MOVE.</p>
+      ${recomendadas}
+      <section class="bloque"><div class="bloque-cab"><h2>Mapa de calor</h2></div>
+        <div class="envoltura-tabla"><table class="calor"><thead><tr><th>Hora</th>${dias.map(d => `<th>${esc(DIAS_SEM[d].slice(0, 3))}</th>`).join('')}</tr></thead><tbody>${filas}</tbody></table></div>
+        <div class="leyenda"><span class="oc verde"></span> Hay lugar <span class="oc amarillo"></span> Se está llenando <span class="oc rojo"></span> Lleno <span class="oc gris"></span> Sin clases</div>
+        <span class="aclara">Cada casillero dice qué parte del cupo se ocupa en promedio. Tocá uno para ver el detalle.${O.actualizado ? ' Actualizado: ' + esc(String(O.actualizado).slice(0, 10)) : ''}</span>
+      </section>
+      ${tendencia}`;
+  }
+
+  function detalleFranja(d, h) {
+    const f = (E.ocupacion.patron || []).find(x => String(x.clave) === String(d) && x.hora === h);
+    if (!f) return;
+    const libres = Math.max(0, Math.round(Number(f.cupo) - Number(f.reservas)));
+    const col = colorOcup(f.ocupacion);
+    dialogo(`<h3>${esc(DIAS_SEM[d])} a las ${esc(h)}</h3>
+      <p><b>${f.reservas} de ${f.cupo} lugares</b> en promedio · ${col === 'rojo' ? 'está lleno' : col === 'amarillo' ? 'se está llenando' : 'hay lugar'}.</p>
+      <p>${libres ? (libres === 1 ? 'Entra 1 persona más.' : `Entran ${libres} personas más.`) : 'No entra nadie más.'} De los que reservan, ${f.asistieron} ${Number(f.asistieron) === 1 ? 'viene' : 'vienen'} y ${f.ausentes} ${Number(f.ausentes) === 1 ? 'falta' : 'faltan'}.</p>
+      <p class="aclara">Promedio de ${f.dias} ${f.dias === 1 ? 'día medido' : 'días medidos'} · ${f.clases} ${Number(f.clases) === 1 ? 'clase' : 'clases'} a esa hora${Number(f.sin_cupo) ? ` · ${f.sin_cupo} sin cupo cargado en MOVE` : ''}.</p>
+      <button class="boton claro ancho" data-cerrar>Cerrar</button>`, dg => { dg.querySelector('[data-cerrar]').onclick = () => dg.close(); });
   }
 
   // ---------- Mis tareas ----------
@@ -1283,6 +1354,8 @@
         cliente.llamar('cierres_ver').then(c => { E.cierres = c.cierres; E.cierresResumen = c.resumen; if (E.vista === 'rend' && !E.rendDni) render(); }).catch(() => {});
         cliente.llamar('profes_ver', tiene('admin') ? { sede: E.sedeElegida } : {}).then(c => { E.profes = c.filas; if (E.vista === 'rend' && !E.rendDni) render(); }).catch(() => {});
         E.rend = await cliente.llamar('rendimiento', Object.assign(E.rendMes ? { mes: E.rendMes } : {}, tiene('admin') ? { sede: E.sedeElegida } : {}));
+      } else if (E.vista === 'reservas') {
+        E.ocupacion = await cliente.llamar('ocupacion_ver', tiene('admin') || tiene('coordinador') ? { sede: E.sedeElegida } : {});
       } else if (E.vista === 'admin') {
         E.usuarios = await cliente.llamar('usuarios_listar');
       }
@@ -1377,8 +1450,9 @@
     const disponibles = pestanasDisponibles().map(p => p[0]);
     if (disponibles.indexOf(E.vista) < 0) { E.vista = disponibles[0] || null; setTimeout(cargarVista); }
     const cuerpo = E.vista === 'hoy' ? vistaHoy() : E.vista === 'sede' ? vistaSede() : E.vista === 'admin' ? vistaAdmin() : E.vista === 'mes' ? vistaMes() : E.vista === 'rend' ? vistaRendimiento()
+      : E.vista === 'reservas' ? vistaReservas()
       : '<div class="vacio">Tu usuario no tiene ninguna vista asignada. Avisale a Emanuel.</div>';
-    const sinDatos = { hoy: !E.tareas, sede: E.personaDni ? !E.persona : !E.sede, mes: !E.rend, rend: !E.rend, admin: !E.usuarios }[E.vista];
+    const sinDatos = { hoy: !E.tareas, sede: E.personaDni ? !E.persona : !E.sede, mes: !E.rend, rend: !E.rend, admin: !E.usuarios, reservas: !E.ocupacion }[E.vista];
     const mostrar = E.errorCarga && sinDatos ? `<div class="vacio" style="margin-top:18px"><p>${esc(E.errorCarga)}</p><p>La pantalla vuelve a intentarlo sola. Tus marcas no se pierden.</p><button class="boton" data-accion="reintentar">Reintentar ahora</button></div>` : cuerpo;
     const bandas = E.vista === 'hoy' ? bandaFichajes() + bandaReservas() : '';
     app.innerHTML = encabezado() + `<main class="contenedor">${bandas}${mostrar}</main>` + (E.vista === 'hoy' && turnoTerminando() ? `<button class="cerrar-app-fijo${DEMO ? ' con-cinta' : ''}" data-accion="cerrar-app">🚪 ${E.dia && E.dia.cierre_hecho ? 'Listo por hoy' : 'Se termina tu turno'}: cerrá la app antes de irte</button>` : '') + (DEMO ? '<div class="cinta-practica">Modo práctica · datos inventados</div>' : '');
@@ -1536,7 +1610,8 @@
     else if (a === 'ver-persona') { E.personaDni = el.dataset.dni; E.persona = null; render(); cargarVista(); }
     else if (a === 'persona-volver') { E.personaDni = null; E.persona = null; render(); cargarVista(); }
     else if (a === 'ventas-periodo') { E.ventasPeriodo = el.dataset.p; render(); }
-    else if (a === 'sede-elegir') { E.sedeElegida = el.dataset.s; E.sede = null; render(); cargarVista(); }
+    else if (a === 'sede-elegir') { E.sedeElegida = el.dataset.s; E.sede = null; E.ocupacion = null; render(); cargarVista(); }
+    else if (a === 'franja') detalleFranja(Number(el.dataset.d), el.dataset.h);
     else if (a === 'reasignar') {
       const dni = app.querySelector(`[data-reasignar="${CSS.escape(el.dataset.id)}"]`).value;
       el.disabled = true;

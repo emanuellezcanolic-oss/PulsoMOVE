@@ -158,6 +158,32 @@ label.campo .opcional { text-transform: none; letter-spacing: 0; font-weight: 50
   font: 800 12px/1 var(--display); letter-spacing: .12em; text-transform: uppercase; padding: 7px;
 }
 
+/* ---------- Reservas: mapa de calor ---------- */
+.calor { border-collapse: separate; border-spacing: 3px; width: 100%; }
+.calor th { font: 700 12px var(--display); color: var(--gris); text-transform: uppercase; letter-spacing: .04em; padding: 2px 4px; }
+.calor th[scope="row"] { text-align: right; white-space: nowrap; }
+.calor td.oc { border-radius: 6px; text-align: center; padding: 6px 4px; min-width: 56px; line-height: 1.1; cursor: pointer; }
+.calor td.oc b { display: block; font: 800 14px var(--display); }
+.calor td.oc span { font-size: 10px; opacity: .75; }
+.calor td.oc:focus-visible { outline: 3px solid var(--tinta); outline-offset: 1px; }
+.oc.verde { background: #dfe6c8; color: #434a25; }
+.oc.amarillo { background: #f8e2b4; color: #7a5209; }
+.oc.rojo { background: #f3c4bd; color: #8d2419; }
+.oc.gris { background: var(--suave); color: var(--gris); cursor: default; }
+.leyenda { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; font-size: 12px; color: var(--gris); margin-top: 10px; }
+.leyenda .oc { width: 16px; height: 16px; border-radius: 4px; display: inline-block; }
+.leyenda .oc + .oc { margin-left: 8px; }
+.recomendadas { background: var(--hoja); border: 1px solid var(--linea); border-left: 5px solid var(--verde); border-radius: var(--radio); padding: 12px 14px; display: grid; gap: 6px; margin: 12px 0; }
+.recomendadas b { font: 700 15px var(--display); }
+.chips-hora { display: flex; gap: 8px; flex-wrap: wrap; }
+.hora-libre { background: #dfe6c8; color: #434a25; border-radius: 999px; padding: 5px 12px; font-size: 13px; }
+.hora-libre b { font: 800 14px var(--display); }
+.barras-mes { display: flex; align-items: flex-end; gap: 8px; height: 140px; margin-top: 8px; }
+.barra-mes { flex: 1; display: grid; grid-template-rows: auto 1fr auto; align-items: end; justify-items: center; height: 100%; gap: 3px; }
+.barra-mes i { width: 100%; max-width: 46px; background: var(--verde); border-radius: 4px 4px 0 0; align-self: end; min-height: 3px; }
+.barra-mes .valor { font: 700 12px var(--display); }
+.barra-mes .mes { font-size: 11px; color: var(--gris); }
+
 /* ---------- Sede y admin ---------- */
 .personas { display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: 8px; }
 .persona { background: var(--hoja); border: 1px solid var(--linea); border-radius: var(--radio); padding: 12px 14px; box-shadow: var(--sombra); min-width: 0; }

@@ -14,6 +14,8 @@ const COLUMNAS = {
   ventas_largas: ['id', 'fecha', 'sede', 'dni_cobro', 'nombre_cobro', 'socio_id', 'socio_nombre', 'plan', 'tipo', 'largo', 'sugerido_dni', 'estado', 'pide_dni', 'responde_dni', 'hacia_dni', 'dni_vendio', 'ts_pedido', 'ts_decidido', 'decide_dni'],
   beneficios: ['id', 'ts', 'tipo', 'sede', 'socio_nombre', 'nuevo_socio', 'detalle', 'registra_dni', 'estado', 'decide_dni', 'comentario', 'decidido_en'],
   objetivos: ['dni', 'clave', 'valor'],
+  // Mapa de calor de reservas: tipo 'patron' (clave = día de la semana 0-6) o 'mes' (clave = AAAA-MM)
+  ocupacion: ['sede', 'tipo', 'clave', 'dia', 'hora', 'dias', 'clases', 'cupo', 'reservas', 'asistieron', 'ausentes', 'ocupacion', 'sin_cupo', 'actualizado'],
   profes: ['fecha', 'sede', 'profe_id', 'profe', 'clase', 'qr', 'estado'],
   fichajes: ['id', 'fecha', 'sede', 'persona_id', 'persona', 'dni', 'momento', 'hora', 'estado', 'desde_ts', 'cerrada_ts', 'recordado_ts', 'recordado_dni', 'no_viene_ts', 'no_viene_dni'],
   fichajes_control: ['ts'],

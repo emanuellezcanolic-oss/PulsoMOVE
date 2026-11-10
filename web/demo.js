@@ -146,7 +146,33 @@
       return [fila('RS1', 'Clara Benítez', 'Profe Sol', m - 30), fila('RS2', 'Pablo Rey', 'Profe Sol', m - 11)];
     };
     const fichajeDemo = (id, persona, dni, hora) => ({ id, fecha: hoy, sede: 'bolson', persona_id: id, persona, dni, momento: 'entrada', hora, estado: 'falta', desde_ts: new Date().toISOString(), cerrada_ts: '', recordado_ts: '', recordado_dni: '', no_viene_ts: '', no_viene_dni: '' });
-    return { fichajes: [fichajeDemo('FI1', 'Profe Sol', '', '08:00'), fichajeDemo('FI2', 'Rocío (práctica)', R, '08:00')], fichajes_control: [{ ts: new Date().toISOString() }], reservas_qr: reservasDemo(hoy), ventas, ventas_largas, stock: [{ ts: new Date().toISOString(), fecha: hoy, sede: 'bolson', dni: R, nombre: 'Rocío (práctica)', producto: 'Proteína ENA 930 g', cantidad: '5' }], beneficios: [{ id: 'B-demo', ts: new Date().toISOString(), tipo: 'referido', sede: 'bolson', socio_nombre: 'Marta Quiroga', nuevo_socio: 'Juan Paz', detalle: '', registra_dni: R, estado: 'pendiente', decide_dni: '', comentario: '', decidido_en: '' }, { id: 'B-demo2', ts: new Date().toISOString(), tipo: 'constancia', sede: 'puelo', socio_nombre: 'Rosa Medina', nuevo_socio: '', detalle: '14 días con QR en 4 semanas', registra_dni: '', estado: 'pendiente', decide_dni: '', comentario: '', decidido_en: '' }], uso: [{ ts: hoy + 'T12:00:00.000Z', dni: R, fecha: hoy, activos: rango(480, 50) + ',' + rango(600, 70), quieta: rango(530, 30), otra: rango(560, 25) }], usuarios, tareas, registro: [], garantia, rendimiento, actividad: [], objetivos: [], cierres: [
+    // Mapa de calor de práctica, con la forma de los datos reales de Bolsón: valle al mediodía y pico a media mañana
+    const ocupacionDemo = () => {
+      const perfil = { '07:00': .25, '08:00': .35, '09:00': .40, '10:00': .68, '11:00': .90, '12:00': .15, '13:00': .28,
+                       '14:00': .45, '15:00': .55, '16:00': .62, '17:00': .50, '18:00': .78, '19:00': .95, '20:00': .72, '21:00': .38 };
+      const sedes = { bolson: 1, puelo: .8, bariloche: 1.1 };
+      const filas = [];
+      Object.keys(sedes).forEach(sede => {
+        for (let d = 0; d < 5; d++) {
+          Object.keys(perfil).forEach(hora => {
+            const cupo = 20;
+            const oc = Math.min(1.1, perfil[hora] * sedes[sede] * (d === 4 ? .8 : d === 0 ? 1.05 : 1));
+            const reservas = Math.round(cupo * oc);
+            filas.push({ sede, tipo: 'patron', clave: String(d), dia: ['Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes'][d], hora,
+              dias: '12', clases: '2', cupo: String(cupo), reservas: String(reservas),
+              asistieron: String(Math.round(reservas * .85)), ausentes: String(reservas - Math.round(reservas * .85)),
+              ocupacion: String((reservas / cupo).toFixed(4)), sin_cupo: '0', actualizado: new Date().toISOString() });
+          });
+        }
+        [['2026-06', 1620], ['2026-07', 1480], ['2026-08', 1710], ['2026-09', 1890], ['2026-10', 2040], ['2026-11', 640]].forEach(([mes, n]) => {
+          const r = Math.round(n * sedes[sede]);
+          filas.push({ sede, tipo: 'mes', clave: mes, dia: '', hora: '', dias: '0', clases: '0', cupo: '0', reservas: String(r),
+            asistieron: String(Math.round(r * .85)), ausentes: String(r - Math.round(r * .85)), ocupacion: '', sin_cupo: '0', actualizado: new Date().toISOString() });
+        });
+      });
+      return filas;
+    };
+    return { fichajes: [fichajeDemo('FI1', 'Profe Sol', '', '08:00'), fichajeDemo('FI2', 'Rocío (práctica)', R, '08:00')], fichajes_control: [{ ts: new Date().toISOString() }], reservas_qr: reservasDemo(hoy), ventas, ventas_largas, stock: [{ ts: new Date().toISOString(), fecha: hoy, sede: 'bolson', dni: R, nombre: 'Rocío (práctica)', producto: 'Proteína ENA 930 g', cantidad: '5' }], beneficios: [{ id: 'B-demo', ts: new Date().toISOString(), tipo: 'referido', sede: 'bolson', socio_nombre: 'Marta Quiroga', nuevo_socio: 'Juan Paz', detalle: '', registra_dni: R, estado: 'pendiente', decide_dni: '', comentario: '', decidido_en: '' }, { id: 'B-demo2', ts: new Date().toISOString(), tipo: 'constancia', sede: 'puelo', socio_nombre: 'Rosa Medina', nuevo_socio: '', detalle: '14 días con QR en 4 semanas', registra_dni: '', estado: 'pendiente', decide_dni: '', comentario: '', decidido_en: '' }], uso: [{ ts: hoy + 'T12:00:00.000Z', dni: R, fecha: hoy, activos: rango(480, 50) + ',' + rango(600, 70), quieta: rango(530, 30), otra: rango(560, 25) }], ocupacion: ocupacionDemo(), usuarios, tareas, registro: [], garantia, rendimiento, actividad: [], objetivos: [], cierres: [
       { fecha: hoy, ts: hoy + 'T17:30:00.000Z', dni: T, nombre: 'Tomás (práctica)', sede: 'bolson', animo: '5', respuestas: '{}', comentario: '', hechas: '18', pendientes: '0', mensajes: '9', consultas: '2', sala: '4', profes: '', equipo: '', socios: '', pregunta: '😊 ¿Algún socio te alegró el día? Contanos.', lo_mejor: 'Un socio me contó que volvió a correr sin dolor.' },
       { fecha: hoy, ts: hoy + 'T13:30:00.000Z', dni: C, nombre: 'Responsable de sede (práctica)', sede: 'bolson', animo: '3', respuestas: '{}', comentario: 'A la tarde se llenó la sala de golpe.', hechas: '12', pendientes: '4', mensajes: '6', consultas: '1', sala: '2', profes: '', equipo: '', socios: '', pregunta: '', lo_mejor: '' },
     ] };
