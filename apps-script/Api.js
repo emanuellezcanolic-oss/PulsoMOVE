@@ -975,7 +975,7 @@ function respaldo(req, deps) {
   exigirClave(req, deps);
   const usuarios = deps.repo.leer('usuarios').map(u => { const c = Object.assign({}, u); delete c.pin_hash; delete c.sal; return c; });
   const out = { usuarios: usuarios };
-  ['tareas', 'registro', 'garantia', 'actividad', 'rendimiento', 'objetivos', 'cierres', 'profes', 'fichajes', 'reservas_qr', 'avisos', 'uso', 'beneficios', 'stock', 'ventas', 'ventas_largas', 'ocupacion'].forEach(h => { out[h] = deps.repo.leer(h); });
+  ['tareas', 'registro', 'garantia', 'actividad', 'rendimiento', 'objetivos', 'cierres', 'profes', 'fichajes', 'reservas_qr', 'avisos', 'uso', 'beneficios', 'stock', 'ventas', 'ventas_largas', 'ocupacion', 'proximas'].forEach(h => { out[h] = deps.repo.leer(h); });
   return out;
 }
 
@@ -1080,6 +1080,27 @@ function recomendarFranjas(filas, dia, cuantas) {
     .slice(0, cuantas || 3);
 }
 
+function cargarProximas(req, deps) {
+  exigirClave(req, deps);
+  const desde = texto(req.desde), hasta = texto(req.hasta);
+  if (!Array.isArray(req.filas) || !/^\d{4}-\d{2}-\d{2}$/.test(desde) || !/^\d{4}-\d{2}-\d{2}$/.test(hasta)) falla('datos_invalidos');
+  const ts = new Date(deps.ahora()).toISOString();
+  // Se reemplaza solo el tramo que trae el proceso: así una corrida corta (hoy y mañana) no borra la semana.
+  // Y la lista de quienes no reservaron solo se pisa en las sedes que vinieron en este envío.
+  const sedesSin = req.filas.filter(f => texto(f.tipo) === 'sin_reserva').map(f => texto(f.sede));
+  const quedan = deps.repo.leer('proximas').filter(f => {
+    if (f.tipo === 'sin_reserva') return sedesSin.indexOf(texto(f.sede)) < 0;
+    return !(texto(f.fecha) >= desde && texto(f.fecha) <= hasta);
+  });
+  req.filas.forEach(f => quedan.push({
+    sede: texto(f.sede), tipo: texto(f.tipo), fecha: texto(f.fecha), hora: texto(f.hora),
+    clase: texto(f.clase), profe: texto(f.profe), horario_id: texto(f.horario_id),
+    cupo: String(f.cupo || 0), reservas: String(f.reservas || 0), nombres: texto(f.nombres), actualizado: ts,
+  }));
+  deps.repo.escribir('proximas', quedan);
+  return { filas: req.filas.length };
+}
+
 function ocupacionVer(req, deps) {
   const { usuario } = sesion(req, deps);
   // Recepción ve la suya; quien coordina puede elegir. No es dato sensible de nadie: son cuántos lugares hay por hora.
@@ -1089,12 +1110,19 @@ function ocupacionVer(req, deps) {
   const filas = todas.filter(f => f.sede === sede);
   const hoy = deps.hoy();
   const dia = (new Date(hoy + 'T12:00:00Z').getUTCDay() + 6) % 7;   // 0 = lunes, como en el proceso de la PC
+  // Lo que viene: de hoy para adelante, con los nombres de quienes reservaron cada clase (Emanuel, 10/11/2026).
+  const prox = deps.repo.leer('proximas').filter(f => f.sede === sede);
+  const franjas = prox.filter(f => f.tipo === 'franja' && texto(f.fecha) >= hoy)
+    .sort((a, b) => String(a.fecha + a.hora + a.clase).localeCompare(String(b.fecha + b.hora + b.clase)));
   return {
     sede: sede, hoy: hoy, dia: dia,
     actualizado: filas.length ? filas[0].actualizado : '',
     patron: filas.filter(f => f.tipo === 'patron'),
     meses: filas.filter(f => f.tipo === 'mes'),
     recomendadas: recomendarFranjas(filas, dia, 3),
+    proximas: franjas,
+    sin_reserva: prox.filter(f => f.tipo === 'sin_reserva'),
+    proximas_actualizado: prox.length ? prox[0].actualizado : '',
     sedes: tieneRol(usuario, 'admin') || tieneRol(usuario, 'coordinador') ? SEDES : [sede],
   };
 }
@@ -1219,6 +1247,7 @@ const ACCIONES = {
   objetivos_guardar: objetivosGuardar,
   cargar_rendimiento: cargarRendimiento,
   cargar_ocupacion: cargarOcupacion,
+  cargar_proximas: cargarProximas,
   ocupacion_ver: ocupacionVer,
   garantia_crear: garantiaCrear,
   garantia_decidir: garantiaDecidir,

@@ -16,6 +16,9 @@ const COLUMNAS = {
   objetivos: ['dni', 'clave', 'valor'],
   // Mapa de calor de reservas: tipo 'patron' (clave = día de la semana 0-6) o 'mes' (clave = AAAA-MM)
   ocupacion: ['sede', 'tipo', 'clave', 'dia', 'hora', 'dias', 'clases', 'cupo', 'reservas', 'asistieron', 'ausentes', 'ocupacion', 'sin_cupo', 'actualizado'],
+  // Reservas de los próximos días: tipo 'franja' (una clase, con los nombres de los anotados) o
+  // 'sin_reserva' (alguien que suele venir y todavía no reservó). Del socio va el nombre y nada más.
+  proximas: ['sede', 'tipo', 'fecha', 'hora', 'clase', 'profe', 'horario_id', 'cupo', 'reservas', 'nombres', 'actualizado'],
   profes: ['fecha', 'sede', 'profe_id', 'profe', 'clase', 'qr', 'estado'],
   fichajes: ['id', 'fecha', 'sede', 'persona_id', 'persona', 'dni', 'momento', 'hora', 'estado', 'desde_ts', 'cerrada_ts', 'recordado_ts', 'recordado_dni', 'no_viene_ts', 'no_viene_dni'],
   fichajes_control: ['ts'],

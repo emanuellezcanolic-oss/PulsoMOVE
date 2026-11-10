@@ -55,7 +55,7 @@
 
   const E = {
     vista: null, hoy: '', tareas: null, filtro: 'pendientes', tipo: '', abierta: null, errorForm: '',
-    sede: null, ocupacion: null, sedeElegida: 'bolson', usuarios: null, mensajeLogin: '', personaDni: null, persona: null, rend: null, rendMes: null, rendDni: null, dia: null, adelantar: false, abiertaEn: null, cierres: null, cierrePospuesto: 0, paraAdelantar: 0, celebrado: {},
+    sede: null, ocupacion: null, diaProx: '', sedeElegida: 'bolson', usuarios: null, mensajeLogin: '', personaDni: null, persona: null, rend: null, rendMes: null, rendDni: null, dia: null, adelantar: false, abiertaEn: null, cierres: null, cierrePospuesto: 0, paraAdelantar: 0, celebrado: {},
   };
 
   const app = document.getElementById('app');
@@ -206,8 +206,10 @@
       ? `<div class="filtros">${O.sedes.map(k => `<button class="chip" data-accion="sede-elegir" data-s="${k}" aria-pressed="${(E.sedeElegida || O.sede) === k}">${SEDES[k]}</button>`).join('')}</div>` : '';
     if (!O) return selector + '<div class="cargando">Cargando las reservas…</div>';
     if (!O.patron.length) {
-      return selector + `<div class="vacio"><p>Todavía no se calcularon las reservas de ${esc(SEDES[O.sede] || O.sede)}.</p>
-        <p>Se arman a la mañana con lo que hay en MOVE. Si recién lo activamos, mañana ya vas a verlo.</p></div>`;
+      // Sin el promedio de los meses igual sirve lo que viene: son datos distintos y cada uno se baja aparte
+      return selector + `<div class="vacio"><p>Todavía no se calculó el mapa de calor de ${esc(SEDES[O.sede] || O.sede)}.</p>
+        <p>Se arma a la mañana con lo que hay en MOVE. Si recién lo activamos, mañana ya vas a verlo.</p></div>
+        ${bloqueProximos(O)}${bloqueSinReserva(O)}`;
     }
     const horas = [...new Set(O.patron.map(f => f.hora))].sort();
     const dias = [...new Set(O.patron.map(f => Number(f.clave)))].sort((a, b) => a - b);
@@ -239,6 +241,8 @@
     return selector + `<h1 class="titulo-dia">RESERVAS · ${esc((SEDES[O.sede] || O.sede).toUpperCase())}</h1>
       <p class="bajada">Qué tan llena está cada franja horaria. Sale de las reservas de los últimos meses y del cupo de cada clase en MOVE.</p>
       ${recomendadas}
+      ${bloqueProximos(O)}
+      ${bloqueSinReserva(O)}
       <section class="bloque"><div class="bloque-cab"><h2>Mapa de calor</h2></div>
         <div class="envoltura-tabla"><table class="calor"><thead><tr><th>Hora</th>${dias.map(d => `<th>${esc(DIAS_SEM[d].slice(0, 3))}</th>`).join('')}</tr></thead><tbody>${filas}</tbody></table></div>
         <div class="leyenda"><span class="oc verde"></span> Hay lugar <span class="oc amarillo"></span> Se está llenando <span class="oc rojo"></span> Lleno <span class="oc gris"></span> Sin clases</div>
@@ -256,6 +260,84 @@
       <p><b>${f.reservas} de ${f.cupo} lugares</b> en promedio · ${col === 'rojo' ? 'está lleno' : col === 'amarillo' ? 'se está llenando' : 'hay lugar'}.</p>
       <p>${libres ? (libres === 1 ? 'Entra 1 persona más.' : `Entran ${libres} personas más.`) : 'No entra nadie más.'} De los que reservan, ${f.asistieron} ${Number(f.asistieron) === 1 ? 'viene' : 'vienen'} y ${f.ausentes} ${Number(f.ausentes) === 1 ? 'falta' : 'faltan'}.</p>
       <p class="aclara">Promedio de ${f.dias} ${f.dias === 1 ? 'día medido' : 'días medidos'} · ${f.clases} ${Number(f.clases) === 1 ? 'clase' : 'clases'} a esa hora${Number(f.sin_cupo) ? ` · ${f.sin_cupo} sin cupo cargado en MOVE` : ''}.</p>
+      <button class="boton claro ancho" data-cerrar>Cerrar</button>`, dg => { dg.querySelector('[data-cerrar]').onclick = () => dg.close(); });
+  }
+
+  // Los días que vienen, clase por clase, y al tocar una los nombres de quienes reservaron.
+  // El mapa de calor es el promedio de los últimos meses; esto es lo que hay anotado de verdad (Emanuel, 10/11/2026).
+  function diaCorto(iso, hoy) {
+    if (iso === hoy) return 'Hoy';
+    const d = new Date(iso + 'T12:00:00Z'), h = new Date(hoy + 'T12:00:00Z');
+    if (Math.round((d - h) / 86400000) === 1) return 'Mañana';
+    return DIAS_SEM[(d.getUTCDay() + 6) % 7].slice(0, 3) + ' ' + iso.slice(8, 10);
+  }
+
+  // En el chip el día va corto por el lugar; en el texto de abajo, con el nombre entero
+  function diaLargo(iso, hoy) {
+    const c = diaCorto(iso, hoy);
+    const d = new Date(iso + 'T12:00:00Z');
+    return (c === 'Hoy' || c === 'Mañana' ? c : DIAS_SEM[(d.getUTCDay() + 6) % 7]) + ' ' + iso.slice(8, 10) + '/' + iso.slice(5, 7);
+  }
+
+  // El sello viene en UTC: se muestra en la hora de acá, que es la que la persona mira en su reloj
+  function cuandoCorto(ts, hoy) {
+    const d = new Date(ts);
+    if (isNaN(d)) return ts.slice(0, 10);
+    const dos = n => String(n).padStart(2, '0');
+    const fecha = `${d.getFullYear()}-${dos(d.getMonth() + 1)}-${dos(d.getDate())}`;
+    return (fecha === hoy ? 'hoy' : dos(d.getDate()) + '/' + dos(d.getMonth() + 1)) + ' ' + dos(d.getHours()) + ':' + dos(d.getMinutes());
+  }
+
+  function colorClase(f) {
+    return Number(f.cupo) > 0 ? colorOcup(Number(f.reservas) / Number(f.cupo)) : 'gris';
+  }
+
+  function bloqueProximos(O) {
+    const P = O.proximas || [];
+    if (!P.length) {
+      return `<section class="bloque"><div class="bloque-cab"><h2>Próximos días</h2></div>
+        <span class="aclara">Todavía no se bajaron las reservas de los días que vienen. Se arman a la mañana y se refrescan durante el día.</span></section>`;
+    }
+    const fechas = [...new Set(P.map(f => f.fecha))].sort();
+    const sel = fechas.indexOf(E.diaProx) >= 0 ? E.diaProx : fechas[0];
+    const chips = fechas.map(f => {
+      const d = P.filter(x => x.fecha === f);
+      const anotados = d.reduce((s, x) => s + Number(x.reservas), 0);
+      return `<button class="chip" data-accion="prox-dia" data-f="${f}" aria-pressed="${f === sel}">${esc(diaCorto(f, O.hoy))}<small> ${anotados}</small></button>`;
+    }).join('');
+    const delDia = P.filter(f => f.fecha === sel);
+    const total = delDia.reduce((s, x) => s + Number(x.reservas), 0);
+    const cupo = delDia.reduce((s, x) => s + Number(x.cupo), 0);
+    const clases = delDia.map(f => `<li class="clase-prox ${colorClase(f)}" tabindex="0" data-accion="prox-clase" data-id="${esc(f.horario_id)}">
+        <b class="hora">${esc(f.hora)}</b>
+        <span class="que"><b>${esc(f.clase || 'Clase')}</b>${f.profe ? `<small>${esc(f.profe)}</small>` : ''}</span>
+        <span class="cuenta">${f.reservas}${Number(f.cupo) ? '/' + f.cupo : ''}</span></li>`).join('');
+    return `<section class="bloque"><div class="bloque-cab"><h2>Próximos días</h2></div>
+      <div class="filtros dias-prox">${chips}</div>
+      <p class="aclara">${esc(diaLargo(sel, O.hoy))}: <b>${total}</b> ${total === 1 ? 'reserva' : 'reservas'}${cupo ? ` de ${cupo} lugares` : ''}. Tocá una clase para ver quiénes reservaron.</p>
+      <ul class="clases-prox">${clases || '<li class="aclara">Ese día no hay clases cargadas.</li>'}</ul>
+      ${O.proximas_actualizado ? `<span class="aclara">Actualizado: ${esc(cuandoCorto(String(O.proximas_actualizado), O.hoy))}. Se refresca varias veces por día.</span>` : ''}</section>`;
+  }
+
+  function bloqueSinReserva(O) {
+    const S = O.sin_reserva || [];
+    if (!S.length) return '';
+    return `<section class="bloque"><div class="bloque-cab"><h2>Vienen seguido y no reservaron</h2></div>
+      <ul class="sin-reserva">${S.map(f => `<li><b>${esc(f.nombres)}</b><span>${f.reservas} ${Number(f.reservas) === 1 ? 'vez' : 'veces'} en el último mes · suele venir ${esc(f.hora)}</span></li>`).join('')}</ul>
+      <span class="aclara">No tienen ninguna reserva en los días que vienen. Es para que lo tengas a mano cuando los veas o los llames: la app no le escribe a nadie.</span></section>`;
+  }
+
+  function detalleClase(id) {
+    const f = (E.ocupacion.proximas || []).find(x => String(x.horario_id) === String(id));
+    if (!f) return;
+    const gente = String(f.nombres || '').split(' | ').filter(Boolean);
+    const libres = Number(f.cupo) ? Math.max(0, Number(f.cupo) - Number(f.reservas)) : 0;
+    dialogo(`<h3>${esc(diaCorto(f.fecha, E.ocupacion.hoy))} a las ${esc(f.hora)}</h3>
+      <p><b>${esc(f.clase || 'Clase')}</b>${f.profe ? ' · ' + esc(f.profe) : ''}</p>
+      <p>${f.reservas} ${Number(f.reservas) === 1 ? 'reserva' : 'reservas'}${Number(f.cupo) ? ` de ${f.cupo} lugares · ` + (libres ? (libres === 1 ? 'entra 1 más' : `entran ${libres} más`) : 'está completa') : ''}.</p>
+      ${gente.length ? `<ol class="lista-socios">${gente.map(n => `<li>${esc(n)}</li>`).join('')}</ol>`
+        : '<p class="aclara">Todavía no reservó nadie.</p>'}
+      <p class="aclara">Los que están anotados en MOVE para esa clase. Puede cambiar hasta que empiece.</p>
       <button class="boton claro ancho" data-cerrar>Cerrar</button>`, dg => { dg.querySelector('[data-cerrar]').onclick = () => dg.close(); });
   }
 
@@ -1610,8 +1692,10 @@
     else if (a === 'ver-persona') { E.personaDni = el.dataset.dni; E.persona = null; render(); cargarVista(); }
     else if (a === 'persona-volver') { E.personaDni = null; E.persona = null; render(); cargarVista(); }
     else if (a === 'ventas-periodo') { E.ventasPeriodo = el.dataset.p; render(); }
-    else if (a === 'sede-elegir') { E.sedeElegida = el.dataset.s; E.sede = null; E.ocupacion = null; render(); cargarVista(); }
+    else if (a === 'sede-elegir') { E.sedeElegida = el.dataset.s; E.sede = null; E.ocupacion = null; E.diaProx = ''; render(); cargarVista(); }
     else if (a === 'franja') detalleFranja(Number(el.dataset.d), el.dataset.h);
+    else if (a === 'prox-dia') { E.diaProx = el.dataset.f; render(); }
+    else if (a === 'prox-clase') detalleClase(el.dataset.id);
     else if (a === 'reasignar') {
       const dni = app.querySelector(`[data-reasignar="${CSS.escape(el.dataset.id)}"]`).value;
       el.disabled = true;

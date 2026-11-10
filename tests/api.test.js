@@ -216,6 +216,47 @@ test('usuarios_resumen cuenta lo pendiente de cada día, no lo hecho ni lo de ot
   assert.deepEqual(r.data.find(u => u.dni === '28999888').pendientes_por_fecha, { '2026-11-09': 1 });
 });
 
+// ---------- Reservas de los próximos días ----------
+
+const franja = (f, hora, nombres = '', sede = 'bolson') => ({ sede, tipo: 'franja', fecha: f, hora,
+  clase: 'Entrenamiento Personalizado', profe: 'Belén', horario_id: `${f}-${hora}`, cupo: 15, reservas: nombres ? nombres.split(' | ').length : 0, nombres });
+
+test('cargar_proximas pisa solo el tramo que trae y conserva el resto', () => {
+  const d = entorno();
+  pedir(d, { accion: 'cargar_proximas', clave: 'clave-prueba', desde: '2026-11-10', hasta: '2026-11-17',
+    filas: [franja('2026-11-10', '08:00', 'Juan Paz'), franja('2026-11-16', '19:00', 'Rosa Medina'),
+            { sede: 'bolson', tipo: 'sin_reserva', fecha: '', hora: '19:00', nombres: 'Ana Ruiz', reservas: 4, cupo: 0 }] });
+  // una corrida corta de hoy y mañana no puede borrar la semana que viene ni la lista de quien no reservó
+  const r = pedir(d, { accion: 'cargar_proximas', clave: 'clave-prueba', desde: '2026-11-10', hasta: '2026-11-11',
+    filas: [franja('2026-11-10', '08:00', 'Juan Paz | Rosa Medina')] });
+  assert.ok(r.ok, JSON.stringify(r));
+  const h = d.repo.hojas.proximas;
+  assert.deepEqual(h.filter(f => f.tipo === 'franja').map(f => [f.fecha, f.nombres]),
+    [['2026-11-16', 'Rosa Medina'], ['2026-11-10', 'Juan Paz | Rosa Medina']]);
+  assert.equal(h.filter(f => f.tipo === 'sin_reserva').length, 1);
+});
+
+test('cargar_proximas valida las fechas y la lista', () => {
+  const d = entorno();
+  assert.equal(pedir(d, { accion: 'cargar_proximas', clave: 'clave-prueba', desde: 'ayer', hasta: '2026-11-11', filas: [] }).error, 'datos_invalidos');
+  assert.equal(pedir(d, { accion: 'cargar_proximas', clave: 'clave-prueba', desde: '2026-11-10', hasta: '2026-11-11' }).error, 'datos_invalidos');
+  assert.equal(pedir(d, { accion: 'cargar_proximas', clave: 'mala', desde: '2026-11-10', hasta: '2026-11-11', filas: [] }).error, 'clave');
+});
+
+test('ocupacion_ver da a recepción lo que viene en su sede, sin lo que ya pasó ni lo de otra sede', () => {
+  const d = entorno([usuario()], { proximas: [
+    franja('2026-11-08', '08:00', 'Ayer Pasado'),
+    franja('2026-11-10', '19:00', 'Juan Paz | Rosa Medina'),
+    franja('2026-11-12', '07:00'),
+    franja('2026-11-11', '09:00', 'Otra Sede', 'puelo'),
+  ] });
+  const r = pedir(d, { accion: 'ocupacion_ver', token: entrar(d) });
+  assert.ok(r.ok, JSON.stringify(r));
+  assert.deepEqual(r.data.proximas.map(f => [f.fecha, f.hora, f.nombres]),
+    [['2026-11-10', '19:00', 'Juan Paz | Rosa Medina'], ['2026-11-12', '07:00', '']]);
+  assert.equal(r.data.sede, 'bolson');
+});
+
 // ---------- Task 6: sede, alertas, reasignar, garantía ----------
 
 const COORD = usuario({ dni: '25111222', nombre: 'Coord Bolson', pin: '0907', roles: 'recepcion,coordinador' });
