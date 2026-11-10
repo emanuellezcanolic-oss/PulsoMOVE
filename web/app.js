@@ -1020,10 +1020,14 @@
       <form class="marca-form" style="border:0;padding:0">
         <label class="campo">Qué hiciste<select name="tipo" required>
           <option value="mensaje">Mensaje a un socio, fuera de mis tareas</option><option value="consulta">Consulta de alguien interesado</option>
+          <option value="encuesta">Encuesta de bienvenida o de baja a un socio</option>
           <option value="prueba">Día de prueba</option><option value="resena">Pedí una reseña de Google</option><option value="referido">Me pasaron un referido</option></select></label>
-        <label class="campo">Nombre de la persona<input name="nombre" required></label>
+        <label class="campo">Nombre y apellido de la persona<input name="nombre" required></label>
         <label class="campo" data-solo="mensaje">Categoría<select name="categoria">${opciones(CATEGORIA)}</select></label>
-        <label class="campo" data-solo="mensaje">Canal<select name="canal"><option value="AU">Audio</option><option value="MP">Mensaje personal</option><option value="LL">Llamada</option><option value="PR">En persona</option></select></label>
+        <label class="campo" data-solo="encuesta">Cuál le mandaste<select name="cual"><option value="Bienvenida">Encuesta de bienvenida</option><option value="Baja">Encuesta de baja</option></select></label>
+        <label class="campo" data-solo="encuesta">¿Respondió tu mensaje antes?<select name="respondio"><option value="si">Sí, respondió</option><option value="no">Todavía no respondió</option></select></label>
+        <p class="aclara" data-solo="encuesta" data-aviso-encuesta style="margin:0"><b>Mandala solo si el socio respondió tu mensaje.</b> Primero escribile con tus palabras: en la bienvenida, cómo viene y cómo se sintió; en la baja, por qué se va. Si no hubo respuesta, esperá: sin esa conversación casi nunca contesta la encuesta.</p>
+        <label class="campo" data-solo="mensaje encuesta">Canal<select name="canal"><option value="AU">Audio</option><option value="MP">Mensaje personal</option><option value="LL">Llamada</option><option value="PR">En persona</option></select></label>
         <label class="campo" data-solo="consulta">Interés<select name="interes"><option value="alto">Alto: seguimiento hoy</option><option value="medio">Medio: seguimiento en 48 horas</option><option value="exploratorio">Exploratorio: seguimiento en una semana</option></select></label>
         <label class="campo" data-solo="consulta prueba referido">Cómo llegó<select name="origen">${opciones(ORIGEN)}</select></label>
         <label class="campo">Detalle <span class="opcional">(opcional)</span><textarea name="detalle" maxlength="300"></textarea></label>
@@ -1032,15 +1036,21 @@
       </form>`, d => {
       const form = d.querySelector('form');
       const mostrar = () => d.querySelectorAll('[data-solo]').forEach(l => { l.hidden = l.dataset.solo.split(' ').indexOf(form.tipo.value) < 0; });
+      // Si todavía no respondió, el aviso se marca: la encuesta va después de la conversación, no en lugar de ella (Emanuel, 10/11/2026)
+      const aviso_enc = d.querySelector('[data-aviso-encuesta]');
+      const marcarAviso = () => { aviso_enc.classList.toggle('alerta', form.respondio.value === 'no'); };
       form.tipo.onchange = mostrar;
+      form.respondio.onchange = marcarAviso;
       if (tipo) form.tipo.value = tipo;
       mostrar();
+      marcarAviso();
       d.querySelector('[data-cerrar]').onclick = () => d.close();
       form.onsubmit = async ev => {
         ev.preventDefault();
         const f = new FormData(form);
         const datos = { id: (crypto.randomUUID ? crypto.randomUUID() : Date.now() + '-' + Math.random()), tipo: f.get('tipo'), nombre: String(f.get('nombre')).trim(), detalle: String(f.get('detalle') || '').trim() };
         if (datos.tipo === 'mensaje') { datos.categoria = f.get('categoria'); datos.canal = f.get('canal'); }
+        if (datos.tipo === 'encuesta') { datos.categoria = f.get('cual'); datos.canal = f.get('canal'); datos.respondio = f.get('respondio'); }
         if (datos.tipo === 'consulta') datos.interes = f.get('interes');
         if (['consulta', 'prueba', 'referido'].indexOf(datos.tipo) >= 0) datos.origen = f.get('origen');
         const btn = form.querySelector('button');
@@ -1048,7 +1058,8 @@
         try {
           await cliente.llamar('registrar', datos);
           d.close();
-          aviso(datos.tipo === 'consulta' ? 'Guardado. El seguimiento aparece en tus tareas cuando le toque.' : 'Guardado.');
+          aviso(datos.tipo === 'consulta' ? 'Guardado. El seguimiento aparece en tus tareas cuando le toque.'
+            : datos.tipo === 'encuesta' && datos.respondio === 'no' ? 'Guardado. La próxima vez, esperá a que responda antes de mandarla.' : 'Guardado.');
           E.rend = null;
           if (E.vista === 'mes') cargarVista();
         } catch (e) { btn.disabled = false; falla(e); }

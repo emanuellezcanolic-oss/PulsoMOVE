@@ -535,6 +535,22 @@ test('registrar: valida, no duplica y una consulta crea su seguimiento', () => {
   assert.equal(pedir(d, { accion: 'mis_tareas', token }).data.tareas.length, 1);
 });
 
+test('registrar una encuesta de bienvenida o de baja: valida cuál y si respondió, y no crea tareas', () => {
+  const d = equipo({ tareas: [], actividad: [] });
+  const token = entrar(d);
+  const base = { accion: 'registrar', token, tipo: 'encuesta', nombre: 'Ana Pérez', canal: 'MP' };
+  assert.equal(pedir(d, { ...base, id: 'e0', categoria: 'Bienvenida' }).error, 'datos_invalidos');                      // falta si respondió
+  assert.equal(pedir(d, { ...base, id: 'e0', categoria: 'Otra', respondio: 'si' }).error, 'datos_invalidos');            // cuál no existe
+  assert.equal(pedir(d, { ...base, id: 'e0', categoria: 'Baja', respondio: 'quizás' }).error, 'datos_invalidos');
+  assert.ok(pedir(d, { ...base, id: 'e1', categoria: 'Baja', respondio: 'si', detalle: 'Se mudó' }).ok);
+  assert.ok(pedir(d, { ...base, id: 'e1', categoria: 'Baja', respondio: 'si' }).ok);                                      // repetida: no duplica
+  assert.ok(pedir(d, { ...base, id: 'e2', categoria: 'Bienvenida', respondio: 'no' }).ok);
+  const a = d.repo.hojas.actividad;
+  assert.equal(a.length, 2);
+  assert.deepEqual(a.map(x => [x.tipo, x.categoria, x.interes, x.nombre]), [['encuesta', 'Baja', 'si', 'Ana Pérez'], ['encuesta', 'Bienvenida', 'no', 'Ana Pérez']]);
+  assert.equal(d.repo.hojas.tareas.length, 0);
+});
+
 test('rendimiento: mezcla lo calculado con lo que pasa en la app', () => {
   const d = equipo({
     tareas: [

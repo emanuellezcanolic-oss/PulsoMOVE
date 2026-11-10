@@ -184,6 +184,9 @@ label.campo .opcional { text-transform: none; letter-spacing: 0; font-weight: 50
 .barra-mes .valor { font: 700 12px var(--display); }
 .barra-mes .mes { font-size: 11px; color: var(--gris); }
 
+/* Encuesta de bienvenida o baja: si el socio todavía no respondió, el aviso se marca (Emanuel, 10/11/2026) */
+.aclara.alerta { background: #f8e2b4; color: #7a5209; border-radius: 8px; padding: 8px 10px; }
+
 /* Próximos días: lo que hay anotado de verdad, clase por clase (Emanuel, 10/11/2026) */
 .dias-prox .chip small { font-weight: 700; opacity: .7; margin-left: 4px; }
 .clases-prox { list-style: none; display: grid; gap: 4px; margin: 8px 0 0; padding: 0; }

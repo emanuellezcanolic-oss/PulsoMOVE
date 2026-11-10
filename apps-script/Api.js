@@ -596,7 +596,10 @@ function usuariosResumen(req, deps) {
 
 // ---------- Registro manual: lo que MOVE no ve ----------
 
-const TIPOS_ACTIVIDAD = ['mensaje', 'consulta', 'prueba', 'resena', 'referido'];
+const TIPOS_ACTIVIDAD = ['mensaje', 'consulta', 'prueba', 'resena', 'referido', 'encuesta'];
+// Encuesta de bienvenida o de baja mandada como tarea extra (Emanuel, 10/11/2026). Va en la categoría; si el socio había
+// respondido el mensaje de antes se guarda en `interes` ('si' o 'no'), para no agregar una columna a la hoja.
+const CATEGORIAS_ENCUESTA = ['Bienvenida', 'Baja'];
 const DIAS_SEGUIMIENTO = { alto: 0, medio: 2, exploratorio: 7 };   // MAN-REC-02: alto en el momento, medio a las 48 horas, exploratorio a la semana
 
 function registrar(req, deps) {
@@ -604,11 +607,13 @@ function registrar(req, deps) {
   const id = texto(req.id), tipo = texto(req.tipo), nombre = texto(req.nombre), interes = texto(req.interes);
   if (!id || TIPOS_ACTIVIDAD.indexOf(tipo) < 0 || !nombre) falla('datos_invalidos');
   if (tipo === 'consulta' && !Object.prototype.hasOwnProperty.call(DIAS_SEGUIMIENTO, interes)) falla('datos_invalidos');
+  const respondio = texto(req.respondio);
+  if (tipo === 'encuesta' && (CATEGORIAS_ENCUESTA.indexOf(texto(req.categoria)) < 0 || ['si', 'no'].indexOf(respondio) < 0)) falla('datos_invalidos');
   if (deps.repo.leer('actividad').some(a => a.id === id)) return {};
   const hoy = deps.hoy();
   deps.repo.agregar('actividad', {
     id: id, ts: new Date(deps.ahora()).toISOString(), dni: usuario.dni, sede: usuario.sede, tipo: tipo, nombre: nombre,
-    categoria: texto(req.categoria), canal: texto(req.canal), origen: texto(req.origen), interes: interes, detalle: texto(req.detalle),
+    categoria: texto(req.categoria), canal: texto(req.canal), origen: texto(req.origen), interes: tipo === 'encuesta' ? respondio : interes, detalle: texto(req.detalle),
   });
   if (tipo === 'consulta') {
     const fecha = sumarDias(hoy, DIAS_SEGUIMIENTO[interes]);
@@ -641,7 +646,7 @@ function valoresEnApp(dni, mes, tareas, registro, actividad, hoy) {
   const cuenta = t => act.filter(a => a.tipo === t).length;
   const encuestas = suyas.filter(t => String(t.tipo).indexOf('Encuesta de baja') === 0);
   const v = {
-    mensajes: contactos.length + cuenta('mensaje'), consultas: cuenta('consulta'), dias_prueba: cuenta('prueba'), resenas: cuenta('resena'), referidos: cuenta('referido'),
+    mensajes: contactos.length + cuenta('mensaje') + cuenta('encuesta'), consultas: cuenta('consulta'), dias_prueba: cuenta('prueba'), resenas: cuenta('resena'), referidos: cuenta('referido'),
     tareas_total: suyas.length, tareas_hechas: hechas.length, adelantadas: marcas.filter(r => r.adelantada === '1').length,
     audios: marcas.filter(r => r.canal === 'AU').length,
   };
