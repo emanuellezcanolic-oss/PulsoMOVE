@@ -32,6 +32,9 @@ const COLUMNAS = {
   profe_reeval: ['id', 'sede', 'profe', 'profe_dni', 'socio_id', 'socio_nombre', 'ultima_eval', 'dias', 'habitos', 'cargada'],
   // Revisión del plan renovado contra el anterior: % customizado, saltos de escalón, RPE y la respuesta del profe
   profe_revision: ['id', 'fecha', 'sede', 'profe', 'profe_dni', 'socio_id', 'socio_nombre', 'pct', 'banda', 'saltos', 'rpe', 'respuesta', 'respondida_en', 'nota', 'minutos', 'dias_plan'],
+  // Auditoría de planes (F2.18): hallazgos como tareas, y el puntaje de cada profe por día
+  profe_auditoria: ['id', 'fecha', 'ultima', 'sede', 'profe', 'profe_dni', 'socio_id', 'socio_nombre', 'seccion', 'gravedad', 'texto', 'cuantos', 'estado', 'marcada_en', 'corregido_en', 'reaparecio'],
+  profe_puntajes: ['fecha', 'profe', 'profe_dni', 'socios', 'puntaje', 'gestion', 'diagnostico', 'metodologia', 'custom', 'rpe'],
   // Días en que el profe terminó todo lo del día, y cuánto tardó desde la primera marca
   profe_dias: ['dni', 'fecha', 'primera_ts', 'completado_ts', 'planes', 'minutos'],
   garantia: ['id', 'ts', 'sede', 'socio_id', 'socio_nombre', 'profe', 'motivo', 'registra_dni', 'estado', 'decide_dni',

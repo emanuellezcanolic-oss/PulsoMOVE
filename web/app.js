@@ -733,6 +733,49 @@
       <button class="boton verde ancho" data-accion="plan-extra">Agregar plan extra</button></div>`;
   }
 
+  // ---------- Auditoría de planes (F2.18): lo que hay que corregir y el puntaje ----------
+  const NIVEL_AUD = { optimo: ['verde', 'Óptimo'], mejorar: ['amarillo', 'A mejorar'], critico: ['rojo', 'Crítico'] };
+  const SECCION_AUD = { gestion: 'Gestión y vigencia', diagnostico: 'Diagnóstico', metodologia: 'Rigor metodológico', custom: 'Customización', rpe: 'RPE', general: 'Generales' };
+
+  function tarjetaHallazgo(h, i, puedeMarcar) {
+    const estado = h.estado === 'marcada' ? '<span class="estado hecha">Dijiste que lo corregiste</span>'
+      : h.estado === 'no_corregido' ? '<span class="estado atrasada">Dijiste que lo corregiste y sigue igual</span>'
+      : h.reaparecio ? '<span class="estado ayer">Volvió a aparecer</span>' : h.gravedad === 'r' ? '<span class="estado atrasada">Importante</span>' : '';
+    return `<article class="tarjeta hallazgo${h.estado === 'marcada' ? ' hecha' : ''}" style="--i:${i}"><div class="cabeza">
+        <span class="socio">${esc(h.socio_nombre)}</span>${estado}
+        <span class="profe">${esc(SECCION_AUD[h.seccion] || h.seccion)} · desde el ${esc(ddmm(h.desde))}</span>
+        ${h.detalle.slice(0, 6).map(t => `<span class="nota">• ${esc(t)}</span>`).join('')}${h.detalle.length > 6 ? `<span class="nota">… y ${h.detalle.length - 6} más</span>` : ''}
+      </div>${puedeMarcar ? `<div class="fila-accion">${h.estado === 'marcada'
+        ? `<button class="boton claro" data-accion="aud-marcar" data-id="${esc(h.id)}" data-hecha="0">Deshacer</button><span class="aclara">Mañana lo miramos en MOVE.</span>`
+        : `<button class="boton claro" data-accion="aud-marcar" data-id="${esc(h.id)}" data-hecha="1">Lo corregí</button>`}</div>` : ''}</article>`;
+  }
+
+  function bloqueAuditoria(M) {
+    const A = M.auditoria;
+    if (!A || !A.pendientes.length) return '';
+    let i = 0;
+    const filtro = E.audSeccion || '';
+    const lista = A.pendientes.filter(h => !filtro || h.seccion === filtro);
+    const secciones = [...new Set(A.pendientes.map(h => h.seccion))];
+    return `<section class="grupo"><h2>🧾 Auditoría: para corregir <span class="cuenta">${A.cuantos.pendientes}</span></h2>
+      <p class="intro-grupo">Lo encontró la auditoría de anoche en tus planes. Cuando lo corregís en MOVE, se cierra solo a la mañana siguiente; si tocás "Lo corregí", lo miramos primero.${A.cuantos.corregidos_semana ? ` Esta semana corregiste ${A.cuantos.corregidos_semana}. 👏` : ''}</p>
+      <div class="filtros"><button class="chip" data-accion="aud-seccion" data-s="" aria-pressed="${!filtro}">Todo</button>${secciones.map(s => `<button class="chip" data-accion="aud-seccion" data-s="${s}" aria-pressed="${filtro === s}">${esc(SECCION_AUD[s] || s)}</button>`).join('')}</div>
+      <details class="catalogo"${E.audAbierto ? ' open' : ''}><summary data-accion="aud-abrir">Ver ${lista.length} socio${lista.length === 1 ? '' : 's'} con algo para corregir</summary>
+        ${lista.slice(0, 40).map(h => tarjetaHallazgo(h, i++, true)).join('')}${lista.length > 40 ? `<p class="aclara">Y ${lista.length - 40} más: corregí estos primero.</p>` : ''}
+      </details></section>`;
+  }
+
+  function puntajeAuditoria(A, titulo) {
+    if (!A || A.puntaje == null) return '';
+    const [color, nivel] = NIVEL_AUD[A.nivel] || ['gris', ''];
+    const cambio = A.cambio_semana == null ? '' : A.cambio_semana > 0 ? ` · ▲ ${A.cambio_semana} en la semana` : A.cambio_semana < 0 ? ` · ▼ ${-A.cambio_semana} en la semana` : ' · igual que hace una semana';
+    return `<div class="persona auditoria-pts"><b>${esc(titulo || 'Auditoría de tus planes')}</b>
+      <div class="pts-grande ${color}"><strong>${A.puntaje}</strong><span>${esc(nivel)}${esc(cambio)}</span></div>
+      ${(A.secciones || []).map(s => `<div class="pts-seccion"><span>${esc(s.nombre)}</span><span class="avance"><i class="${s.puntaje >= 80 ? 'verde' : s.puntaje >= 60 ? 'amarillo' : 'rojo'}" style="width:${s.puntaje}%"></i></span><b>${s.puntaje}</b></div>`).join('')}
+      ${A.repetido && A.repetido.length ? `<span class="aclara">Lo que más se repite: ${A.repetido.slice(0, 3).map(r => esc(r.que) + ' (' + r.veces + ')').join(' · ')}</span>` : ''}
+      <span class="aclara">80 o más: óptimo · 60 a 79: a mejorar · menos de 60: crítico.</span></div>`;
+  }
+
   function vistaMesProfe() {
     if (!E.planes) return '<div class="cargando">Cargando tu mes…</div>';
     const M = E.planes.mio;
@@ -744,6 +787,7 @@
     return `<h1 class="titulo">Tu mes <span>·</span> planes</h1>
       <p class="bajada">Tus números, como los mira la auditoría. Son para vos: no hay ranking entre compañeros.</p>
       <div class="personas">
+        ${puntajeAuditoria(M.auditoria)}
         <div class="persona"><b>Planes</b><div class="cifras">${c(r.en_agenda, 'te quedan en los próximos 30 días')}${c(r.atrasadas, 'atrasados hoy', r.atrasadas ? 'mal' : 'bien')}${c(r.hechas_mes, 'hechos este mes', 'bien')}${c(s.dias_completos, 'días completos')}${c(s.en_una_hora, 'días en menos de 1 hora')}${c(r.en_papel || 0, 'en papel')}</div></div>
         <div class="persona"><b>Customización y progresión (30 días)</b><div class="cifras">${c(rv.revisados, 'planes renovados revisados')}${c(rv.en_rango, 'entre 30 y 80%', 'bien')}${c(rv.casi_todo, 'cambiaste casi todo', rv.casi_todo ? 'mal' : '')}${c(rv.con_saltos, 'con saltos de escalón', rv.con_saltos ? 'mal' : 'bien')}${c(rv.saltos_sin_responder, 'saltos sin responder', rv.saltos_sin_responder ? 'mal' : 'bien')}${c(rv.minutos_mediana != null ? rv.minutos_mediana + ' min' : null, 'tardás en armar un plan (aprox.)')}</div></div>
       </div>
@@ -779,6 +823,7 @@
       ${nuevos.length ? `<section class="grupo"><h2>🆕 Plan nuevo, hoy <span class="cuenta">${nuevos.length}</span></h2>${nuevos.map(t => tarjetaPlan(t, i++, true)).join('')}</section>` : ''}
       ${resto.length ? `<section class="grupo"><h2>Para renovar hoy <span class="cuenta">${resto.length}</span></h2>${resto.map(t => tarjetaPlan(t, i++, true)).join('')}</section>`
         : (nuevos.length ? '' : '<div class="vacio">Hoy no tenés planes para renovar. 🎉</div>')}
+      ${bloqueAuditoria(M)}
       ${bloqueHechas(M)}
       ${bloqueRevisiones(M)}
       ${bloqueReeval(M)}
@@ -798,13 +843,14 @@
         return `<button class="chip" data-accion="profe-volver">← Todos los profes</button>
           <h1 class="titulo">${esc(p.profe)}</h1><div class="persona">${cifrasPlanes(p.resumen)}</div>
           <section class="grupo"><h2>Lo de hoy <span class="cuenta">${p.hoy.length}</span></h2>${p.hoy.length ? p.hoy.map(t => tarjetaPlan(t, i++, false)).join('') : '<div class="vacio">Nada para hoy.</div>'}</section>
+          ${p.auditoria ? `<div class="personas">${puntajeAuditoria(p.auditoria, 'Auditoría')}</div>${p.auditoria.pendientes.length ? `<section class="grupo"><h2>🧾 Para corregir <span class="cuenta">${p.auditoria.cuantos.pendientes}</span></h2>${p.auditoria.pendientes.map(h => tarjetaHallazgo(h, i++, false)).join('')}</section>` : ''}` : ''}
           ${p.revisiones && p.revisiones.lista.length ? `<section class="grupo"><h2>🔎 Planes renovados (30 días) <span class="cuenta">${p.revisiones.lista.length}</span></h2>${p.revisiones.lista.map(r => tarjetaRevision(r, i++, false)).join('')}</section>` : ''}`;
       }
     }
     return `<h1 class="titulo">Profes <span>·</span> planes al día</h1>
       <p class="bajada">Lo que cada profe y cada kinesiólogo tiene que renovar hoy, lo atrasado y lo que lleva hecho en el mes.</p>
       ${selector}
-      ${eq.length ? `<div class="personas">${eq.map(p => `<div class="persona"><b>${esc(p.profe)}</b><span class="turno">${p.con_usuario ? 'Con usuario' : 'Todavía sin usuario en PulsoMOVE'}</span>${cifrasPlanes(p.resumen)}${p.dias ? `<span class="uso-hoy">Días completos este mes: ${p.dias.completos} (en menos de 1 hora: ${p.dias.en_una_hora})${p.revisiones && p.revisiones.resumen.minutos_mediana != null ? ` · arma un plan en ~${p.revisiones.resumen.minutos_mediana} min` : ''}${p.resumen.en_papel ? ` · en papel: ${p.resumen.en_papel}` : ''}</span>` : ''}${p.revisiones ? `<span class="uso-hoy">Planes renovados (30 días): ${p.revisiones.resumen.revisados} · en 30-80%: ${p.revisiones.resumen.en_rango} · casi todo cambiado: ${p.revisiones.resumen.casi_todo}${p.revisiones.resumen.con_saltos ? ` · con saltos: ${p.revisiones.resumen.con_saltos} (${p.revisiones.resumen.saltos_sin_responder} sin responder, ${p.revisiones.resumen.corregir} a corregir)` : ''}</span>` : ''}
+      ${eq.length ? `<div class="personas">${eq.map(p => `<div class="persona"><b>${esc(p.profe)}</b><span class="turno">${p.con_usuario ? 'Con usuario' : 'Todavía sin usuario en PulsoMOVE'}</span>${cifrasPlanes(p.resumen)}${p.auditoria && p.auditoria.puntaje != null ? `<span class="uso-hoy aud-linea ${(NIVEL_AUD[p.auditoria.nivel] || [''])[0]}">🧾 Auditoría: <b>${p.auditoria.puntaje}</b> ${esc((NIVEL_AUD[p.auditoria.nivel] || ['', ''])[1])}${p.auditoria.cambio_semana ? ` (${p.auditoria.cambio_semana > 0 ? '▲' : '▼'} ${Math.abs(p.auditoria.cambio_semana)})` : ''} · ${p.auditoria.cuantos.pendientes} para corregir${p.auditoria.cuantos.no_corregidos ? ` · ${p.auditoria.cuantos.no_corregidos} dijo que corrigió y sigue` : ''}</span>` : ''}${p.dias ? `<span class="uso-hoy">Días completos este mes: ${p.dias.completos} (en menos de 1 hora: ${p.dias.en_una_hora})${p.revisiones && p.revisiones.resumen.minutos_mediana != null ? ` · arma un plan en ~${p.revisiones.resumen.minutos_mediana} min` : ''}${p.resumen.en_papel ? ` · en papel: ${p.resumen.en_papel}` : ''}</span>` : ''}${p.revisiones ? `<span class="uso-hoy">Planes renovados (30 días): ${p.revisiones.resumen.revisados} · en 30-80%: ${p.revisiones.resumen.en_rango} · casi todo cambiado: ${p.revisiones.resumen.casi_todo}${p.revisiones.resumen.con_saltos ? ` · con saltos: ${p.revisiones.resumen.con_saltos} (${p.revisiones.resumen.saltos_sin_responder} sin responder, ${p.revisiones.resumen.corregir} a corregir)` : ''}</span>` : ''}
         <button class="chip ver-lista" data-accion="profe-ver" data-p="${esc(p.profe)}">Ver lo de hoy</button></div>`).join('')}</div>`
         : '<div class="vacio">Todavía no hay planes cargados para esta sede.</div>'}`;
   }
@@ -1985,6 +2031,18 @@
     else if (a === 'profe-ver') { E.profeVer = el.dataset.p; render(); window.scrollTo(0, 0); }
     else if (a === 'profe-volver') { E.profeVer = null; render(); }
     else if (a === 'reeval-abrir') { E.reevalAbierto = !el.parentElement.open; }
+    else if (a === 'aud-seccion') { E.audSeccion = el.dataset.s; E.audAbierto = true; render(); }
+    else if (a === 'aud-abrir') { E.audAbierto = !el.parentElement.open; }
+    else if (a === 'aud-marcar') {
+      el.disabled = true;
+      try {
+        const r = await cliente.llamar('profe_auditoria_marcar', { id: el.dataset.id, hecha: el.dataset.hecha === '1' });
+        const A = E.planes && E.planes.mio && E.planes.mio.auditoria;
+        if (A) { const x = A.pendientes.find(v => v.id === r.hallazgo.id); if (x) Object.assign(x, r.hallazgo); }
+        render();
+        aviso(el.dataset.hecha === '1' ? '✅ Anotado: mañana lo miramos en MOVE y, si está corregido, se cierra.' : '↩️ Deshecho.');
+      } catch (e) { el.disabled = false; aviso(PulsoApi.mensaje(e.codigo || e.message), true); }
+    }
     else if (a === 'plan-extra') {
       const campo = app.querySelector('[data-extra-busca]');
       const socios = (E.planes && E.planes.mio && E.planes.mio.reeval && E.planes.mio.reeval.socios) || [];

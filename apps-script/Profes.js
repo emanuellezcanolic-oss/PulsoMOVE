@@ -118,6 +118,7 @@ function profeTareas(req, deps) {
     out.mio.opciones = opcionesDeProfe(usuario, usuarios);
     out.mio.mes = mesDeProfe(usuario, deps, hoy);
     out.mio.hechas = hechasDeProfe(filas, usuario.dni, hoy);
+    out.mio.auditoria = auditoriaDeProfe(usuario.dni, deps, hoy);
   }
   if (coordina) {
     const sede = tieneRol(usuario, 'admin') ? texto(req.sede) : usuario.sede;
@@ -132,7 +133,9 @@ function profeTareas(req, deps) {
       const a = agendaDeProfe(deSede.filter(t => t.profe === n), hoy);
       const dni = (deSede.find(t => t.profe === n && t.profe_dni) || {}).profe_dni;
       const dias = diasMes.filter(d => d.dni === dni);
+      const aud = dni ? auditoriaDeProfe(dni, deps, hoy) : null;
       return { profe: n, con_usuario: !!dni, resumen: a.resumen, hoy: a.hoy, revisiones: rev[n] || null,
+        auditoria: aud ? { puntaje: aud.puntaje, nivel: aud.nivel, cambio_semana: aud.cambio_semana, secciones: aud.secciones, cuantos: aud.cuantos, repetido: aud.repetido, pendientes: aud.pendientes.slice(0, 40) } : null,
         dias: { completos: dias.length, en_una_hora: dias.filter(d => Number(d.minutos) <= META_HORA_MIN).length } };
     });
   }
@@ -647,4 +650,137 @@ function profePlanExtra(req, deps) {
   }
   deps.repo.escribir('profe_tareas', filas);
   return { tarea: vistaTareaProfe(t, hoy) };
+}
+
+// ---------- Auditoría automática de planes (F2.18, Emanuel 11/11/2026) ----------
+// La PC audita todas las noches (pulso_auditoria.py) y sube los hallazgos y el puntaje de cada profe.
+// Cada hallazgo es una tarea: se cierra sola cuando la auditoría siguiente ya no lo encuentra (corregido, verificado).
+// Si el profe dice "lo corregí" y al otro día sigue, queda como "dijo que corrigió y no lo hizo". Si vuelve, "reapareció".
+
+const SECCIONES_AUDITORIA = ['gestion', 'diagnostico', 'metodologia', 'custom', 'rpe', 'general'];
+const NOMBRE_SECCION_AUDITORIA = { gestion: 'Gestión y vigencia', diagnostico: 'Diagnóstico y evolución', metodologia: 'Rigor metodológico',
+  custom: 'Customización', rpe: 'RPE según el objetivo', general: 'Generales' };
+const DIAS_GUARDAR_AUDITORIA = 30;
+const DIAS_GUARDAR_PUNTAJES = 120;
+
+function fusionarAuditoria(viejas, nuevas, auditados, hoy, ts) {
+  const porId = {};
+  viejas.forEach(v => { porId[v.id] = v; });
+  const vistas = {};
+  const filas = [];
+  let nuevasN = 0, corregidas = 0, noCorregidas = 0;
+  nuevas.forEach(n => {
+    const v = porId[n.id];
+    vistas[n.id] = true;
+    let estado = 'pendiente', reaparecio = '';
+    if (v && v.estado !== 'corregido' && v.estado !== 'cerrada') {
+      estado = v.estado;
+      if (v.estado === 'marcada' && fechaArgentina(v.marcada_en) < hoy) { estado = 'no_corregido'; noCorregidas++; }
+    } else {
+      nuevasN++;
+      if (v) reaparecio = '1';
+    }
+    filas.push({
+      id: n.id, fecha: v && estado !== 'pendiente' ? v.fecha : (v && !reaparecio ? v.fecha : hoy), ultima: hoy, sede: n.sede, profe: n.profe, profe_dni: n.profe_dni,
+      socio_id: n.socio_id, socio_nombre: n.socio_nombre, seccion: n.seccion, gravedad: n.gravedad, texto: n.texto, cuantos: n.cuantos,
+      estado: estado, marcada_en: estado === 'pendiente' ? '' : (v && v.marcada_en) || '', corregido_en: '', reaparecio: reaparecio || (v && v.reaparecio) || '',
+    });
+  });
+  const desde = sumarDiasProfe(hoy, -DIAS_GUARDAR_AUDITORIA);
+  viejas.forEach(v => {
+    if (vistas[v.id]) return;
+    if (v.estado === 'corregido' || v.estado === 'cerrada') {
+      if (String(v.corregido_en).slice(0, 10) >= desde) filas.push(v);
+      return;
+    }
+    const verificado = auditados[v.socio_id];
+    if (verificado) corregidas++;
+    filas.push(Object.assign({}, v, { estado: verificado ? 'corregido' : 'cerrada', corregido_en: ts }));
+  });
+  return { filas: filas, nuevas: nuevasN, corregidas: corregidas, no_corregidas: noCorregidas };
+}
+
+function cargarProfeAuditoria(req, deps) {
+  exigirClave(req, deps);
+  const hoy = texto(req.hoy) || deps.hoy();
+  if (!fechaIsoValida(hoy) || !Array.isArray(req.hallazgos) || !Array.isArray(req.puntajes) || !Array.isArray(req.auditados)) falla('datos_invalidos');
+  const lista = req.hallazgos.map(x => ({
+    id: texto(x && x.id), sede: texto(x && x.sede), profe: texto(x && x.profe), profe_dni: normalizarDni(x && x.profe_dni), socio_id: texto(x && x.socio_id),
+    socio_nombre: texto(x && x.socio_nombre), seccion: texto(x && x.seccion), gravedad: texto(x && x.gravedad) === 'r' ? 'r' : 'a',
+    texto: texto(x && x.texto).slice(0, 1500), cuantos: texto(x && x.cuantos),
+  }));
+  if (!lista.every(x => x.id && x.socio_id && x.profe && SECCIONES_AUDITORIA.indexOf(x.seccion) >= 0)) falla('datos_invalidos');
+  const auditados = {};
+  req.auditados.forEach(i => { auditados[texto(i)] = true; });
+  const r = fusionarAuditoria(deps.repo.leer('profe_auditoria'), lista, auditados, hoy, new Date(deps.ahora()).toISOString());
+  deps.repo.escribir('profe_auditoria', r.filas);
+  // el puntaje del día de cada profe: se guarda la historia para ver la evolución
+  const desde = sumarDiasProfe(hoy, -DIAS_GUARDAR_PUNTAJES);
+  const puntajes = deps.repo.leer('profe_puntajes').filter(p => p.fecha >= desde && p.fecha !== hoy);
+  req.puntajes.forEach(p => puntajes.push({
+    fecha: hoy, profe: texto(p.profe), profe_dni: normalizarDni(p.profe_dni), socios: texto(p.socios), puntaje: texto(p.puntaje),
+    gestion: texto(p.gestion), diagnostico: texto(p.diagnostico), metodologia: texto(p.metodologia), custom: texto(p.custom), rpe: texto(p.rpe),
+  }));
+  deps.repo.escribir('profe_puntajes', puntajes);
+  return { nuevas: r.nuevas, corregidas: r.corregidas, no_corregidas: r.no_corregidas, abiertas: lista.length };
+}
+
+function nivelAuditoria(p) {
+  const n = Number(p);
+  return n >= 80 ? 'optimo' : n >= 60 ? 'mejorar' : 'critico';
+}
+
+function vistaHallazgo(h) {
+  return { id: h.id, socio_id: h.socio_id, socio_nombre: h.socio_nombre, seccion: h.seccion, gravedad: h.gravedad, detalle: String(h.texto).split(' | '),
+    estado: h.estado, desde: h.fecha, reaparecio: h.reaparecio === '1' };
+}
+
+// Lo más repetido: el comienzo de cada hallazgo, sin fechas ni nombres de ejercicio
+function loQueMasSeRepite(filas, n) {
+  const c = {};
+  filas.forEach(h => String(h.texto).split(' | ').forEach(t => {
+    const k = t.replace(/^D[ií]a [A-Z0-9]+[^:]*: /, '').split(/[:(]/)[0].replace(/\d+/g, '').trim();
+    if (k) c[k] = (c[k] || 0) + 1;
+  }));
+  return Object.keys(c).map(k => ({ que: k, veces: c[k] })).sort((a, b) => b.veces - a.veces).slice(0, n || 6);
+}
+
+function auditoriaDeProfe(dni, deps, hoy) {
+  const abiertas = deps.repo.leer('profe_auditoria').filter(h => h.profe_dni === dni);
+  const pts = deps.repo.leer('profe_puntajes').filter(p => p.profe_dni === dni).sort((a, b) => (a.fecha < b.fecha ? -1 : 1));
+  if (!abiertas.length && !pts.length) return null;
+  const ult = pts[pts.length - 1] || null;
+  const hace7 = pts.filter(p => p.fecha <= sumarDiasProfe(hoy, -7)).pop() || null;
+  const pend = abiertas.filter(h => h.estado === 'pendiente' || h.estado === 'no_corregido' || h.estado === 'marcada');
+  const semana = sumarDiasProfe(hoy, -7);
+  return {
+    puntaje: ult ? Number(ult.puntaje) : null, nivel: ult ? nivelAuditoria(ult.puntaje) : '', fecha: ult ? ult.fecha : '',
+    cambio_semana: ult && hace7 ? Number(ult.puntaje) - Number(hace7.puntaje) : null,
+    secciones: ult ? ['gestion', 'diagnostico', 'metodologia', 'custom', 'rpe'].map(s => ({ seccion: s, nombre: NOMBRE_SECCION_AUDITORIA[s], puntaje: Number(ult[s]) })) : [],
+    historia: pts.slice(-8).map(p => ({ fecha: p.fecha, puntaje: Number(p.puntaje) })),
+    pendientes: pend.sort((a, b) => (a.gravedad === b.gravedad ? String(a.socio_nombre).localeCompare(String(b.socio_nombre)) : a.gravedad === 'r' ? -1 : 1)).slice(0, 150).map(vistaHallazgo),
+    cuantos: { pendientes: pend.length, no_corregidos: pend.filter(h => h.estado === 'no_corregido').length,
+      corregidos_semana: abiertas.filter(h => h.estado === 'corregido' && String(h.corregido_en).slice(0, 10) >= semana).length },
+    repetido: loQueMasSeRepite(pend, 5),
+  };
+}
+
+// "Lo corregí": a la mañana siguiente la PC lo mira en MOVE. hecha: false lo desmarca.
+function profeAuditoriaMarcar(req, deps) {
+  const { usuario } = sesion(req, deps);
+  if (!esProfe(usuario)) falla('prohibido');
+  const filas = deps.repo.leer('profe_auditoria');
+  const h = filas.find(x => x.id === texto(req.id) && x.profe_dni === usuario.dni && x.estado !== 'corregido' && x.estado !== 'cerrada');
+  if (!h) falla('no_existe');
+  if (req.hecha === false) { h.estado = 'pendiente'; h.marcada_en = ''; } else { h.estado = 'marcada'; h.marcada_en = new Date(deps.ahora()).toISOString(); }
+  deps.repo.escribir('profe_auditoria', filas);
+  return { hallazgo: vistaHallazgo(h) };
+}
+
+// Para la PC: los socios con algo marcado como corregido, así se los vuelve a mirar en MOVE a la mañana
+function profeAuditoriaMarcadas(req, deps) {
+  exigirClave(req, deps);
+  const ids = {};
+  deps.repo.leer('profe_auditoria').forEach(h => { if (h.estado === 'marcada') ids[h.socio_id] = true; });
+  return { socios: Object.keys(ids) };
 }

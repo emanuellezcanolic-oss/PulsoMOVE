@@ -527,3 +527,22 @@ details.grupo summary h2 { display: inline; }
 
 .plan-extra { margin-top: 12px; display: grid; gap: 6px; }
 .plan-extra .buscador { margin: 4px 0 0; }
+
+/* Auditoría de planes */
+.auditoria-pts { display: grid; gap: 6px; }
+.pts-grande { display: flex; align-items: baseline; gap: 10px; }
+.pts-grande strong { font: 800 38px/1 var(--display); }
+.pts-grande.verde strong { color: var(--verde-texto); }
+.pts-grande.amarillo strong { color: var(--naranja); }
+.pts-grande.rojo strong { color: var(--rojo); }
+.pts-grande span { font-size: 13px; color: var(--gris); }
+.pts-seccion { display: grid; grid-template-columns: 1fr 90px 28px; gap: 8px; align-items: center; font-size: 12.5px; }
+.pts-seccion .avance { height: 7px; border-radius: 999px; background: var(--suave); overflow: hidden; }
+.pts-seccion .avance i { display: block; height: 100%; }
+.pts-seccion .avance i.verde { background: var(--verde); }
+.pts-seccion .avance i.amarillo { background: var(--naranja); }
+.pts-seccion .avance i.rojo { background: var(--rojo); }
+.aud-linea b { font-weight: 800; }
+.aud-linea.rojo b { color: var(--rojo); }
+.aud-linea.amarillo b { color: var(--naranja); }
+.aud-linea.verde b { color: var(--verde-texto); }
