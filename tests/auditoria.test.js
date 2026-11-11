@@ -75,3 +75,50 @@ test('cargar_profe_auditoria pide la clave y valida la sección', () => {
   assert.equal(pedir(d, { accion: 'cargar_profe_auditoria', clave: 'mal', hoy: d.dia, hallazgos: [], puntajes: [], auditados: [] }).error, 'clave');
   assert.equal(cargar(d, [h(1, 'otra')]).error, 'datos_invalidos');
 });
+
+test('meta del día: pocas correcciones, después de los planes del día y sin lo que se corrige al renovar', () => {
+  const d = entorno();
+  pedir(d, { accion: 'cargar_profe_tareas', clave: PROPS.CLAVE_CARGA, hoy: d.dia, tareas: [1, 2, 3].map(n => ({ id: 'pp-' + n, fecha: '2026-11-11', sede: 'bolson', profe: 'Profe Uno', profe_dni: '20111222',
+    socio_id: String(n), socio_nombre: 'Socio ' + n, tipo: 'Renovar plan', accion: 'Renovarlo', vence: '2026-11-12', alta: '' })) });
+  cargar(d, [1, 5, 6, 7, 8, 9, 10].map(n => h(n, 'custom')), [pt(70)]);
+  const A = pedir(d, { accion: 'profe_tareas', token: entrar(d, '20111222') }).data.mio.auditoria;
+  // 3 planes hoy = 36 min; quedan 24 min = 4 correcciones (el máximo)
+  assert.deepEqual([A.dia.planes_hoy, A.dia.min_quedan, A.dia.meta, A.dia.al_renovar], [3, 24, 4, 1]);
+  assert.equal(A.dia.lista.length, 4);
+  assert.ok(A.dia.lista.every(x => x.socio_id !== '1'));            // el socio 1 renueva hoy: se corrige con el plan nuevo
+  assert.ok(A.pendientes.find(x => x.socio_id === '1').al_renovar);
+});
+
+test('prefiero dejarlo así pide motivo, queda para coordinación y no vuelve a aparecer', () => {
+  const d = entorno();
+  pedir(d, { accion: 'cargar_profe_tareas', clave: PROPS.CLAVE_CARGA, hoy: d.dia, tareas: [{ id: 'pp-9', fecha: '2026-11-30', sede: 'bolson', profe: 'Profe Uno', profe_dni: '20111222',
+    socio_id: '9', socio_nombre: 'Socio 9', tipo: 'Renovar plan', accion: 'Renovarlo', vence: '2026-12-01', alta: '' }] });
+  cargar(d, [h(1, 'custom'), h(2, 'custom')], [pt(70)]);
+  const tok = entrar(d, '20111222');
+  assert.equal(pedir(d, { accion: 'profe_auditoria_marcar', token: tok, id: 'au-1-custom', que: 'dejar', motivo: '' }).error, 'datos_invalidos');
+  assert.equal(pedir(d, { accion: 'profe_auditoria_marcar', token: tok, id: 'au-1-custom', que: 'dejar', motivo: 'Es lo que necesita este socio' }).data.hallazgo.estado, 'dejada');
+  let A = pedir(d, { accion: 'profe_tareas', token: tok }).data.mio.auditoria;
+  assert.equal(A.dia.hechas, 1);
+  assert.deepEqual(A.pendientes.map(x => x.socio_id), ['2']);
+  assert.equal(A.dejadas[0].motivo, 'Es lo que necesita este socio');
+  // la auditoría de la noche lo vuelve a encontrar: sigue dejada, con su motivo
+  dia(d, '2026-11-12');
+  cargar(d, [h(1, 'custom'), h(2, 'custom')], [pt(70)]);
+  const fila = d.repo.hojas.profe_auditoria.find(x => x.id === 'au-1-custom');
+  assert.deepEqual([fila.estado, fila.motivo], ['dejada', 'Es lo que necesita este socio']);
+  const eq = pedir(d, { accion: 'profe_tareas', token: entrar(d, '20555666') }).data.equipo[0];
+  assert.equal(eq.auditoria.cuantos.dejadas, 1);
+  // deshacer la devuelve a pendiente
+  assert.equal(pedir(d, { accion: 'profe_auditoria_marcar', token: entrar(d, '20111222'), id: 'au-1-custom', que: 'deshacer' }).data.hallazgo.estado, 'pendiente');
+});
+
+test('otro día la saca de la meta hasta el próximo día hábil', () => {
+  const d = entorno();
+  cargar(d, [h(1, 'custom', { gravedad: 'r' }), h(2, 'custom')], [pt(70)]);
+  const tok = entrar(d, '20111222');
+  assert.equal(pedir(d, { accion: 'profe_auditoria_marcar', token: tok, id: 'au-1-custom', que: 'otro_dia' }).data.hallazgo.pospuesta, '2026-11-12');
+  assert.ok(pedir(d, { accion: 'profe_tareas', token: tok }).data.mio.auditoria.dia.lista.every(x => x.socio_id !== '1'));
+  dia(d, '2026-11-12');
+  cargar(d, [h(1, 'custom', { gravedad: 'r' }), h(2, 'custom')], [pt(70)]);
+  assert.equal(pedir(d, { accion: 'profe_tareas', token: entrar(d, '20111222') }).data.mio.auditoria.dia.lista[0].socio_id, '1');
+});

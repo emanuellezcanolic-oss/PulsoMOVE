@@ -118,7 +118,10 @@ function profeTareas(req, deps) {
     out.mio.opciones = opcionesDeProfe(usuario, usuarios);
     out.mio.mes = mesDeProfe(usuario, deps, hoy);
     out.mio.hechas = hechasDeProfe(filas, usuario.dni, hoy);
-    out.mio.auditoria = auditoriaDeProfe(usuario.dni, deps, hoy);
+    const pronto = sumarDiasProfe(hoy, DIAS_AL_RENOVAR);
+    const renueva = {};
+    filas.forEach(t => { if (t.profe_dni === usuario.dni && t.estado === 'pendiente' && t.fecha <= pronto) renueva[t.socio_id] = true; });
+    out.mio.auditoria = auditoriaDeProfe(usuario.dni, deps, hoy, { planesHoy: out.mio.resumen.pendientes_hoy + out.mio.resumen.hechas_hoy, renueva: renueva });
   }
   if (coordina) {
     const sede = tieneRol(usuario, 'admin') ? texto(req.sede) : usuario.sede;
@@ -136,7 +139,7 @@ function profeTareas(req, deps) {
       const dias = diasMes.filter(d => d.dni === dni);
       const aud = dni ? auditoriaDeProfe(dni, deps, hoy) : null;
       return { profe: n, con_usuario: !!dni, resumen: a.resumen, hoy: a.hoy, revisiones: rev[n] || null, coord: coord[n] || null,
-        auditoria: aud ? { puntaje: aud.puntaje, nivel: aud.nivel, cambio_semana: aud.cambio_semana, secciones: aud.secciones, cuantos: aud.cuantos, repetido: aud.repetido, pendientes: aud.pendientes.slice(0, 40) } : null,
+        auditoria: aud ? { puntaje: aud.puntaje, nivel: aud.nivel, cambio_semana: aud.cambio_semana, secciones: aud.secciones, cuantos: aud.cuantos, repetido: aud.repetido, pendientes: aud.pendientes.slice(0, 40), dejadas: aud.dejadas.slice(0, 40) } : null,
         dias: { completos: dias.length, en_una_hora: dias.filter(d => Number(d.minutos) <= META_HORA_MIN).length } };
     });
   }
@@ -664,6 +667,14 @@ const SECCIONES_AUDITORIA = ['gestion', 'diagnostico', 'metodologia', 'custom', 
 const NOMBRE_SECCION_AUDITORIA = { gestion: 'Gestión y vigencia', diagnostico: 'Diagnóstico y evolución', metodologia: 'Rigor metodológico',
   custom: 'Customización', rpe: 'RPE según el objetivo', general: 'Generales' };
 const DIAS_GUARDAR_AUDITORIA = 30;
+// Meta del día (Emanuel, 11/11/2026): el profe tiene una hora por día, en casa, para los planes y estas tareas.
+// Primero van los planes del día; con lo que queda de la hora, unas pocas correcciones de la auditoría.
+const MIN_HORA_PROFE = 60;
+const MIN_POR_PLAN = 12;           // lo que tarda en promedio un plan (mediana real del equipo: 11 a 19 min)
+const MIN_POR_CORRECCION = 5;
+const META_AUDITORIA_MAX = 4;
+const DIAS_AL_RENOVAR = 7;         // lo de un socio que renueva en una semana se corrige con el plan nuevo
+const MOTIVO_MAX = 300;
 const DIAS_GUARDAR_PUNTAJES = 120;
 
 function fusionarAuditoria(viejas, nuevas, auditados, hoy, ts) {
@@ -687,6 +698,7 @@ function fusionarAuditoria(viejas, nuevas, auditados, hoy, ts) {
       id: n.id, fecha: v && estado !== 'pendiente' ? v.fecha : (v && !reaparecio ? v.fecha : hoy), ultima: hoy, sede: n.sede, profe: n.profe, profe_dni: n.profe_dni,
       socio_id: n.socio_id, socio_nombre: n.socio_nombre, seccion: n.seccion, gravedad: n.gravedad, texto: n.texto, cuantos: n.cuantos,
       estado: estado, marcada_en: estado === 'pendiente' ? '' : (v && v.marcada_en) || '', corregido_en: '', reaparecio: reaparecio || (v && v.reaparecio) || '',
+      motivo: estado === 'dejada' ? (v && v.motivo) || '' : '', pospuesta: estado === 'pendiente' && v && !reaparecio ? v.pospuesta || '' : '',
     });
   });
   const desde = sumarDiasProfe(hoy, -DIAS_GUARDAR_AUDITORIA);
@@ -733,9 +745,24 @@ function nivelAuditoria(p) {
   return n >= 80 ? 'optimo' : n >= 60 ? 'mejorar' : 'critico';
 }
 
-function vistaHallazgo(h) {
+function vistaHallazgo(h, alRenovar) {
   return { id: h.id, socio_id: h.socio_id, socio_nombre: h.socio_nombre, seccion: h.seccion, gravedad: h.gravedad, detalle: String(h.texto).split(' | '),
-    estado: h.estado, desde: h.fecha, reaparecio: h.reaparecio === '1' };
+    estado: h.estado, desde: h.fecha, reaparecio: h.reaparecio === '1', motivo: h.motivo || '', pospuesta: h.pospuesta || '', al_renovar: !!alRenovar };
+}
+
+// Orden para corregir: lo que dijo que corrigió y sigue igual, lo grave, lo más viejo
+function ordenHallazgo(a, b) {
+  const k = h => [h.estado === 'no_corregido' ? 0 : 1, h.gravedad === 'r' ? 0 : 1, String(h.fecha), String(h.id)];
+  const x = k(a), y = k(b);
+  for (let i = 0; i < x.length; i++) if (x[i] !== y[i]) return x[i] < y[i] ? -1 : 1;
+  return 0;
+}
+
+// Cuántas correcciones entran hoy en la hora, después de los planes del día
+function metaAuditoria(planesHoy) {
+  const minPlanes = planesHoy * MIN_POR_PLAN;
+  const quedan = Math.max(0, MIN_HORA_PROFE - minPlanes);
+  return { meta: Math.max(1, Math.min(META_AUDITORIA_MAX, Math.floor(quedan / MIN_POR_CORRECCION))), min_planes: minPlanes, min_quedan: quedan };
 }
 
 // Lo más repetido: el comienzo de cada hallazgo, sin fechas ni nombres de ejercicio
@@ -748,7 +775,7 @@ function loQueMasSeRepite(filas, n) {
   return Object.keys(c).map(k => ({ que: k, veces: c[k] })).sort((a, b) => b.veces - a.veces).slice(0, n || 6);
 }
 
-function auditoriaDeProfe(dni, deps, hoy) {
+function auditoriaDeProfe(dni, deps, hoy, agenda) {
   const abiertas = deps.repo.leer('profe_auditoria').filter(h => h.profe_dni === dni);
   const pts = deps.repo.leer('profe_puntajes').filter(p => p.profe_dni === dni).sort((a, b) => (a.fecha < b.fecha ? -1 : 1));
   if (!abiertas.length && !pts.length) return null;
@@ -756,13 +783,26 @@ function auditoriaDeProfe(dni, deps, hoy) {
   const hace7 = pts.filter(p => p.fecha <= sumarDiasProfe(hoy, -7)).pop() || null;
   const pend = abiertas.filter(h => h.estado === 'pendiente' || h.estado === 'no_corregido' || h.estado === 'marcada');
   const semana = sumarDiasProfe(hoy, -7);
+  const renueva = (agenda && agenda.renueva) || {};
+  const hechoHoy = h => (h.estado === 'marcada' || h.estado === 'dejada') && fechaArgentina(h.marcada_en) === hoy;
+  const libres = pend.filter(h => h.estado !== 'marcada' && !(h.pospuesta && h.pospuesta > hoy) && !renueva[h.socio_id]).sort(ordenHallazgo);
+  const m = metaAuditoria(agenda ? agenda.planesHoy : 0);
+  const hechasHoy = abiertas.filter(hechoHoy);
+  const dia = agenda ? Object.assign(m, {
+    hechas: hechasHoy.length, planes_hoy: agenda.planesHoy,
+    lista: hechasHoy.map(h => vistaHallazgo(h)).concat(libres.slice(0, Math.max(0, m.meta - hechasHoy.length)).map(h => vistaHallazgo(h))),
+    al_renovar: pend.filter(h => renueva[h.socio_id]).length, pospuestas: pend.filter(h => h.pospuesta && h.pospuesta > hoy).length,
+  }) : null;
+  const dejadas = abiertas.filter(h => h.estado === 'dejada');
   return {
+    dia: dia,
+    dejadas: dejadas.sort((a, b) => (String(a.marcada_en) < String(b.marcada_en) ? 1 : -1)).slice(0, 60).map(h => vistaHallazgo(h)),
     puntaje: ult ? Number(ult.puntaje) : null, nivel: ult ? nivelAuditoria(ult.puntaje) : '', fecha: ult ? ult.fecha : '',
     cambio_semana: ult && hace7 ? Number(ult.puntaje) - Number(hace7.puntaje) : null,
     secciones: ult ? ['gestion', 'diagnostico', 'metodologia', 'custom', 'rpe'].map(s => ({ seccion: s, nombre: NOMBRE_SECCION_AUDITORIA[s], puntaje: Number(ult[s]) })) : [],
     historia: pts.slice(-8).map(p => ({ fecha: p.fecha, puntaje: Number(p.puntaje) })),
-    pendientes: pend.sort((a, b) => (a.gravedad === b.gravedad ? String(a.socio_nombre).localeCompare(String(b.socio_nombre)) : a.gravedad === 'r' ? -1 : 1)).slice(0, 150).map(vistaHallazgo),
-    cuantos: { pendientes: pend.length, no_corregidos: pend.filter(h => h.estado === 'no_corregido').length,
+    pendientes: pend.sort((a, b) => (a.gravedad === b.gravedad ? String(a.socio_nombre).localeCompare(String(b.socio_nombre)) : a.gravedad === 'r' ? -1 : 1)).slice(0, 150).map(h => vistaHallazgo(h, renueva[h.socio_id])),
+    cuantos: { pendientes: pend.length, no_corregidos: pend.filter(h => h.estado === 'no_corregido').length, dejadas: dejadas.length,
       corregidos_semana: abiertas.filter(h => h.estado === 'corregido' && String(h.corregido_en).slice(0, 10) >= semana).length },
     repetido: loQueMasSeRepite(pend, 5),
   };
@@ -775,7 +815,17 @@ function profeAuditoriaMarcar(req, deps) {
   const filas = deps.repo.leer('profe_auditoria');
   const h = filas.find(x => x.id === texto(req.id) && x.profe_dni === usuario.dni && x.estado !== 'corregido' && x.estado !== 'cerrada');
   if (!h) falla('no_existe');
-  if (req.hecha === false) { h.estado = 'pendiente'; h.marcada_en = ''; } else { h.estado = 'marcada'; h.marcada_en = new Date(deps.ahora()).toISOString(); }
+  // que: 'corregi' (o hecha: true), 'deshacer' (o hecha: false), 'dejar' (prefiero dejarlo así, con motivo), 'otro_dia'
+  const que = texto(req.que) || (req.hecha === false ? 'deshacer' : 'corregi');
+  const ts = new Date(deps.ahora()).toISOString();
+  if (que === 'deshacer') { h.estado = 'pendiente'; h.marcada_en = ''; h.motivo = ''; h.pospuesta = ''; }
+  else if (que === 'corregi') { h.estado = 'marcada'; h.marcada_en = ts; h.motivo = ''; h.pospuesta = ''; }
+  else if (que === 'dejar') {
+    const motivo = texto(req.motivo).slice(0, MOTIVO_MAX);
+    if (!motivo) falla('datos_invalidos');
+    h.estado = 'dejada'; h.marcada_en = ts; h.motivo = motivo; h.pospuesta = '';
+  } else if (que === 'otro_dia') { h.estado = h.estado === 'no_corregido' ? 'no_corregido' : 'pendiente'; h.pospuesta = habilesDespues(deps.hoy(), 1)[0]; }
+  else falla('datos_invalidos');
   deps.repo.escribir('profe_auditoria', filas);
   return { hallazgo: vistaHallazgo(h) };
 }

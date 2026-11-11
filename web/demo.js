@@ -256,6 +256,9 @@
       au(4, 'Pedro Gómez', 'metodologia', 'a', 'Día A · Bloque N°2: Salto al cajón: los pliométricos van en el Bloque N°1', { reaparecio: '1' }),
       au(5, 'Ana Ríos', 'general', 'a', 'Borrar rutinas viejas (3): siguen asignadas días de planes anteriores'),
       au(6, 'Jorge Paz', 'diagnostico', 'a', 'Cargar un objetivo concreto en la app'),
+      au(7, 'Nora Díaz', 'custom', 'a', 'Copia del plan modelo (AFG 1 A.K): solo se customizó el 14% de los ejercicios', { estado: 'dejada', marcada_en: atras(2) + 'T12:00:00.000Z', motivo: 'Es lo que necesita este socio: recién empieza' }),
+      au(8, 'Iván Molina', 'gestion', 'a', 'Cada día del plan tiene una fecha de vencimiento diferente'),
+      au(9, 'Elsa Cano', 'diagnostico', 'a', 'Cargar la fecha de evaluación en el excel'),
     ];
     const pp_ = (dias, puntaje) => ({ fecha: atras(dias), profe: PM, profe_dni: B, socios: '80', puntaje: String(puntaje), gestion: '58', diagnostico: '41', metodologia: '96', custom: '84', rpe: '90' });
     const profe_puntajes = [pp_(14, 64), pp_(7, 68), pp_(0, 71)];

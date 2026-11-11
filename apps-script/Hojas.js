@@ -33,7 +33,7 @@ const COLUMNAS = {
   // Revisión del plan renovado contra el anterior: % customizado, saltos de escalón, RPE y la respuesta del profe
   profe_revision: ['id', 'fecha', 'sede', 'profe', 'profe_dni', 'socio_id', 'socio_nombre', 'pct', 'banda', 'saltos', 'rpe', 'respuesta', 'respondida_en', 'nota', 'minutos', 'dias_plan'],
   // Auditoría de planes (F2.18): hallazgos como tareas, y el puntaje de cada profe por día
-  profe_auditoria: ['id', 'fecha', 'ultima', 'sede', 'profe', 'profe_dni', 'socio_id', 'socio_nombre', 'seccion', 'gravedad', 'texto', 'cuantos', 'estado', 'marcada_en', 'corregido_en', 'reaparecio'],
+  profe_auditoria: ['id', 'fecha', 'ultima', 'sede', 'profe', 'profe_dni', 'socio_id', 'socio_nombre', 'seccion', 'gravedad', 'texto', 'cuantos', 'estado', 'marcada_en', 'corregido_en', 'reaparecio', 'motivo', 'pospuesta'],
   // Tablero de coordinación: lo que calcula la PC por profe (vencidos y cuántas veces vino, customización, tiempo). Solo la última corrida
   // Horario de cada profe y kinesiólogo en cada sede (lo carga la PC; días 0=lunes … 6=domingo, '0-4' o '0,2,4')
   profe_horarios: ['profe', 'sede', 'dias', 'desde', 'hasta'],

@@ -738,32 +738,58 @@
   const NIVEL_AUD = { optimo: ['verde', 'Óptimo'], mejorar: ['amarillo', 'A mejorar'], critico: ['rojo', 'Crítico'] };
   const SECCION_AUD = { gestion: 'Gestión y vigencia', diagnostico: 'Diagnóstico', metodologia: 'Rigor metodológico', custom: 'Customización', rpe: 'RPE', general: 'Generales' };
 
+  const MOTIVOS_DEJAR = ['Es lo que necesita este socio', 'Lo hablé con coordinación', 'En este caso la auditoría se equivoca', 'Lo corrijo cuando le renueve el plan'];
+  const plural = (n, uno, varios) => n + ' ' + (n === 1 ? uno : varios);
+
   function tarjetaHallazgo(h, i, puedeMarcar) {
     const estado = h.estado === 'marcada' ? '<span class="estado hecha">Dijiste que lo corregiste</span>'
+      : h.estado === 'dejada' ? '<span class="estado hecha">Lo dejó así</span>'
       : h.estado === 'no_corregido' ? '<span class="estado atrasada">Dijiste que lo corregiste y sigue igual</span>'
+      : h.al_renovar ? '<span class="estado ayer">Se corrige al renovar</span>'
       : h.reaparecio ? '<span class="estado ayer">Volvió a aparecer</span>' : h.gravedad === 'r' ? '<span class="estado atrasada">Importante</span>' : '';
-    return `<article class="tarjeta hallazgo${h.estado === 'marcada' ? ' hecha' : ''}" style="--i:${i}"><div class="cabeza">
+    const id = esc(h.id);
+    let acciones = '';
+    if (puedeMarcar) {
+      if (h.estado === 'marcada') acciones = `<div class="fila-accion"><button class="boton claro" data-accion="aud-marcar" data-id="${id}" data-que="deshacer">Deshacer</button><span class="aclara">Mañana lo miramos en MOVE.</span></div>`;
+      else if (h.estado === 'dejada') acciones = `<div class="fila-accion"><button class="boton claro" data-accion="aud-marcar" data-id="${id}" data-que="deshacer">Deshacer</button></div>`;
+      else acciones = `<div class="fila-accion"><button class="boton claro" data-accion="aud-marcar" data-id="${id}" data-que="corregi">Lo corregí</button>
+          <button class="boton claro" data-accion="aud-marcar" data-id="${id}" data-que="otro_dia">Otro día</button></div>
+        <details class="otra-situacion"><summary>Prefiero dejarlo así</summary><div class="fila-accion">
+          <select data-aud-motivo="${id}" aria-label="Por qué lo dejás así"><option value="">¿Por qué?</option>${MOTIVOS_DEJAR.map(m => `<option>${esc(m)}</option>`).join('')}<option value="otro">Otro motivo</option></select>
+          <input type="text" data-aud-nota="${id}" maxlength="200" placeholder="Contá un poco más (opcional)" aria-label="Detalle">
+          <button class="boton claro" data-accion="aud-dejar" data-id="${id}">Guardar</button></div>
+          <span class="aclara">Coordinación lo ve con tu motivo. No se te vuelve a pedir.</span></details>`;
+    }
+    return `<article class="tarjeta hallazgo${h.estado === 'marcada' || h.estado === 'dejada' ? ' hecha' : ''}" style="--i:${i}"><div class="cabeza">
         <span class="socio">${esc(h.socio_nombre)}</span>${estado}
         <span class="profe">${esc(SECCION_AUD[h.seccion] || h.seccion)} · desde el ${esc(ddmm(h.desde))}</span>
         ${h.detalle.slice(0, 6).map(t => `<span class="nota">• ${esc(t)}</span>`).join('')}${h.detalle.length > 6 ? `<span class="nota">… y ${h.detalle.length - 6} más</span>` : ''}
-      </div>${puedeMarcar ? `<div class="fila-accion">${h.estado === 'marcada'
-        ? `<button class="boton claro" data-accion="aud-marcar" data-id="${esc(h.id)}" data-hecha="0">Deshacer</button><span class="aclara">Mañana lo miramos en MOVE.</span>`
-        : `<button class="boton claro" data-accion="aud-marcar" data-id="${esc(h.id)}" data-hecha="1">Lo corregí</button>`}</div>` : ''}</article>`;
+        ${h.estado === 'dejada' && h.motivo ? `<span class="nota motivo">🤚 ${esc(h.motivo)}</span>` : ''}
+      </div>${acciones}</article>`;
   }
 
   function bloqueAuditoria(M) {
     const A = M.auditoria;
-    if (!A || !A.pendientes.length) return '';
+    if (!A || (!A.pendientes.length && !(A.dejadas || []).length)) return '';
     let i = 0;
+    const D = A.dia;
     const filtro = E.audSeccion || '';
     const lista = A.pendientes.filter(h => !filtro || h.seccion === filtro);
     const secciones = [...new Set(A.pendientes.map(h => h.seccion))];
-    return `<section class="grupo"><h2>🧾 Auditoría: para corregir <span class="cuenta">${A.cuantos.pendientes}</span></h2>
-      <p class="intro-grupo">Lo encontró la auditoría de anoche en tus planes. Cuando lo corregís en MOVE, se cierra solo a la mañana siguiente; si tocás "Lo corregí", lo miramos primero.${A.cuantos.corregidos_semana ? ` Esta semana corregiste ${A.cuantos.corregidos_semana}. 👏` : ''}</p>
-      <div class="filtros"><button class="chip" data-accion="aud-seccion" data-s="" aria-pressed="${!filtro}">Todo</button>${secciones.map(s => `<button class="chip" data-accion="aud-seccion" data-s="${s}" aria-pressed="${filtro === s}">${esc(SECCION_AUD[s] || s)}</button>`).join('')}</div>
-      <details class="catalogo"${E.audAbierto ? ' open' : ''}><summary data-accion="aud-abrir">Ver ${lista.length} socio${lista.length === 1 ? '' : 's'} con algo para corregir</summary>
-        ${lista.slice(0, 40).map(h => tarjetaHallazgo(h, i++, true)).join('')}${lista.length > 40 ? `<p class="aclara">Y ${lista.length - 40} más: corregí estos primero.</p>` : ''}
-      </details></section>`;
+    const listo = D && D.hechas >= D.meta;
+    const hoy = D ? `<h2>🧾 Auditoría · tu meta de hoy <span class="cuenta">${D.hechas} de ${D.meta}</span></h2>
+      <p class="intro-grupo">Tenés una hora para planificar. ${D.planes_hoy ? `Hoy te ${D.planes_hoy === 1 ? 'toca 1 plan' : `tocan ${D.planes_hoy} planes`} (~${D.min_planes} min)` : 'Hoy no tenés planes'}${D.min_quedan ? `, así que para la auditoría te quedan ~${D.min_quedan} min: con ${plural(D.meta, 'corrección', 'correcciones')} cumplís.` : ': los planes te ocupan la hora, con 1 corrección cumplís.'}${D.al_renovar ? ` Lo de ${plural(D.al_renovar, 'cosa', 'cosas')} de socios que renovás esta semana se corrige al hacerles el plan nuevo.` : ''}</p>
+      <div class="avance-dia"><i style="width:${Math.min(100, Math.round(100 * D.hechas / D.meta))}%"></i></div>
+      ${listo ? `<div class="vacio">🎉 Listo lo de la auditoría por hoy.${A.cuantos.pendientes ? ' Si te sobra tiempo, abajo está el resto.' : ''}</div>` : ''}
+      ${D.lista.map(h => tarjetaHallazgo(h, i++, true)).join('')}` : `<h2>🧾 Auditoría: para corregir <span class="cuenta">${A.cuantos.pendientes}</span></h2>`;
+    return `<section class="grupo">${hoy}
+      <p class="aclara">Cuando lo corregís en MOVE se cierra solo a la mañana siguiente; si tocás "Lo corregí", lo miramos primero.${A.cuantos.corregidos_semana ? ` Esta semana corregiste ${A.cuantos.corregidos_semana}. 👏` : ''}</p>
+      ${A.pendientes.length ? `<details class="catalogo"${E.audAbierto ? ' open' : ''}><summary data-accion="aud-abrir">Ver todo lo pendiente (${A.cuantos.pendientes}), sin apuro</summary>
+        <div class="filtros"><button class="chip" data-accion="aud-seccion" data-s="" aria-pressed="${!filtro}">Todo</button>${secciones.map(s => `<button class="chip" data-accion="aud-seccion" data-s="${s}" aria-pressed="${filtro === s}">${esc(SECCION_AUD[s] || s)}</button>`).join('')}</div>
+        ${lista.slice(0, 40).map(h => tarjetaHallazgo(h, i++, true)).join('')}${lista.length > 40 ? `<p class="aclara">Y ${lista.length - 40} más.</p>` : ''}
+      </details>` : ''}
+      ${(A.dejadas || []).length ? `<details class="catalogo"><summary>Lo que preferiste dejar así (${A.cuantos.dejadas})</summary>${A.dejadas.map(h => tarjetaHallazgo(h, i++, true)).join('')}</details>` : ''}
+    </section>`;
   }
 
   function puntajeAuditoria(A, titulo) {
@@ -929,7 +955,7 @@
           ${p.coord && p.coord.horario ? `<p class="bajada">🕒 ${esc(p.coord.horario)} · ${p.coord.horas_semana} h por semana</p>` : ''}
           ${coordDeProfe(p.coord)}
           <section class="grupo"><h2>Lo de hoy <span class="cuenta">${p.hoy.length}</span></h2>${p.hoy.length ? p.hoy.map(t => tarjetaPlan(t, i++, false)).join('') : '<div class="vacio">Nada para hoy.</div>'}</section>
-          ${p.auditoria ? `<div class="personas">${puntajeAuditoria(p.auditoria, 'Auditoría')}</div>${p.auditoria.pendientes.length ? `<section class="grupo"><h2>🧾 Para corregir <span class="cuenta">${p.auditoria.cuantos.pendientes}</span></h2>${p.auditoria.pendientes.map(h => tarjetaHallazgo(h, i++, false)).join('')}</section>` : ''}` : ''}
+          ${p.auditoria ? `<div class="personas">${puntajeAuditoria(p.auditoria, 'Auditoría')}</div>${(p.auditoria.dejadas || []).length ? `<section class="grupo"><h2>🤚 Prefirió dejarlo así <span class="cuenta">${p.auditoria.cuantos.dejadas}</span></h2><p class="intro-grupo">Lo que la auditoría marcó y el profe decidió no cambiar, con su motivo.</p>${p.auditoria.dejadas.map(h => tarjetaHallazgo(h, i++, false)).join('')}</section>` : ''}${p.auditoria.pendientes.length ? `<section class="grupo"><h2>🧾 Para corregir <span class="cuenta">${p.auditoria.cuantos.pendientes}</span></h2>${p.auditoria.pendientes.map(h => tarjetaHallazgo(h, i++, false)).join('')}</section>` : ''}` : ''}
           ${p.revisiones && p.revisiones.lista.length ? `<section class="grupo"><h2>🔎 Planes renovados (30 días) <span class="cuenta">${p.revisiones.lista.length}</span></h2>${p.revisiones.lista.map(r => tarjetaRevision(r, i++, false)).join('')}</section>` : ''}`;
       }
     }
@@ -937,7 +963,7 @@
       <p class="bajada">Lo que cada profe y cada kinesiólogo tiene que renovar hoy, lo atrasado y lo que lleva hecho en el mes.</p>
       ${selector}
       ${tablaEquipo(eq)}
-      ${eq.length ? `<div class="personas">${eq.map(p => `<div class="persona"><b>${esc(p.profe)}</b><span class="turno">${p.con_usuario ? 'Con usuario' : 'Todavía sin usuario en PulsoMOVE'}</span>${cifrasPlanes(p.resumen)}${p.auditoria && p.auditoria.puntaje != null ? `<span class="uso-hoy aud-linea ${(NIVEL_AUD[p.auditoria.nivel] || [''])[0]}">🧾 Auditoría: <b>${p.auditoria.puntaje}</b> ${esc((NIVEL_AUD[p.auditoria.nivel] || ['', ''])[1])}${p.auditoria.cambio_semana ? ` (${p.auditoria.cambio_semana > 0 ? '▲' : '▼'} ${Math.abs(p.auditoria.cambio_semana)})` : ''} · ${p.auditoria.cuantos.pendientes} para corregir${p.auditoria.cuantos.no_corregidos ? ` · ${p.auditoria.cuantos.no_corregidos} dijo que corrigió y sigue` : ''}</span>` : ''}${p.dias ? `<span class="uso-hoy">Días completos este mes: ${p.dias.completos} (en menos de 1 hora: ${p.dias.en_una_hora})${p.revisiones && p.revisiones.resumen.minutos_mediana != null ? ` · arma un plan en ~${p.revisiones.resumen.minutos_mediana} min` : ''}${p.resumen.en_papel ? ` · en papel: ${p.resumen.en_papel}` : ''}</span>` : ''}${p.revisiones ? `<span class="uso-hoy">Planes renovados (30 días): ${p.revisiones.resumen.revisados} · en 30-80%: ${p.revisiones.resumen.en_rango} · casi todo cambiado: ${p.revisiones.resumen.casi_todo}${p.revisiones.resumen.con_saltos ? ` · con saltos: ${p.revisiones.resumen.con_saltos} (${p.revisiones.resumen.saltos_sin_responder} sin responder, ${p.revisiones.resumen.corregir} a corregir)` : ''}</span>` : ''}
+      ${eq.length ? `<div class="personas">${eq.map(p => `<div class="persona"><b>${esc(p.profe)}</b><span class="turno">${p.con_usuario ? 'Con usuario' : 'Todavía sin usuario en PulsoMOVE'}</span>${cifrasPlanes(p.resumen)}${p.auditoria && p.auditoria.puntaje != null ? `<span class="uso-hoy aud-linea ${(NIVEL_AUD[p.auditoria.nivel] || [''])[0]}">🧾 Auditoría: <b>${p.auditoria.puntaje}</b> ${esc((NIVEL_AUD[p.auditoria.nivel] || ['', ''])[1])}${p.auditoria.cambio_semana ? ` (${p.auditoria.cambio_semana > 0 ? '▲' : '▼'} ${Math.abs(p.auditoria.cambio_semana)})` : ''} · ${p.auditoria.cuantos.pendientes} para corregir${p.auditoria.cuantos.no_corregidos ? ` · ${p.auditoria.cuantos.no_corregidos} dijo que corrigió y sigue` : ''}${p.auditoria.cuantos.dejadas ? ` · ${p.auditoria.cuantos.dejadas} dejó así` : ''}</span>` : ''}${p.dias ? `<span class="uso-hoy">Días completos este mes: ${p.dias.completos} (en menos de 1 hora: ${p.dias.en_una_hora})${p.revisiones && p.revisiones.resumen.minutos_mediana != null ? ` · arma un plan en ~${p.revisiones.resumen.minutos_mediana} min` : ''}${p.resumen.en_papel ? ` · en papel: ${p.resumen.en_papel}` : ''}</span>` : ''}${p.revisiones ? `<span class="uso-hoy">Planes renovados (30 días): ${p.revisiones.resumen.revisados} · en 30-80%: ${p.revisiones.resumen.en_rango} · casi todo cambiado: ${p.revisiones.resumen.casi_todo}${p.revisiones.resumen.con_saltos ? ` · con saltos: ${p.revisiones.resumen.con_saltos} (${p.revisiones.resumen.saltos_sin_responder} sin responder, ${p.revisiones.resumen.corregir} a corregir)` : ''}</span>` : ''}
         <button class="chip ver-lista" data-accion="profe-ver" data-p="${esc(p.profe)}">Ver lo de hoy</button></div>`).join('')}</div>`
         : '<div class="vacio">Todavía no hay planes cargados para esta sede.</div>'}`;
   }
@@ -2370,14 +2396,24 @@
     else if (a === 'reeval-abrir') { E.reevalAbierto = !el.parentElement.open; }
     else if (a === 'aud-seccion') { E.audSeccion = el.dataset.s; E.audAbierto = true; render(); }
     else if (a === 'aud-abrir') { E.audAbierto = !el.parentElement.open; }
-    else if (a === 'aud-marcar') {
+    else if (a === 'aud-marcar' || a === 'aud-dejar') {
+      const id = el.dataset.id;
+      const que = a === 'aud-dejar' ? 'dejar' : el.dataset.que;
+      const pedido = { id, que };
+      if (que === 'dejar') {
+        const campo = attr => [...app.querySelectorAll('[' + attr + ']')].find(x => x.getAttribute(attr) === id);
+        const m = (campo('data-aud-motivo') || {}).value || '', nota = ((campo('data-aud-nota') || {}).value || '').trim();
+        pedido.motivo = m === 'otro' || !m ? nota : m + (nota ? ': ' + nota : '');
+        if (!pedido.motivo) { aviso('Elegí por qué lo dejás así.', true); return; }
+      }
       el.disabled = true;
       try {
-        const r = await cliente.llamar('profe_auditoria_marcar', { id: el.dataset.id, hecha: el.dataset.hecha === '1' });
-        const A = E.planes && E.planes.mio && E.planes.mio.auditoria;
-        if (A) { const x = A.pendientes.find(v => v.id === r.hallazgo.id); if (x) Object.assign(x, r.hallazgo); }
+        await cliente.llamar('profe_auditoria_marcar', pedido);
+        E.planes = await cliente.llamar('profe_tareas', {});
         render();
-        aviso(el.dataset.hecha === '1' ? '✅ Anotado: mañana lo miramos en MOVE y, si está corregido, se cierra.' : '↩️ Deshecho.');
+        const A = E.planes.mio && E.planes.mio.auditoria, D = A && A.dia;
+        const meta = D && D.hechas >= D.meta && que !== 'deshacer' && que !== 'otro_dia' ? ' 🎉 Cumpliste la meta de hoy.' : '';
+        aviso({ corregi: '✅ Anotado: mañana lo miramos en MOVE.', dejar: '🤚 Listo: queda así, con tu motivo.', otro_dia: '📅 Pasa al próximo día hábil.', deshacer: '↩️ Deshecho.' }[que] + meta);
       } catch (e) { el.disabled = false; aviso(PulsoApi.mensaje(e.codigo || e.message), true); }
     }
     else if (a === 'plan-extra') {

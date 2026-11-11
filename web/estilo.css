@@ -619,3 +619,9 @@ header.barra .pestanas { width: 100%; }
 .para-mirar { font-size: 12.5px; min-width: 220px; }
 .alerta-n { font-weight: 800; color: var(--naranja); }
 .alerta-coord { margin: 6px 0; padding: 9px 12px; border-left: 3px solid var(--naranja); background: var(--hoja); border-radius: 6px; font-size: 14px; }
+
+/* Auditoría: meta del día */
+.avance-dia { height: 8px; border-radius: 999px; background: var(--suave); overflow: hidden; margin: 4px 0 10px; max-width: 420px; }
+.avance-dia i { display: block; height: 100%; background: var(--verde); transition: width .3s; }
+.hallazgo .nota.motivo { font-style: normal; color: var(--tinta); }
+.hallazgo .otra-situacion input[type=text] { min-width: 180px; flex: 1; padding: 8px 10px; border: 1px solid var(--linea); border-radius: 8px; font: inherit; }
