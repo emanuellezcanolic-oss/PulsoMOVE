@@ -49,7 +49,7 @@ test('coordinación ve el resumen de cada profe', () => {
   cargar(d, [rev(1), rev(2, { banda: 'bien', saltos: '[]' })]);
   pedir(d, { accion: 'cargar_profe_tareas', clave: PROPS.CLAVE_CARGA, hoy: HOY, tareas: [{ id: 'pp-1', fecha: HOY, sede: 'bolson', profe: 'Profe Uno', profe_dni: '20111222', socio_id: '1', socio_nombre: 'Socio 1', tipo: 'Renovar plan', accion: 'x', vence: '2026-11-12' }] });
   const e = pedir(d, { accion: 'profe_tareas', token: entrar(d, '20555666') }).data.equipo;
-  assert.deepEqual(e[0].revisiones.resumen, { revisados: 2, en_rango: 1, casi_todo: 1, poco: 0, con_saltos: 1, saltos_sin_responder: 1, corregir: 0 });
+  assert.deepEqual(e[0].revisiones.resumen, { revisados: 2, en_rango: 1, casi_todo: 1, poco: 0, con_saltos: 1, saltos_sin_responder: 1, corregir: 0, minutos_mediana: null });
 });
 
 test('cargar_profe_revision pide la clave', () => {

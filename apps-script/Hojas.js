@@ -31,7 +31,9 @@ const COLUMNAS = {
   // Socios activos de cada profe con su última evaluación y los horarios en que suelen venir (pulso_profes.py)
   profe_reeval: ['id', 'sede', 'profe', 'profe_dni', 'socio_id', 'socio_nombre', 'ultima_eval', 'dias', 'habitos', 'cargada'],
   // Revisión del plan renovado contra el anterior: % customizado, saltos de escalón, RPE y la respuesta del profe
-  profe_revision: ['id', 'fecha', 'sede', 'profe', 'profe_dni', 'socio_id', 'socio_nombre', 'pct', 'banda', 'saltos', 'rpe', 'respuesta', 'respondida_en', 'nota'],
+  profe_revision: ['id', 'fecha', 'sede', 'profe', 'profe_dni', 'socio_id', 'socio_nombre', 'pct', 'banda', 'saltos', 'rpe', 'respuesta', 'respondida_en', 'nota', 'minutos', 'dias_plan'],
+  // Días en que el profe terminó todo lo del día, y cuánto tardó desde la primera marca
+  profe_dias: ['dni', 'fecha', 'primera_ts', 'completado_ts', 'planes', 'minutos'],
   garantia: ['id', 'ts', 'sede', 'socio_id', 'socio_nombre', 'profe', 'motivo', 'registra_dni', 'estado', 'decide_dni',
              'comentario', 'decidido_en'],
 };

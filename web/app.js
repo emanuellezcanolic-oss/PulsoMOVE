@@ -168,7 +168,7 @@
 
   function pestanasDisponibles() {
     const p = [];
-    if (tiene('profe')) p.push(['planes', 'Mis planes']);   // PulsoMOVE Profes: profes y kinesiólogos
+    if (tiene('profe')) p.push(['planes', 'Mis planes'], ['pmes', tiene('recepcion') ? 'Mis planes: el mes' : 'Mi mes']);   // PulsoMOVE Profes: profes y kinesiólogos
     if (tiene('recepcion')) p.push(['hoy', 'Mis tareas'], ['mes', 'Mi mes']);
     // La ve recepción: es la que contesta "¿a qué hora hay menos gente?" (Emanuel, 09/11/2026)
     if (tiene('recepcion') || tiene('coordinador') || tiene('admin')) p.push(['reservas', 'Reservas']);
@@ -546,13 +546,14 @@
     return t.tipo;
   }
 
-  function tarjetaPlan(t, i, puedeMarcar) {
+  function tarjetaPlan(t, i, puedeMarcar, puedeTraer) {
     return `<article class="tarjeta${t.estado === 'hecha' ? ' hecha' : ''}" style="--i:${i}"><div class="cabeza">
         <span class="socio">${esc(t.socio_nombre)}</span>${estadoPlan(t)}
         <span class="situacion"><b>${esc(t.tipo)}</b> · ${esc(detallePlan(t))}</span>
         <span class="accion">${esc(t.accion)}</span>
         ${t.nota ? `<span class="nota">“${esc(t.nota)}”</span>` : ''}
       </div>
+      ${puedeTraer ? `<div class="fila-accion"><button class="boton claro" data-accion="plan-traer" data-id="${esc(t.id)}">Traerlo a hoy</button></div>` : ''}
       ${puedeMarcar && t.estado === 'pendiente' ? otraSituacion(t) : ''}
       ${puedeMarcar ? `<div class="fila-accion">${t.estado === 'hecha'
         ? `<button class="boton claro" data-accion="plan-marcar" data-id="${esc(t.id)}" data-hecha="0">Deshacer</button><span class="aclara">Se cierra sola cuando MOVE muestre el plan nuevo.</span>`
@@ -638,7 +639,7 @@
     return `<article class="tarjeta revision" style="--i:${i}"><div class="cabeza">
         <span class="socio">${esc(r.socio_nombre)}</span><span class="estado ${color === 'verde' ? 'hecha' : color === 'rojo' ? 'atrasada' : 'ayer'}">${pct}% cambiado</span>
         <span class="barra-custom" aria-hidden="true"><span class="zona"></span><span class="marca-pct ${color}" style="left:${Math.min(100, pct)}%"></span></span>
-        <span class="situacion">Plan renovado el ${esc(ddmm(r.fecha))} · ${esc(texto)}</span>
+        <span class="situacion">Plan renovado el ${esc(ddmm(r.fecha))}${r.minutos ? ` · lo armaste en ~${r.minutos} min` : ''} · ${esc(texto)}</span>
         ${saltos.length ? `<span class="accion">Hay ${saltos.length} cambio${saltos.length > 1 ? 's' : ''} que saltea${saltos.length > 1 ? 'n' : ''} escalones</span>
           ${saltos.slice(0, 3).map(s => `<span class="nota">${esc(textoSalto(s))}</span>`).join('')}
           ${saltos.length > 3 ? `<details class="catalogo"><summary>Ver los otros ${saltos.length - 3}</summary>${saltos.slice(3).map(s => `<span class="nota">${esc(textoSalto(s))}</span>`).join('')}</details>` : ''}` : ''}
@@ -661,6 +662,76 @@
       ${R.lista.map(r => tarjetaRevision(r, i++, true)).join('')}</section>`;
   }
 
+  // ---------- Mi mes del profe, modo concentrado y medallas (Emanuel, 10/11/2026) ----------
+  const CONSEJOS_PROFE = [
+    'Silenciá el celular un rato: con el modo concentrado terminás tus planes en una hora.',
+    'Un plan a la vez: terminá este antes de abrir el siguiente.',
+    'Progresá de a un escalón y cambiá una sola variable por vez.',
+    'Si cambiás casi todo, mejor partí de una plantilla modelo y progresá desde ahí.',
+    'Mirá el plan anterior antes de armar el nuevo: la idea es que sea su progresión.',
+    'Pocas pestañas abiertas: MOVE y PulsoMOVE alcanzan.',
+  ];
+
+  function minutosDesde(iso) { return iso ? Math.max(0, Math.round((Date.now() - Date.parse(iso)) / 60000)) : 0; }
+
+  function bandaConcentrado(M) {
+    const r = M.resumen, mes = M.mes || {};
+    if (mes.hoy_completo) return `<div class="concentrado listo">🎉 Terminaste lo de hoy: ${esc(mes.hoy_completo.planes)} planes${Number(mes.hoy_completo.minutos) ? ' en ' + esc(mes.hoy_completo.minutos) + ' minutos' : ''}.</div>`;
+    if (!r.pendientes_hoy) return '';
+    const va = mes.primera_marca_hoy ? ` · vas ${minutosDesde(mes.primera_marca_hoy)} min desde el primero` : '';
+    return `<div class="concentrado">⏱️ <b>Modo concentrado:</b> te ${r.pendientes_hoy === 1 ? 'falta 1 plan' : 'faltan ' + r.pendientes_hoy + ' planes'}. La idea es terminarlos en una hora${va}.
+      ${avisosPendientes() ? '<button class="boton claro" data-accion="activar-avisos">🔔 Activar consejos</button>' : ''}</div>`;
+  }
+
+  // Consejos cada 20 minutos mientras quedan planes y la app está abierta
+  let relojConsejos = null, consejoN = 0;
+  function programarConsejos() {
+    clearInterval(relojConsejos);
+    relojConsejos = setInterval(() => {
+      const M = E.planes && E.planes.mio;
+      if (E.vista !== 'planes' || !M || !M.resumen.pendientes_hoy) return;
+      push(`Te ${M.resumen.pendientes_hoy === 1 ? 'falta 1 plan' : 'faltan ' + M.resumen.pendientes_hoy + ' planes'}`, CONSEJOS_PROFE[consejoN++ % CONSEJOS_PROFE.length]);
+    }, 20 * 60 * 1000);
+  }
+
+  function festejarDia(r) {
+    if (!r || !r.dia_completo) return;
+    const d = r.dia_completo;
+    celebrar('¡Día completo!', `Terminaste tus ${d.planes} plan${d.planes === '1' ? '' : 'es'} de hoy${Number(d.minutos) ? ' en ' + d.minutos + ' minutos' : ''}.${Number(d.minutos) <= 60 ? ' ⏱️ En menos de una hora.' : ''}`, true);
+  }
+
+  function medallasHtml(lista) {
+    return `<div class="medallas-profe">${lista.map(m => `<div class="medalla-profe${m.ganada ? ' ganada' : ''}"><span class="emoji">${m.emoji}</span><b>${esc(m.nombre)}</b>
+      <span class="para">${esc(m.para)}</span><span class="avance"><i style="width:${Math.min(100, Math.round(m.n / m.meta * 100))}%"></i></span><span class="cuenta">${m.n} de ${m.meta}${m.ganada ? ' · ¡ganada!' : ''}</span></div>`).join('')}</div>`;
+  }
+
+  function vistaMesProfe() {
+    if (!E.planes) return '<div class="cargando">Cargando tu mes…</div>';
+    const M = E.planes.mio;
+    if (!M) return '<div class="vacio">Tu usuario no tiene socios asignados como profe.</div>';
+    const s = M.mes || {}, rv = s.revisiones || {}, r = M.resumen;
+    const c = (n, txt, clase) => `<div class="${clase || ''}"><strong>${n == null ? '—' : n}</strong><span>${txt}</span></div>`;
+    let i = 0;
+    const lista = (M.revisiones && M.revisiones.lista) || [];
+    return `<h1 class="titulo">Tu mes <span>·</span> planes</h1>
+      <p class="bajada">Tus números, como los mira la auditoría. Son para vos: no hay ranking entre compañeros.</p>
+      <div class="personas">
+        <div class="persona"><b>Planes</b><div class="cifras">${c(r.en_agenda, 'te quedan en los próximos 30 días')}${c(r.atrasadas, 'atrasados hoy', r.atrasadas ? 'mal' : 'bien')}${c(r.hechas_mes, 'hechos este mes', 'bien')}${c(s.dias_completos, 'días completos')}${c(s.en_una_hora, 'días en menos de 1 hora')}${c(r.en_papel || 0, 'en papel')}</div></div>
+        <div class="persona"><b>Customización y progresión (30 días)</b><div class="cifras">${c(rv.revisados, 'planes renovados revisados')}${c(rv.en_rango, 'entre 30 y 80%', 'bien')}${c(rv.casi_todo, 'cambiaste casi todo', rv.casi_todo ? 'mal' : '')}${c(rv.con_saltos, 'con saltos de escalón', rv.con_saltos ? 'mal' : 'bien')}${c(rv.saltos_sin_responder, 'saltos sin responder', rv.saltos_sin_responder ? 'mal' : 'bien')}${c(rv.minutos_mediana != null ? rv.minutos_mediana + ' min' : null, 'tardás en armar un plan (aprox.)')}</div></div>
+      </div>
+      <section class="grupo"><h2>🏅 Medallas del mes</h2>${medallasHtml(s.medallas || [])}</section>
+      ${lista.length ? `<section class="grupo"><h2>🔎 Tus planes renovados <span class="cuenta">${lista.length}</span></h2>${lista.map(x => tarjetaRevision(x, i++, true)).join('')}</section>` : ''}`;
+  }
+
+  function bloqueHechas(M) {
+    const H = M.hechas || [];
+    if (!H.length) return '';
+    const que = t => (t.estado === 'papel' ? '📄 Plan en papel' : t.estado === 'derivada' ? '↪️ ' + (t.nota || 'Es de otro profe') : '✅ Renovado');
+    return `<details class="catalogo hechas-profe"><summary>Lo que ya hiciste (${H.length}): si te equivocaste, deshacelo</summary>
+      ${H.map(t => `<div class="hecha-fila"><span><b>${esc(t.socio_nombre)}</b> · ${esc(que(t))} · ${esc(ddmmDe(t.hecha_en))}</span>
+        <button class="boton claro" data-accion="plan-deshacer" data-id="${esc(t.id)}">Deshacer</button></div>`).join('')}</details>`;
+  }
+
   function vistaPlanes() {
     if (!E.planes) return '<div class="cargando">Cargando tus planes…</div>';
     const M = E.planes.mio;
@@ -675,13 +746,15 @@
       <div class="principal">
       <h1 class="titulo">${esc(tituloDia(E.planes.hoy))} <span>·</span> tus planes</h1>
       <p class="bajada">Primero el socio nuevo, después los vencidos y después los que están por vencer.</p>
+      ${bandaConcentrado(M)}
       ${nuevos.length ? `<section class="grupo"><h2>🆕 Plan nuevo, hoy <span class="cuenta">${nuevos.length}</span></h2>${nuevos.map(t => tarjetaPlan(t, i++, true)).join('')}</section>` : ''}
       ${resto.length ? `<section class="grupo"><h2>Para renovar hoy <span class="cuenta">${resto.length}</span></h2>${resto.map(t => tarjetaPlan(t, i++, true)).join('')}</section>`
         : (nuevos.length ? '' : '<div class="vacio">Hoy no tenés planes para renovar. 🎉</div>')}
+      ${bloqueHechas(M)}
       ${bloqueRevisiones(M)}
       ${bloqueReeval(M)}
       ${M.proximas.length ? `<section class="grupo"><h2>Próximos a renovar <span class="cuenta">${M.proximas.length}</span></h2>
-        ${Object.keys(porDia).sort().map(f => `<h3 class="dia-prox">${esc(tituloDia(f))}</h3>${porDia[f].map(t => tarjetaPlan(t, i++, false)).join('')}`).join('')}</section>` : ''}
+        ${Object.keys(porDia).sort().map(f => `<h3 class="dia-prox">${esc(tituloDia(f))}</h3>${porDia[f].map(t => tarjetaPlan(t, i++, false, true)).join('')}`).join('')}</section>` : ''}
     </div></div>`;
   }
 
@@ -702,7 +775,7 @@
     return `<h1 class="titulo">Profes <span>·</span> planes al día</h1>
       <p class="bajada">Lo que cada profe y cada kinesiólogo tiene que renovar hoy, lo atrasado y lo que lleva hecho en el mes.</p>
       ${selector}
-      ${eq.length ? `<div class="personas">${eq.map(p => `<div class="persona"><b>${esc(p.profe)}</b><span class="turno">${p.con_usuario ? 'Con usuario' : 'Todavía sin usuario en PulsoMOVE'}</span>${cifrasPlanes(p.resumen)}${p.revisiones ? `<span class="uso-hoy">Planes renovados (30 días): ${p.revisiones.resumen.revisados} · en 30-80%: ${p.revisiones.resumen.en_rango} · casi todo cambiado: ${p.revisiones.resumen.casi_todo}${p.revisiones.resumen.con_saltos ? ` · con saltos: ${p.revisiones.resumen.con_saltos} (${p.revisiones.resumen.saltos_sin_responder} sin responder, ${p.revisiones.resumen.corregir} a corregir)` : ''}</span>` : ''}
+      ${eq.length ? `<div class="personas">${eq.map(p => `<div class="persona"><b>${esc(p.profe)}</b><span class="turno">${p.con_usuario ? 'Con usuario' : 'Todavía sin usuario en PulsoMOVE'}</span>${cifrasPlanes(p.resumen)}${p.dias ? `<span class="uso-hoy">Días completos este mes: ${p.dias.completos} (en menos de 1 hora: ${p.dias.en_una_hora})${p.revisiones && p.revisiones.resumen.minutos_mediana != null ? ` · arma un plan en ~${p.revisiones.resumen.minutos_mediana} min` : ''}${p.resumen.en_papel ? ` · en papel: ${p.resumen.en_papel}` : ''}</span>` : ''}${p.revisiones ? `<span class="uso-hoy">Planes renovados (30 días): ${p.revisiones.resumen.revisados} · en 30-80%: ${p.revisiones.resumen.en_rango} · casi todo cambiado: ${p.revisiones.resumen.casi_todo}${p.revisiones.resumen.con_saltos ? ` · con saltos: ${p.revisiones.resumen.con_saltos} (${p.revisiones.resumen.saltos_sin_responder} sin responder, ${p.revisiones.resumen.corregir} a corregir)` : ''}</span>` : ''}
         <button class="chip ver-lista" data-accion="profe-ver" data-p="${esc(p.profe)}">Ver lo de hoy</button></div>`).join('')}</div>`
         : '<div class="vacio">Todavía no hay planes cargados para esta sede.</div>'}`;
   }
@@ -1628,8 +1701,9 @@
         E.rend = await cliente.llamar('rendimiento', Object.assign(E.rendMes ? { mes: E.rendMes } : {}, tiene('admin') ? { sede: E.sedeElegida } : {}));
       } else if (E.vista === 'reservas') {
         E.ocupacion = await cliente.llamar('ocupacion_ver', tiene('admin') || tiene('coordinador') ? { sede: E.sedeElegida } : {});
-      } else if (E.vista === 'planes' || E.vista === 'profes') {
+      } else if (E.vista === 'planes' || E.vista === 'profes' || E.vista === 'pmes') {
         E.planes = await cliente.llamar('profe_tareas', E.vista === 'profes' && tiene('admin') ? { sede: E.sedeElegida } : {});
+        if (E.vista === 'planes') programarConsejos();
       } else if (E.vista === 'admin') {
         E.usuarios = await cliente.llamar('usuarios_listar');
       }
@@ -1727,9 +1801,9 @@
     if (disponibles.indexOf(E.vista) < 0) { E.vista = disponibles[0] || null; setTimeout(cargarVista); }
     const cuerpo = E.vista === 'hoy' ? vistaHoy() : E.vista === 'sede' ? vistaSede() : E.vista === 'admin' ? vistaAdmin() : E.vista === 'mes' ? vistaMes() : E.vista === 'rend' ? vistaRendimiento()
       : E.vista === 'reservas' ? vistaReservas()
-      : E.vista === 'planes' ? vistaPlanes() : E.vista === 'profes' ? vistaProfes()
+      : E.vista === 'planes' ? vistaPlanes() : E.vista === 'profes' ? vistaProfes() : E.vista === 'pmes' ? vistaMesProfe()
       : '<div class="vacio">Tu usuario no tiene ninguna vista asignada. Avisale a Emanuel.</div>';
-    const sinDatos = { hoy: !E.tareas, sede: E.personaDni ? !E.persona : !E.sede, mes: !E.rend, rend: !E.rend, admin: !E.usuarios, reservas: !E.ocupacion, planes: !E.planes, profes: !E.planes }[E.vista];
+    const sinDatos = { hoy: !E.tareas, sede: E.personaDni ? !E.persona : !E.sede, mes: !E.rend, rend: !E.rend, admin: !E.usuarios, reservas: !E.ocupacion, planes: !E.planes, profes: !E.planes, pmes: !E.planes }[E.vista];
     const mostrar = E.errorCarga && sinDatos ? `<div class="vacio" style="margin-top:18px"><p>${esc(E.errorCarga)}</p><p>La pantalla vuelve a intentarlo sola. Tus marcas no se pierden.</p><button class="boton" data-accion="reintentar">Reintentar ahora</button></div>` : cuerpo;
     const bandas = E.vista === 'hoy' ? bandaFichajes() + bandaReservas() : '';
     app.innerHTML = encabezado() + `<main class="contenedor">${bandas}${mostrar}</main>` + (E.vista === 'hoy' && turnoTerminando() ? `<button class="cerrar-app-fijo${DEMO ? ' con-cinta' : ''}" data-accion="cerrar-app">🚪 ${E.dia && E.dia.cierre_hecho ? 'Listo por hoy' : 'Se termina tu turno'}: cerrá la app antes de irte</button>` : '') + (DEMO ? '<div class="cinta-practica">Modo práctica · datos inventados</div>' : '');
@@ -1873,14 +1947,24 @@
           const t = M.hoy.find(x => x.id === r.tarea.id);
           if (t) { const antes = t.estado; Object.assign(t, r.tarea); if (antes !== t.estado) { const d = t.estado === 'hecha' ? 1 : -1; M.resumen.hechas_hoy += d; M.resumen.hechas_mes += d; M.resumen.pendientes_hoy -= d; if (t.atraso > 0) M.resumen.atrasadas -= d; } }
         }
+        if (M && r.dia_completo) M.mes = Object.assign({}, M.mes, { hoy_completo: r.dia_completo, dias_completos: ((M.mes || {}).dias_completos || 0) + 1 });
         render();
-        if (el.dataset.hecha === '1') aviso('✅ ¡Bien! Plan renovado.');
+        if (el.dataset.hecha === '1') { if (r.dia_completo) festejarDia(r); else aviso('✅ ¡Bien! Plan renovado.'); }
       } catch (e) { el.disabled = false; aviso(PulsoApi.mensaje(e.codigo || e.message), true); }
     }
     else if (a === 'planes-sede') { E.sedeElegida = el.dataset.s; E.planes = null; E.profeVer = null; render(); cargarVista(); }
     else if (a === 'profe-ver') { E.profeVer = el.dataset.p; render(); window.scrollTo(0, 0); }
     else if (a === 'profe-volver') { E.profeVer = null; render(); }
     else if (a === 'reeval-abrir') { E.reevalAbierto = !el.parentElement.open; }
+    else if (a === 'plan-traer' || a === 'plan-deshacer') {
+      el.disabled = true;
+      try {
+        const r = await cliente.llamar(a === 'plan-traer' ? 'profe_adelantar' : 'profe_deshacer', { id: el.dataset.id });
+        await cargarVista();
+        aviso(a === 'plan-traer' ? '👉 Listo: lo tenés para hoy.' : r.aviso_recepcion === 'cancelado' ? '↩️ Deshecho. También cancelamos el aviso a recepción.'
+          : r.aviso_recepcion === 'ya_hecho' ? '↩️ Deshecho. Ojo: recepción ya había hecho el cambio de profesor; si hay que volverlo atrás, avisales.' : '↩️ Deshecho: volvió a tu lista.');
+      } catch (e) { el.disabled = false; aviso(PulsoApi.mensaje(e.codigo || e.message), true); }
+    }
     else if (a === 'otra-situacion') {
       const id = el.dataset.id, que = el.dataset.que;
       const valor = attr => { const s = [...app.querySelectorAll('select[' + attr + ']')].find(x => x.getAttribute(attr) === id); return s ? s.value : ''; };
@@ -1890,7 +1974,10 @@
         const M = E.planes && E.planes.mio;
         if (M) { M.hoy = M.hoy.filter(x => x.id !== id); M.resumen.pendientes_hoy = Math.max(0, M.resumen.pendientes_hoy - 1); }
         render();
-        aviso(que === 'papel' ? '📄 Anotado: tiene el plan en papel.' : `✅ Listo: le avisamos a ${r.recepcionista} para que le cambie el profesor.`);
+        if (M) M.hechas = [r.tarea].concat(M.hechas || []);
+        render();
+        if (r.dia_completo) festejarDia(r);
+        else aviso((que === 'papel' ? '📄 Anotado: tiene el plan en papel.' : `✅ Listo: le avisamos a ${r.recepcionista}.`) + (M && M.proximas.length ? ' Si querés, traé uno de los próximos con "Traerlo a hoy".' : ''));
       } catch (e) { el.disabled = false; aviso(PulsoApi.mensaje(e.codigo || e.message), true); }
     }
     else if (a === 'revision-responder') {

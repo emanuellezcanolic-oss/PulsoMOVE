@@ -116,6 +116,8 @@ function profeTareas(req, deps) {
     out.mio.reeval = reevalDeProfe(usuario, deps, hoy, usuarios);
     out.mio.revisiones = revisionesDeProfe(usuario, deps, hoy);
     out.mio.opciones = opcionesDeProfe(usuario, usuarios);
+    out.mio.mes = mesDeProfe(usuario, deps, hoy);
+    out.mio.hechas = hechasDeProfe(filas, usuario.dni, hoy);
   }
   if (coordina) {
     const sede = tieneRol(usuario, 'admin') ? texto(req.sede) : usuario.sede;
@@ -125,9 +127,13 @@ function profeTareas(req, deps) {
     deSede.forEach(t => { if (nombres.indexOf(t.profe) < 0) nombres.push(t.profe); });
     out.sede = sede || '';
     const rev = revisionesPorProfe(deps, hoy, sede);
+    const diasMes = deps.repo.leer('profe_dias').filter(d => String(d.fecha).slice(0, 7) === hoy.slice(0, 7));
     out.equipo = nombres.sort().map(n => {
       const a = agendaDeProfe(deSede.filter(t => t.profe === n), hoy);
-      return { profe: n, con_usuario: deSede.some(t => t.profe === n && t.profe_dni), resumen: a.resumen, hoy: a.hoy, revisiones: rev[n] || null };
+      const dni = (deSede.find(t => t.profe === n && t.profe_dni) || {}).profe_dni;
+      const dias = diasMes.filter(d => d.dni === dni);
+      return { profe: n, con_usuario: !!dni, resumen: a.resumen, hoy: a.hoy, revisiones: rev[n] || null,
+        dias: { completos: dias.length, en_una_hora: dias.filter(d => Number(d.minutos) <= META_HORA_MIN).length } };
     });
   }
   if (!out.mio && !out.equipo) falla('prohibido');
@@ -148,7 +154,7 @@ function profeMarcar(req, deps) {
   }
   t.nota = texto(req.nota).slice(0, 300);
   deps.repo.escribir('profe_tareas', filas);
-  return { tarea: vistaTareaProfe(t, deps.hoy()) };
+  return { tarea: vistaTareaProfe(t, deps.hoy()), dia_completo: req.hecha === false ? null : anotarDiaCompleto(usuario, filas, deps) };
 }
 
 // ---------- Reevaluaciones recomendadas (Emanuel, 10/11/2026) ----------
@@ -354,7 +360,14 @@ function vistaRevision(r) {
   return {
     id: r.id, fecha: r.fecha, socio_id: r.socio_id, socio_nombre: r.socio_nombre, pct: Number(r.pct) || 0, banda: r.banda,
     saltos: leerJson(r.saltos, []), rpe: leerJson(r.rpe, []), respuesta: r.respuesta, nota: r.nota,
+    minutos: r.minutos === '' || r.minutos == null ? null : Number(r.minutos), dias_plan: Number(r.dias_plan) || null,
   };
+}
+
+function mediana(xs) {
+  if (!xs.length) return null;
+  const o = xs.slice().sort((a, b) => a - b);
+  return o.length % 2 ? o[(o.length - 1) / 2] : Math.round((o[o.length / 2 - 1] + o[o.length / 2]) / 2);
 }
 
 function resumenRevisiones(filas) {
@@ -367,6 +380,7 @@ function resumenRevisiones(filas) {
     con_saltos: con.length,
     saltos_sin_responder: con.filter(r => !r.respuesta).length,
     corregir: filas.filter(r => r.respuesta === 'corregir').length,
+    minutos_mediana: mediana(filas.map(r => Number(r.minutos)).filter(m => m > 0)),
   };
 }
 
@@ -380,7 +394,7 @@ function cargarProfeRevision(req, deps) {
     return {
       id: texto(x && x.id), fecha: texto(x && x.fecha), sede: texto(x && x.sede), profe: texto(x && x.profe), profe_dni: normalizarDni(x && x.profe_dni),
       socio_id: texto(x && x.socio_id), socio_nombre: texto(x && x.socio_nombre), pct: texto(x && x.pct), banda: texto(x && x.banda),
-      saltos: texto(x && x.saltos) || '[]', rpe: texto(x && x.rpe) || '[]',
+      saltos: texto(x && x.saltos) || '[]', rpe: texto(x && x.rpe) || '[]', minutos: texto(x && x.minutos), dias_plan: texto(x && x.dias_plan),
       respuesta: v.respuesta || '', respondida_en: v.respondida_en || '', nota: v.nota || '',   // lo que contestó el profe no se pisa
     };
   });
@@ -446,7 +460,7 @@ function profeOtraSituacion(req, deps) {
   if (que === 'papel') {
     Object.assign(t, { estado: 'papel', hecha_en: ts, hecha_dni: usuario.dni, nota: 'Tiene el plan en papel' });
     deps.repo.escribir('profe_tareas', filas);
-    return { tarea: vistaTareaProfe(t, hoy) };
+    return { tarea: vistaTareaProfe(t, hoy), dia_completo: anotarDiaCompleto(usuario, filas, deps) };
   }
   if (que !== 'otro_profe') falla('datos_invalidos');
   const op = opcionesDeProfe(usuario, usuarios);
@@ -465,5 +479,115 @@ function profeOtraSituacion(req, deps) {
   });
   Object.assign(t, { estado: 'derivada', hecha_en: ts, hecha_dni: usuario.dni, nota: `No es su entrenado: es de ${nuevo} (avisado a ${r.nombre})` });
   deps.repo.escribir('profe_tareas', filas);
-  return { tarea: vistaTareaProfe(t, hoy), recepcionista: r.nombre };
+  return { tarea: vistaTareaProfe(t, hoy), recepcionista: r.nombre, dia_completo: anotarDiaCompleto(usuario, filas, deps) };
+}
+
+// ---------- Mi mes del profe: días completos, medallas y traer un socio a hoy (Emanuel, 10/11/2026) ----------
+// Cuando el profe termina lo del día se anota en profe_dias (con cuánto tardó desde la primera marca): de ahí salen los
+// papelitos, la medalla "en una hora" y lo que ve coordinación. Nada de ranking entre compañeros.
+
+const META_HORA_MIN = 60;   // la idea: que en una hora terminen los planes del día
+
+function marcasDelDia(filas, dni, hoy) {
+  return filas.filter(t => t.profe_dni === dni && t.hecha_dni === dni && t.hecha_en && fechaArgentina(t.hecha_en) === hoy);
+}
+
+// Se llama después de cada marca: si no queda nada pendiente para hoy, el día queda completo (una sola vez)
+function anotarDiaCompleto(usuario, filas, deps) {
+  const hoy = deps.hoy();
+  const pendientes = filas.filter(t => t.profe_dni === usuario.dni && t.estado === 'pendiente' && t.fecha <= hoy);
+  const marcas = marcasDelDia(filas, usuario.dni, hoy);
+  if (pendientes.length || !marcas.length) return null;
+  const dias = deps.repo.leer('profe_dias');
+  if (dias.some(d => d.dni === usuario.dni && d.fecha === hoy)) return null;
+  const primera = marcas.map(t => t.hecha_en).sort()[0];
+  const ahora = new Date(deps.ahora()).toISOString();
+  const fila = { dni: usuario.dni, fecha: hoy, primera_ts: primera, completado_ts: ahora, planes: String(marcas.length),
+    minutos: String(Math.max(0, Math.round((Date.parse(ahora) - Date.parse(primera)) / 60000))) };
+  deps.repo.agregar('profe_dias', fila);
+  return fila;
+}
+
+function medallasDeProfe(usuario, deps, hoy, revis) {
+  const mes = hoy.slice(0, 7);
+  const dias = deps.repo.leer('profe_dias').filter(d => d.dni === usuario.dni && String(d.fecha).slice(0, 7) === mes);
+  const rev = deps.repo.leer('profe_revision').filter(r => r.profe_dni === usuario.dni && String(r.fecha).slice(0, 7) === mes);
+  const nombreProfe = (deps.repo.leer('profe_tareas').find(t => t.profe_dni === usuario.dni) || {}).profe || usuario.nombre;
+  const pedidas = deps.repo.leer('tareas').filter(t => t.tipo === TIPO_PEDIDO_REEVAL && t.profe === nombreProfe && String(t.fecha).slice(0, 7) === mes).length;
+  const m = (clave, emoji, nombre, para, n, meta) => ({ clave, emoji, nombre, para, n: n, meta: meta, ganada: n >= meta });
+  return [
+    m('dia', '✅', 'Día completo', 'Terminar todos los planes del día', dias.length, 10),
+    m('hora', '⏱️', 'En una hora', `Terminar los planes del día en menos de ${META_HORA_MIN} minutos desde el primero`, dias.filter(d => Number(d.minutos) <= META_HORA_MIN).length, 5),
+    m('escalon', '🪜', 'De a un escalón', 'Planes renovados sin saltear escalones', rev.filter(r => leerJson(r.saltos, []).length === 0).length, 5),
+    m('justo', '🎯', 'Customización justa', 'Planes renovados cambiando entre el 30 y el 80%', rev.filter(r => r.banda === 'bien').length, 5),
+    m('reeval', '🩺', 'Reevaluador', 'Reevaluaciones pedidas a recepción', pedidas, 4),
+  ];
+}
+
+function mesDeProfe(usuario, deps, hoy) {
+  const desde = sumarDiasProfe(hoy, -DIAS_REVISION_EQUIPO);
+  const rev = deps.repo.leer('profe_revision').filter(r => r.profe_dni === usuario.dni && r.fecha >= desde);
+  const dias = deps.repo.leer('profe_dias').filter(d => d.dni === usuario.dni && String(d.fecha).slice(0, 7) === hoy.slice(0, 7));
+  const hoyFila = dias.find(d => d.fecha === hoy) || null;
+  return {
+    revisiones: resumenRevisiones(rev), medallas: medallasDeProfe(usuario, deps, hoy),
+    dias_completos: dias.length, en_una_hora: dias.filter(d => Number(d.minutos) <= META_HORA_MIN).length,
+    hoy_completo: hoyFila, meta_minutos: META_HORA_MIN,
+    primera_marca_hoy: (marcasDelDia(deps.repo.leer('profe_tareas'), usuario.dni, hoy).map(t => t.hecha_en).sort()[0]) || '',
+  };
+}
+
+// Traer a hoy un socio de los próximos días: por ejemplo, cuando uno de hoy era de otro profe
+function profeAdelantar(req, deps) {
+  const { usuario } = sesion(req, deps);
+  if (!esProfe(usuario)) falla('prohibido');
+  const hoy = deps.hoy();
+  const filas = deps.repo.leer('profe_tareas');
+  const t = filas.find(x => x.id === texto(req.id) && x.profe_dni === usuario.dni && x.estado === 'pendiente' && x.fecha > hoy);
+  if (!t) falla('no_existe');
+  t.fecha = hoy;
+  deps.repo.escribir('profe_tareas', filas);
+  return { tarea: vistaTareaProfe(t, hoy) };
+}
+
+// ---------- Lo que ya hice, y deshacer si me equivoqué (Emanuel, 10/11/2026) ----------
+const DIAS_HECHAS_PROFE = 14;
+const ESTADOS_RESUELTOS = ['hecha', 'papel', 'derivada'];
+
+function hechasDeProfe(filas, dni, hoy) {
+  const desde = sumarDiasProfe(hoy, -DIAS_HECHAS_PROFE);
+  return filas.filter(t => t.profe_dni === dni && ESTADOS_RESUELTOS.indexOf(t.estado) >= 0 && t.hecha_en && fechaArgentina(t.hecha_en) >= desde)
+    .sort((a, b) => (a.hecha_en < b.hecha_en ? 1 : -1)).slice(0, 60).map(t => vistaTareaProfe(t, hoy));
+}
+
+// Vuelve a pendiente. Si era "no es mi entrenado", también se cancela el aviso a recepción si todavía no lo hizo.
+function profeDeshacer(req, deps) {
+  const { usuario } = sesion(req, deps);
+  const filas = deps.repo.leer('profe_tareas');
+  const t = filas.find(x => x.id === texto(req.id) && ESTADOS_RESUELTOS.indexOf(x.estado) >= 0);
+  if (!t) falla('no_existe');
+  if (!(esProfe(usuario) && t.profe_dni === usuario.dni) && !tieneRol(usuario, 'admin')) falla('prohibido');
+  const hoy = deps.hoy();
+  let aviso = '';
+  if (t.estado === 'derivada') {
+    const tareas = deps.repo.leer('tareas');
+    const r = tareas.find(x => x.socio_id === 'profe-' + t.socio_id && x.estado === 'pendiente');
+    if (r) {
+      r.estado = 'cerrada';
+      r.ultima_anotacion = 'Cancelado: el profe se había equivocado';
+      deps.repo.escribir('tareas', tareas);
+      aviso = 'cancelado';
+    } else {
+      aviso = 'ya_hecho';    // recepción ya lo había hecho: si cambió el profe en MOVE, hay que pedir que lo vuelva a cambiar
+    }
+  }
+  Object.assign(t, { estado: 'pendiente', hecha_en: '', hecha_dni: '', nota: '' });
+  deps.repo.escribir('profe_tareas', filas);
+  // el día deja de estar completo si quedó algo pendiente para hoy
+  if (t.fecha <= hoy) {
+    const dias = deps.repo.leer('profe_dias');
+    const quedan = dias.filter(d => !(d.dni === t.profe_dni && d.fecha === hoy));
+    if (quedan.length !== dias.length) deps.repo.escribir('profe_dias', quedan);
+  }
+  return { tarea: vistaTareaProfe(t, hoy), aviso_recepcion: aviso };
 }

@@ -511,3 +511,16 @@ details.grupo summary h2 { display: inline; }
 .otra-situacion summary { cursor: pointer; color: var(--gris); font-weight: 600; padding: 2px 0 6px; }
 .otra-situacion .fila-accion { padding: 0 0 8px; }
 .otra-situacion select { max-width: 100%; }
+
+/* Mi mes del profe y modo concentrado */
+.concentrado { margin: 4px 0 14px; padding: 10px 14px; border-radius: var(--radio); background: var(--naranja-claro); color: #6b3a06; font-size: 14px; display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.concentrado.listo { background: var(--verde-claro); color: var(--verde-texto); }
+.medallas-profe { display: grid; grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); gap: 8px; }
+.medalla-profe { background: var(--hoja); border: 1px solid var(--linea); border-radius: var(--radio); padding: 10px 12px; display: grid; gap: 3px; opacity: .75; }
+.medalla-profe.ganada { opacity: 1; border-color: var(--verde); box-shadow: var(--sombra); }
+.medalla-profe .emoji { font-size: 22px; filter: grayscale(1); }
+.medalla-profe.ganada .emoji { filter: none; }
+.medalla-profe .para, .medalla-profe .cuenta { font-size: 12px; color: var(--gris); }
+.medalla-profe .avance { height: 6px; border-radius: 999px; background: var(--suave); overflow: hidden; }
+.medalla-profe .avance i { display: block; height: 100%; background: var(--verde); }
+.hechas-profe .hecha-fila { display: flex; justify-content: space-between; align-items: center; gap: 8px; padding: 6px 0; border-bottom: 1px dashed var(--linea); font-size: 13px; }

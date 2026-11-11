@@ -71,3 +71,43 @@ test('tiene el plan en papel: sale de la lista y queda anotado', () => {
   cargar(d, [tarea(1)]);   // mismo vencimiento en MOVE: sigue anotado
   assert.equal(d.repo.hojas.profe_tareas[0].estado, 'papel');
 });
+
+test('me equivoqué: deshacer en papel, en otro profe (cancela el aviso) y en renovado', () => {
+  const d = entorno();
+  cargar(d, [tarea(1), tarea(2), tarea(3)]);
+  const tk = entrar(d, '20111222');
+  pedir(d, { accion: 'profe_otra_situacion', token: tk, id: 'pp-1', que: 'papel' });
+  pedir(d, { accion: 'profe_otra_situacion', token: tk, id: 'pp-2', que: 'otro_profe', profe: 'Enzo Prueba', dni: '30111111' });
+  pedir(d, { accion: 'profe_marcar', token: tk, id: 'pp-3' });
+  const mio = pedir(d, { accion: 'profe_tareas', token: tk }).data.mio;
+  assert.deepEqual(mio.hechas.map(t => t.estado).sort(), ['derivada', 'hecha', 'papel']);
+  assert.equal(d.repo.hojas.profe_dias.length, 1);                                    // el día quedó completo
+  assert.equal(pedir(d, { accion: 'profe_deshacer', token: entrar(d, '20333444'), id: 'pp-1' }).error, 'prohibido');
+  assert.equal(pedir(d, { accion: 'profe_deshacer', token: tk, id: 'pp-1' }).data.tarea.estado, 'pendiente');
+  assert.equal(d.repo.hojas.profe_dias.length, 0);                                    // ya no está completo
+  const r = pedir(d, { accion: 'profe_deshacer', token: tk, id: 'pp-2' });
+  assert.equal(r.data.aviso_recepcion, 'cancelado');
+  assert.equal(d.repo.hojas.tareas[0].estado, 'cerrada');
+  assert.equal(pedir(d, { accion: 'profe_deshacer', token: tk, id: 'pp-3' }).data.tarea.estado, 'pendiente');
+  assert.equal(pedir(d, { accion: 'profe_tareas', token: tk }).data.mio.hoy.length, 3);
+});
+
+test('traer a hoy un socio de los próximos días', () => {
+  const d = entorno();
+  cargar(d, [tarea(1, { fecha: '2026-11-12' })]);
+  const tk = entrar(d, '20111222');
+  assert.equal(pedir(d, { accion: 'profe_adelantar', token: tk, id: 'pp-1' }).data.tarea.fecha, HOY);
+  assert.equal(pedir(d, { accion: 'profe_adelantar', token: tk, id: 'pp-1' }).error, 'no_existe');   // ya es de hoy
+});
+
+test('mi mes: medallas y día completo', () => {
+  const d = entorno();
+  cargar(d, [tarea(1)]);
+  const tk = entrar(d, '20111222');
+  const r = pedir(d, { accion: 'profe_marcar', token: tk, id: 'pp-1' });
+  assert.equal(r.data.dia_completo.planes, '1');
+  const mes = pedir(d, { accion: 'profe_tareas', token: tk }).data.mio.mes;
+  assert.equal(mes.dias_completos, 1);
+  assert.equal(mes.medallas.find(m => m.clave === 'dia').n, 1);
+  assert.equal(mes.medallas.find(m => m.clave === 'hora').n, 1);
+});
