@@ -553,10 +553,23 @@
         <span class="accion">${esc(t.accion)}</span>
         ${t.nota ? `<span class="nota">“${esc(t.nota)}”</span>` : ''}
       </div>
+      ${puedeMarcar && t.estado === 'pendiente' ? otraSituacion(t) : ''}
       ${puedeMarcar ? `<div class="fila-accion">${t.estado === 'hecha'
         ? `<button class="boton claro" data-accion="plan-marcar" data-id="${esc(t.id)}" data-hecha="0">Deshacer</button><span class="aclara">Se cierra sola cuando MOVE muestre el plan nuevo.</span>`
         : `<button class="boton verde" data-accion="plan-marcar" data-id="${esc(t.id)}" data-hecha="1">Listo, lo renové</button>`}</div>` : ''}
     </article>`;
+  }
+
+  function otraSituacion(t) {
+    const op = (E.planes.mio && E.planes.mio.opciones) || { profes: [], recepcion: [] };
+    return `<details class="otra-situacion"><summary>Otra situación</summary>
+      <div class="fila-accion"><span class="aclara">No es mi entrenado, es de</span>
+        <select data-otra-profe="${esc(t.id)}" aria-label="De qué profesional es">${op.profes.map(n => `<option>${esc(n)}</option>`).join('')}</select>
+        <span class="aclara">· avisarle a</span>
+        <select data-otra-rec="${esc(t.id)}" aria-label="A quién de recepción">${op.recepcion.map(u => `<option value="${esc(u.dni)}">${esc(u.nombre)}</option>`).join('')}</select>
+        <button class="boton claro" data-accion="otra-situacion" data-que="otro_profe" data-id="${esc(t.id)}" ${op.profes.length && op.recepcion.length ? '' : 'disabled'}>Avisar a recepción</button></div>
+      <div class="fila-accion"><button class="boton claro" data-accion="otra-situacion" data-que="papel" data-id="${esc(t.id)}">Tiene el plan en papel</button></div>
+    </details>`;
   }
 
   function cifrasPlanes(r) {
@@ -1868,6 +1881,18 @@
     else if (a === 'profe-ver') { E.profeVer = el.dataset.p; render(); window.scrollTo(0, 0); }
     else if (a === 'profe-volver') { E.profeVer = null; render(); }
     else if (a === 'reeval-abrir') { E.reevalAbierto = !el.parentElement.open; }
+    else if (a === 'otra-situacion') {
+      const id = el.dataset.id, que = el.dataset.que;
+      const valor = attr => { const s = [...app.querySelectorAll('select[' + attr + ']')].find(x => x.getAttribute(attr) === id); return s ? s.value : ''; };
+      el.disabled = true;
+      try {
+        const r = await cliente.llamar('profe_otra_situacion', que === 'papel' ? { id, que } : { id, que, profe: valor('data-otra-profe'), dni: valor('data-otra-rec') });
+        const M = E.planes && E.planes.mio;
+        if (M) { M.hoy = M.hoy.filter(x => x.id !== id); M.resumen.pendientes_hoy = Math.max(0, M.resumen.pendientes_hoy - 1); }
+        render();
+        aviso(que === 'papel' ? '📄 Anotado: tiene el plan en papel.' : `✅ Listo: le avisamos a ${r.recepcionista} para que le cambie el profesor.`);
+      } catch (e) { el.disabled = false; aviso(PulsoApi.mensaje(e.codigo || e.message), true); }
+    }
     else if (a === 'revision-responder') {
       el.disabled = true;
       try {

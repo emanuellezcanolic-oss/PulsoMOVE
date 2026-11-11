@@ -27,7 +27,8 @@ function fusionarProfeTareas(viejas, nuevas, hoy, ts) {
   nuevas.forEach(n => {
     const v = porId[n.id];
     vistas[n.id] = true;
-    const mismoCiclo = v && v.estado !== 'cerrada' && String(v.vence || '') === String(n.vence || '');
+    const cambioDeProfe = v && v.estado === 'derivada' && v.profe !== n.profe;
+    const mismoCiclo = v && v.estado !== 'cerrada' && !cambioDeProfe && String(v.vence || '') === String(n.vence || '');
     if (!mismoCiclo) nuevasN++;
     filas.push({
       id: n.id, fecha: n.fecha, sede: n.sede, profe: n.profe, profe_dni: n.profe_dni, socio_id: n.socio_id, socio_nombre: n.socio_nombre,
@@ -82,7 +83,7 @@ function ordenProfe(a, b) {
 function agendaDeProfe(filas, hoy) {
   const hasta = sumarDiasProfe(hoy, DIAS_SEMANA_PROFE);
   const abiertas = filas.filter(t => t.estado !== 'cerrada');
-  const hoyLista = abiertas.filter(t => t.fecha <= hoy && (t.estado === 'pendiente' || String(t.hecha_en).slice(0, 10) === hoy || fechaArgentina(t.hecha_en) === hoy)).sort(ordenProfe);
+  const hoyLista = abiertas.filter(t => t.fecha <= hoy && (t.estado === 'pendiente' || (t.estado === 'hecha' && (String(t.hecha_en).slice(0, 10) === hoy || fechaArgentina(t.hecha_en) === hoy)))).sort(ordenProfe);
   const proximas = abiertas.filter(t => t.fecha > hoy && t.fecha <= hasta && t.estado === 'pendiente').sort(ordenProfe);
   const mes = hoy.slice(0, 7);
   const delMes = filas.filter(t => (t.estado === 'hecha' && fechaArgentina(t.hecha_en).slice(0, 7) === mes) || (t.estado === 'cerrada' && String(t.cerrada_en).slice(0, 7) === mes));
@@ -97,6 +98,8 @@ function agendaDeProfe(filas, hoy) {
       proximas: proximas.length,
       en_agenda: abiertas.filter(t => t.estado === 'pendiente').length,
       hechas_mes: delMes.length,
+      en_papel: filas.filter(t => t.estado === 'papel').length,
+      derivadas: filas.filter(t => t.estado === 'derivada').length,
     },
   };
 }
@@ -112,6 +115,7 @@ function profeTareas(req, deps) {
     out.mio = agendaDeProfe(filas.filter(t => t.profe_dni === usuario.dni), hoy);
     out.mio.reeval = reevalDeProfe(usuario, deps, hoy, usuarios);
     out.mio.revisiones = revisionesDeProfe(usuario, deps, hoy);
+    out.mio.opciones = opcionesDeProfe(usuario, usuarios);
   }
   if (coordina) {
     const sede = tieneRol(usuario, 'admin') ? texto(req.sede) : usuario.sede;
@@ -414,4 +418,52 @@ function profeResponderRevision(req, deps) {
   r.nota = texto(req.nota).slice(0, 300);
   deps.repo.escribir('profe_revision', filas);
   return { revision: vistaRevision(r) };
+}
+
+// ---------- Otra situación: no es mi entrenado / tiene el plan en papel (Emanuel, 10/11/2026) ----------
+// "No es mi entrenado, es de X": el profe elige a quién de recepción de su sede avisarle, y a esa persona le llega
+// "Cambiar profesor · lo pide el profe" en el nivel 1. Cuando MOVE muestra el profe nuevo, la renovación pasa sola
+// a la lista de ese profe (fusionarProfeTareas). "Tiene el plan en papel": sale de la lista y queda anotado.
+
+const TIPO_CAMBIAR_PROFE = 'Cambiar profesor · lo pide el profe';
+
+function opcionesDeProfe(usuario, usuarios) {
+  return {
+    profes: usuarios.filter(u => esVerdad(u.activo) && esProfe(u) && u.dni !== usuario.dni).map(u => u.nombre).sort(),
+    recepcion: usuarios.filter(u => u.sede === usuario.sede && esVerdad(u.activo) && tieneRol(u, 'recepcion')).map(u => ({ dni: u.dni, nombre: u.nombre })),
+  };
+}
+
+function profeOtraSituacion(req, deps) {
+  const { usuario, usuarios } = sesion(req, deps);
+  if (!esProfe(usuario)) falla('prohibido');
+  const filas = deps.repo.leer('profe_tareas');
+  const t = filas.find(x => x.id === texto(req.id) && x.estado === 'pendiente' && x.profe_dni === usuario.dni);
+  if (!t) falla('no_existe');
+  const ts = new Date(deps.ahora()).toISOString();
+  const hoy = deps.hoy();
+  const que = texto(req.que);
+  if (que === 'papel') {
+    Object.assign(t, { estado: 'papel', hecha_en: ts, hecha_dni: usuario.dni, nota: 'Tiene el plan en papel' });
+    deps.repo.escribir('profe_tareas', filas);
+    return { tarea: vistaTareaProfe(t, hoy) };
+  }
+  if (que !== 'otro_profe') falla('datos_invalidos');
+  const op = opcionesDeProfe(usuario, usuarios);
+  const nuevo = texto(req.profe);
+  const r = op.recepcion.find(u => u.dni === normalizarDni(req.dni));
+  if (op.profes.indexOf(nuevo) < 0 || !r) falla('datos_invalidos');
+  const tareas = deps.repo.leer('tareas');
+  if (tareas.some(x => x.socio_id === 'profe-' + t.socio_id && x.estado === 'pendiente')) falla('ya_avisado');
+  const quien = String(usuario.nombre).split(' ')[0];
+  deps.repo.agregar('tareas', {
+    id: hoy + '-' + usuario.sede + '-profe-' + t.socio_id, fecha: hoy, sede: usuario.sede, socio_id: 'profe-' + t.socio_id, socio_nombre: t.socio_nombre,
+    profe: nuevo, tipo: TIPO_CAMBIAR_PROFE, prioridad: '1',
+    situacion: `${quien} avisa que ${t.socio_nombre} no es su entrenado: es de ${nuevo}`,
+    accion: `Cambiarle el profesor en MOVE a ${nuevo}. Cuando MOVE lo muestre, la renovación del plan le pasa sola a ${nuevo}`,
+    ultima_anotacion: '', asignado_dni: r.dni, pendiente_desde: hoy, estado: 'pendiente', hecha_en: '', intro: '',
+  });
+  Object.assign(t, { estado: 'derivada', hecha_en: ts, hecha_dni: usuario.dni, nota: `No es su entrenado: es de ${nuevo} (avisado a ${r.nombre})` });
+  deps.repo.escribir('profe_tareas', filas);
+  return { tarea: vistaTareaProfe(t, hoy), recepcionista: r.nombre };
 }

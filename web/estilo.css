@@ -506,3 +506,8 @@ details.grupo summary h2 { display: inline; }
 .barra-custom .marca-pct.amarillo { background: var(--naranja); }
 .barra-custom .marca-pct.rojo { background: var(--rojo); }
 .pregunta-salto { flex-basis: 100%; font-size: 13.5px; font-weight: 600; }
+
+.otra-situacion { padding: 0 14px 6px; font-size: 13px; }
+.otra-situacion summary { cursor: pointer; color: var(--gris); font-weight: 600; padding: 2px 0 6px; }
+.otra-situacion .fila-accion { padding: 0 0 8px; }
+.otra-situacion select { max-width: 100%; }

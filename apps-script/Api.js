@@ -1278,6 +1278,7 @@ const ACCIONES = {
   profe_pedir_reeval: (r, d) => profePedirReeval(r, d),
   cargar_profe_revision: (r, d) => cargarProfeRevision(r, d),
   profe_responder_revision: (r, d) => profeResponderRevision(r, d),
+  profe_otra_situacion: (r, d) => profeOtraSituacion(r, d),
 };
 
 // Las pantallas que solo miran no esperan turno: un pedido trabado no las frena. Lista cerrada: lo que no esté acá espera.
