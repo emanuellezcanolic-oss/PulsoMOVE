@@ -524,3 +524,6 @@ details.grupo summary h2 { display: inline; }
 .medalla-profe .avance { height: 6px; border-radius: 999px; background: var(--suave); overflow: hidden; }
 .medalla-profe .avance i { display: block; height: 100%; background: var(--verde); }
 .hechas-profe .hecha-fila { display: flex; justify-content: space-between; align-items: center; gap: 8px; padding: 6px 0; border-bottom: 1px dashed var(--linea); font-size: 13px; }
+
+.plan-extra { margin-top: 12px; display: grid; gap: 6px; }
+.plan-extra .buscador { margin: 4px 0 0; }

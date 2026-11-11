@@ -74,7 +74,7 @@ function vistaTareaProfe(t, hoy) {
   };
 }
 
-const ORDEN_TIPO_PROFE = { 'Plan nuevo': 0, 'Plan vencido': 1, 'Sin plan': 2, 'Plan sin vencimiento': 3, 'Renovar plan': 4 };
+const ORDEN_TIPO_PROFE = { 'Plan nuevo': 0, 'Plan vencido': 1, 'Sin plan': 2, 'Plan sin vencimiento': 3, 'Renovar plan': 4, 'Plan extra': 5 };
 function ordenProfe(a, b) {
   return (a.fecha < b.fecha ? -1 : a.fecha > b.fecha ? 1 : 0) || (ORDEN_TIPO_PROFE[a.tipo] - ORDEN_TIPO_PROFE[b.tipo]) || String(a.vence).localeCompare(String(b.vence));
 }
@@ -610,6 +610,10 @@ function profeDeshacer(req, deps) {
       aviso = 'ya_hecho';    // recepción ya lo había hecho: si cambió el profe en MOVE, hay que pedir que lo vuelva a cambiar
     }
   }
+  if (t.tipo === 'Plan extra') {
+    deps.repo.escribir('profe_tareas', filas.filter(x => x !== t));   // lo había agregado a mano: se borra
+    return { tarea: Object.assign(vistaTareaProfe(t, hoy), { estado: 'borrada' }), aviso_recepcion: '' };
+  }
   Object.assign(t, { estado: 'pendiente', hecha_en: '', hecha_dni: '', nota: '' });
   deps.repo.escribir('profe_tareas', filas);
   // el día deja de estar completo si quedó algo pendiente para hoy
@@ -619,4 +623,28 @@ function profeDeshacer(req, deps) {
     if (quedan.length !== dias.length) deps.repo.escribir('profe_dias', quedan);
   }
   return { tarea: vistaTareaProfe(t, hoy), aviso_recepcion: aviso };
+}
+
+// ---------- Plan extra: renové el plan de un socio que no estaba en mi lista de hoy (Emanuel, 11/11/2026) ----------
+// Si estaba agendado para otro día, se da por hecho ahí; si no, queda anotado como "Plan extra". Cuenta como renovado.
+function profePlanExtra(req, deps) {
+  const { usuario } = sesion(req, deps);
+  if (!esProfe(usuario)) falla('prohibido');
+  const c = deps.repo.leer('profe_reeval').find(x => x.profe_dni === usuario.dni && x.socio_id === texto(req.socio_id));
+  if (!c) falla('no_existe');
+  const hoy = deps.hoy();
+  const ts = new Date(deps.ahora()).toISOString();
+  const filas = deps.repo.leer('profe_tareas');
+  if (filas.some(t => t.socio_id === c.socio_id && t.profe_dni === usuario.dni && t.estado === 'hecha' && fechaArgentina(t.hecha_en) === hoy)) falla('ya_anotado');
+  let t = filas.find(x => x.socio_id === c.socio_id && x.profe_dni === usuario.dni && x.estado === 'pendiente');
+  if (t) {
+    Object.assign(t, { fecha: t.fecha > hoy ? hoy : t.fecha, estado: 'hecha', hecha_en: ts, hecha_dni: usuario.dni, nota: 'Plan extra: lo renovó antes de que le tocara' });
+  } else {
+    t = { id: 'px-' + c.socio_id + '-' + hoy, fecha: hoy, sede: c.sede, profe: c.profe, profe_dni: usuario.dni, socio_id: c.socio_id, socio_nombre: c.socio_nombre,
+      tipo: 'Plan extra', accion: 'Renovó el plan sin que estuviera en la lista', vence: '', alta: '', estado: 'hecha', hecha_en: ts, hecha_dni: usuario.dni,
+      nota: 'Plan extra', cargada: hoy, cerrada_en: '' };
+    filas.push(t);
+  }
+  deps.repo.escribir('profe_tareas', filas);
+  return { tarea: vistaTareaProfe(t, hoy) };
 }

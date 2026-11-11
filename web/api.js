@@ -3,7 +3,7 @@
   const CLAVE_SESION = 'pulso_sesion';
   const CLAVE_COLA = 'pulso_cola';
   // Errores que no se arreglan reintentando: la marca se descarta y se avisa
-  const DEFINITIVOS = ['prohibido', 'no_existe', 'datos_invalidos', 'ya_pedida', 'sin_recepcion', 'ya_avisado'];
+  const DEFINITIVOS = ['prohibido', 'no_existe', 'datos_invalidos', 'ya_pedida', 'sin_recepcion', 'ya_avisado', 'ya_anotado'];
   // "ocupado" garantiza que el pedido no se hizo, así que repetirlo es seguro aunque guarde datos.
   const ESPERAS_OCUPADO = [3000, 8000];
   const LIMITE_MS = 90000;   // el servidor espera su turno hasta 20 s; más que esto ya es un pedido colgado
@@ -19,6 +19,7 @@
     no_existe: 'Esa tarea o ese pedido ya no está. Actualizá la pantalla.',
     ya_pedida: 'Recepción ya tiene para coordinarle una reevaluación a este socio.',
     ya_avisado: 'Recepción ya tiene el aviso para cambiarle el profesor a este socio.',
+    ya_anotado: 'Ese socio ya figura con el plan renovado hoy.',
     sin_recepcion: 'No hay nadie de recepción cargado en esa sede para pasarle el pedido. Avisale a Emanuel.',
     red: 'No hay conexión. Lo que marques se guarda en este equipo y se envía solo.',
     ocupado: 'El servidor está demorado. Esperá un momento y probá de nuevo.',

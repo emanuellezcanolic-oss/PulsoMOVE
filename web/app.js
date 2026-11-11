@@ -723,6 +723,16 @@
       <span class="para">${esc(m.para)}</span><span class="avance"><i style="width:${Math.min(100, Math.round(m.n / m.meta * 100))}%"></i></span><span class="cuenta">${m.n} de ${m.meta}${m.ganada ? ' · ¡ganada!' : ''}</span></div>`).join('')}</div>`;
   }
 
+  // Plan extra: renové el plan de un socio que no estaba en la lista de hoy
+  function bloquePlanExtra(M) {
+    const socios = (M.reeval && M.reeval.socios) || [];
+    if (!socios.length) return '';
+    return `<div class="persona plan-extra"><b>➕ Plan extra</b><span class="turno">¿Le renovaste el plan a un socio que no estaba en tu lista? Agregalo y te cuenta.</span>
+      <input class="buscador" list="socios-extra" data-extra-busca placeholder="Nombre del socio" aria-label="Socio al que le renovaste el plan">
+      <datalist id="socios-extra">${socios.map(x => `<option value="${esc(x.socio_nombre)}"></option>`).join('')}</datalist>
+      <button class="boton verde ancho" data-accion="plan-extra">Agregar plan extra</button></div>`;
+  }
+
   function vistaMesProfe() {
     if (!E.planes) return '<div class="cargando">Cargando tu mes…</div>';
     const M = E.planes.mio;
@@ -760,7 +770,8 @@
     const porDia = {};
     M.proximas.forEach(t => { (porDia[t.fecha] = porDia[t.fecha] || []).push(t); });
     return `<div class="dos-columnas"><aside class="lado"><div class="persona"><b>Tu mes</b>${cifrasPlanes(M.resumen)}</div>
-        <p class="aclara">Cada día tenés una cantidad pareja de planes: así, a fin de mes, todos tus socios quedan con el plan al día. Lo que no llegás a hacer pasa al día siguiente.</p></aside>
+        <p class="aclara">Cada día tenés una cantidad pareja de planes: así, a fin de mes, todos tus socios quedan con el plan al día. Lo que no llegás a hacer pasa al día siguiente.</p>
+        ${bloquePlanExtra(M)}</aside>
       <div class="principal">
       <h1 class="titulo">${esc(tituloDia(E.planes.hoy))} <span>·</span> tus planes</h1>
       <p class="bajada">Primero el socio nuevo, después los vencidos y después los que están por vencer.</p>
@@ -1974,6 +1985,19 @@
     else if (a === 'profe-ver') { E.profeVer = el.dataset.p; render(); window.scrollTo(0, 0); }
     else if (a === 'profe-volver') { E.profeVer = null; render(); }
     else if (a === 'reeval-abrir') { E.reevalAbierto = !el.parentElement.open; }
+    else if (a === 'plan-extra') {
+      const campo = app.querySelector('[data-extra-busca]');
+      const socios = (E.planes && E.planes.mio && E.planes.mio.reeval && E.planes.mio.reeval.socios) || [];
+      const nombre = (campo && campo.value || '').trim().toLowerCase();
+      const s = socios.find(x => x.socio_nombre.toLowerCase() === nombre) || (nombre.length > 2 && socios.filter(x => x.socio_nombre.toLowerCase().indexOf(nombre) >= 0).length === 1 ? socios.find(x => x.socio_nombre.toLowerCase().indexOf(nombre) >= 0) : null);
+      if (!s) { aviso('Elegí el socio de la lista: escribí su nombre y tocá la sugerencia.', true); return; }
+      el.disabled = true;
+      try {
+        await cliente.llamar('profe_plan_extra', { socio_id: s.socio_id });
+        await cargarVista();
+        aviso(`✅ Anotado: le renovaste el plan a ${s.socio_nombre}. Te cuenta como hecho.`);
+      } catch (e) { el.disabled = false; aviso(PulsoApi.mensaje(e.codigo || e.message), true); }
+    }
     else if (a === 'no-es-mio') {
       const s = el.dataset.s, art = el.closest('article');
       const valor = attr => { const x = art.querySelector('select[' + attr + ']'); return x ? x.value : ''; };

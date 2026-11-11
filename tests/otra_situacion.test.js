@@ -133,3 +133,30 @@ test('recepción marca el cambio de profesor y le cuenta como tarea hecha', () =
   assert.equal(d.repo.hojas.tareas[0].estado, 'hecha');
   assert.equal(d.repo.hojas.registro[0].resultado, 'CORREGIDO');
 });
+
+test('plan extra: anoto un socio mío que no estaba en la lista de hoy', () => {
+  const d = entorno();
+  d.repo.hojas.profe_reeval = [{ id: 're-7', sede: 'bolson', profe: 'Belu Prueba', profe_dni: '20111222', socio_id: '7', socio_nombre: 'Socio 7', ultima_eval: '', dias: '', habitos: '' },
+    { id: 're-8', sede: 'bolson', profe: 'Belu Prueba', profe_dni: '20111222', socio_id: '8', socio_nombre: 'Socio 8', ultima_eval: '', dias: '', habitos: '' },
+    { id: 're-9', sede: 'bolson', profe: 'Enzo Prueba', profe_dni: '20333444', socio_id: '9', socio_nombre: 'Socio 9', ultima_eval: '', dias: '', habitos: '' }];
+  cargar(d, [tarea(8, { fecha: '2026-11-20' })]);
+  const tk = entrar(d, '20111222');
+  assert.equal(pedir(d, { accion: 'profe_plan_extra', token: tk, socio_id: '9' }).error, 'no_existe');     // no es mío
+  const r = pedir(d, { accion: 'profe_plan_extra', token: tk, socio_id: '7' });
+  assert.deepEqual([r.data.tarea.tipo, r.data.tarea.estado], ['Plan extra', 'hecha']);
+  assert.equal(pedir(d, { accion: 'profe_plan_extra', token: tk, socio_id: '7' }).error, 'ya_anotado');
+  // el 8 estaba agendado para otro día: se da por hecho ahí
+  assert.equal(pedir(d, { accion: 'profe_plan_extra', token: tk, socio_id: '8' }).data.tarea.id, 'pp-8');
+  const mio = pedir(d, { accion: 'profe_tareas', token: tk }).data.mio;
+  assert.equal(mio.resumen.hechas_hoy, 2);
+  assert.equal(mio.resumen.hechas_mes, 2);
+  assert.equal(mio.proximas.length, 0);
+  // si me equivoqué, deshacer el plan extra lo borra (no vuelve como pendiente)
+  assert.equal(pedir(d, { accion: 'profe_deshacer', token: tk, id: 'px-7-' + HOY }).data.tarea.estado, 'borrada');
+  assert.ok(!d.repo.hojas.profe_tareas.some(t => t.id === 'px-7-' + HOY));
+  pedir(d, { accion: 'profe_plan_extra', token: tk, socio_id: '7' });
+  // la carga del día siguiente no lo borra: queda en el historial
+  d.dia = '2026-11-11';
+  cargar(d, []);
+  assert.ok(d.repo.hojas.profe_tareas.some(t => t.id === 'px-7-' + HOY));
+});

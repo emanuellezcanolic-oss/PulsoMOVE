@@ -1282,6 +1282,7 @@ const ACCIONES = {
   profe_adelantar: (r, d) => profeAdelantar(r, d),
   profe_deshacer: (r, d) => profeDeshacer(r, d),
   profe_no_es_mio: (r, d) => profeNoEsMio(r, d),
+  profe_plan_extra: (r, d) => profePlanExtra(r, d),
 };
 
 // Las pantallas que solo miran no esperan turno: un pedido trabado no las frena. Lista cerrada: lo que no esté acá espera.
