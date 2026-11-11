@@ -136,3 +136,21 @@ test('no es mi entrenado desde las reevaluaciones: aviso a recepción y deja de 
   assert.match(d.repo.hojas.tareas[1].accion, /Fijate en qué horario viene/);
   assert.equal(pedir(d, { accion: 'profe_no_es_mio', token: tk, socio_id: '2', profe: 'Profe Dos', dni: '30111111' }).error, 'ya_avisado');
 });
+
+test('con el horario del profe cargado, propone solo cuando el profe está en la sede', () => {
+  // en MOVE la clase de las 09:00 figura con el profe, pero su horario es de 14 a 17 (por ejemplo, una kinesióloga)
+  const d = entorno([socio(1, 300)], todasLasFranjas());
+  assert.deepEqual(pedir(d, { accion: 'cargar_profe_horarios', clave: PROPS.CLAVE_CARGA, filas: [{ profe: 'Profe Uno', sede: 'bolson', dias: '0,2,4', desde: '08:00', hasta: '10:00' }, { profe: 'Profe Uno', sede: 'bolson', dias: '1,3', desde: '17:00', hasta: '19:00' }] }).data, { filas: 2 });
+  const r = reeval(d);
+  // miércoles 11 (2): solo 09:00 · jueves 12 (3): solo 18:00
+  assert.deepEqual(r.recomendadas.map(x => [x.propuesta.fecha, x.propuesta.hora]).slice(0, 1), [['2026-11-11', '09:00']]);
+  const s = r.socios[0].propuesta;
+  assert.ok(s && ['09:00', '18:00'].indexOf(s.hora) >= 0);
+  assert.equal(pedir(d, { accion: 'cargar_profe_horarios', clave: PROPS.CLAVE_CARGA, filas: [{ profe: 'Profe Uno', sede: 'bolson', dias: 'x', desde: '08:00', hasta: '10:00' }] }).error, 'datos_invalidos');
+});
+
+test('sin horario cargado sigue mirando el profe de la clase de MOVE', () => {
+  const d = entorno([socio(1, 300)], todasLasFranjas());
+  pedir(d, { accion: 'cargar_profe_horarios', clave: PROPS.CLAVE_CARGA, filas: [{ profe: 'Otra Persona', sede: 'bolson', dias: '0-4', desde: '08:00', hasta: '10:00' }] });
+  assert.equal(reeval(d).recomendadas[0].propuesta.hora, '14:00');
+});

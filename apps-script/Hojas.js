@@ -35,6 +35,8 @@ const COLUMNAS = {
   // Auditoría de planes (F2.18): hallazgos como tareas, y el puntaje de cada profe por día
   profe_auditoria: ['id', 'fecha', 'ultima', 'sede', 'profe', 'profe_dni', 'socio_id', 'socio_nombre', 'seccion', 'gravedad', 'texto', 'cuantos', 'estado', 'marcada_en', 'corregido_en', 'reaparecio'],
   // Tablero de coordinación: lo que calcula la PC por profe (vencidos y cuántas veces vino, customización, tiempo). Solo la última corrida
+  // Horario de cada profe y kinesiólogo en cada sede (lo carga la PC; días 0=lunes … 6=domingo, '0-4' o '0,2,4')
+  profe_horarios: ['profe', 'sede', 'dias', 'desde', 'hasta'],
   profe_coord: ['fecha', 'profe', 'profe_dni', 'sede', 'datos'],
   profe_puntajes: ['fecha', 'profe', 'profe_dni', 'socios', 'puntaje', 'gestion', 'diagnostico', 'metodologia', 'custom', 'rpe'],
   // Días en que el profe terminó todo lo del día, y cuánto tardó desde la primera marca

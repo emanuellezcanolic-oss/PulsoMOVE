@@ -870,7 +870,7 @@
     const filas = con.map(p => {
       const c = p.coord, cu = c.custom || {}, t = c.tiempo || {};
       return `<tr><td><button class="enlace" data-accion="profe-ver" data-p="${esc(p.profe)}">${esc(p.profe)}</button></td>
-        <td class="num">${c.socios}</td><td class="num">${pct(c.al_dia_pct)}</td><td class="num">${c.vencidos}</td>
+        <td class="num">${c.socios}</td><td class="num">${c.horas_semana != null ? c.horas_semana + ' h' : '—'}</td><td class="num">${pct(c.al_dia_pct)}</td><td class="num">${c.vencidos}</td>
         <td class="num ${c.vienen_mucho ? 'rojo' : c.vienen ? 'amarillo' : ''}"><b>${c.vienen}</b>${c.vienen_mucho ? ` <small>(${c.vienen_mucho} con 8+)</small>` : ''}</td>
         <td class="num">${c.renovados}</td><td class="num ${cu.en_rango_pct >= 60 ? 'verde' : cu.en_rango_pct >= 30 ? 'amarillo' : cu.medidos ? 'rojo' : ''}">${cu.medidos ? pct(cu.en_rango_pct) : '—'}</td>
         <td class="num">${cu.medidos ? pct(cu.mediana_pct) : '—'}</td><td class="num">${cu.medidos ? cu.con_saltos + '/' + cu.medidos : '—'}</td>
@@ -884,7 +884,7 @@
     con.forEach(p => (p.coord.lista || []).forEach(v => { if (v.vino_vencido >= 4) todos.push(Object.assign({ profe: p.profe }, v)); }));
     todos.sort((a, b) => b.vino_vencido - a.vino_vencido);
     return `<section class="bloque tablero-coord"><div class="bloque-cab"><h2>📊 Tablero del equipo</h2><span class="aclara">Datos de MOVE del ${esc(ddmm(con[0].coord.fecha))} · renovaciones de los últimos 30 días</span></div>
-      <div class="envoltura-tabla"><table class="tabla compacta"><thead><tr><th>Profe</th><th>Socios</th><th>Al día</th><th>Vencidos</th><th title="Planes vencidos en los que el socio igual vino 4 veces o más desde que venció">Vencidos que igual vienen</th><th>Renovados</th><th title="Planes renovados con un cambio entre 30 y 80% respecto del anterior">Custom. 30-80%</th><th>Cambio (mediana)</th><th title="Planes con un salto de 2 escalones o más">Con saltos</th><th>Min por plan</th><th>Horas armando</th><th title="Una hora extra paga por día hábil para planificar">Horas pagadas</th><th>Planes por hora paga</th><th title="Días hábiles, desde que arrancó el reparto el 10/11, en que llegó a su cupo diario de planes">Cumplió el cupo</th><th>Auditoría</th><th>Para mirar</th></tr></thead><tbody>${filas}</tbody></table></div>
+      <div class="envoltura-tabla"><table class="tabla compacta"><thead><tr><th>Profe</th><th>Socios</th><th title="Horas por semana según su horario">Horas/sem.</th><th>Al día</th><th>Vencidos</th><th title="Planes vencidos en los que el socio igual vino 4 veces o más desde que venció">Vencidos que igual vienen</th><th>Renovados</th><th title="Planes renovados con un cambio entre 30 y 80% respecto del anterior">Custom. 30-80%</th><th>Cambio (mediana)</th><th title="Planes con un salto de 2 escalones o más">Con saltos</th><th>Min por plan</th><th>Horas armando</th><th title="Una hora extra paga por día hábil para planificar">Horas pagadas</th><th>Planes por hora paga</th><th title="Días hábiles, desde que arrancó el reparto el 10/11, en que llegó a su cupo diario de planes">Cumplió el cupo</th><th>Auditoría</th><th>Para mirar</th></tr></thead><tbody>${filas}</tbody></table></div>
       ${almanaque(sumarPorDia(con.map(p => p.coord.por_dia)), con[0].coord.desde, con[0].coord.fecha, 'Planes armados por día · todo el equipo')}
       <p class="aclara">Protocolo: el plan se renueva todos los meses. "Vencidos que igual vienen": el socio vino 4 veces o más con el plan vencido (una semana de entrenamiento); 8 o más, dos semanas. Customización comparada con el plan anterior del mismo socio: menos de 15% no cuenta como modificado, 30 a 80% es lo recomendado, más de 80% es casi un plan nuevo (para eso, una plantilla modelo). El tiempo es aproximado: sale de cuándo se creó y se editó cada día del plan en MOVE. Horas pagadas: una hora extra por día hábil (lunes a viernes) en los últimos 30 días, sin descontar francos ni vacaciones.</p>
       ${todos.length ? `<h3 class="sub-coord">🔴 Planes vencidos que más se usaron <span class="cuenta">${todos.length}</span></h3>
@@ -926,6 +926,7 @@
         let i = 0;
         return `<button class="chip" data-accion="profe-volver">← Todos los profes</button>
           <h1 class="titulo">${esc(p.profe)}</h1><div class="persona">${cifrasPlanes(p.resumen)}</div>
+          ${p.coord && p.coord.horario ? `<p class="bajada">🕒 ${esc(p.coord.horario)} · ${p.coord.horas_semana} h por semana</p>` : ''}
           ${coordDeProfe(p.coord)}
           <section class="grupo"><h2>Lo de hoy <span class="cuenta">${p.hoy.length}</span></h2>${p.hoy.length ? p.hoy.map(t => tarjetaPlan(t, i++, false)).join('') : '<div class="vacio">Nada para hoy.</div>'}</section>
           ${p.auditoria ? `<div class="personas">${puntajeAuditoria(p.auditoria, 'Auditoría')}</div>${p.auditoria.pendientes.length ? `<section class="grupo"><h2>🧾 Para corregir <span class="cuenta">${p.auditoria.cuantos.pendientes}</span></h2>${p.auditoria.pendientes.map(h => tarjetaHallazgo(h, i++, false)).join('')}</section>` : ''}` : ''}

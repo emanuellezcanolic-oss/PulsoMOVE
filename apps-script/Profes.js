@@ -227,7 +227,9 @@ function propuestaDia(c, fecha, ctx, estricta) {
   ctx.memo = ctx.memo || {};
   const franjas = ctx.memo[clave] = ctx.memo[clave] || franjasDelDia(ctx.proximas, c.sede, fecha);
   const profe = normNombre(c.profe);
-  const conProfe = Object.keys(franjas).filter(h => franjas[h].profes.indexOf(profe) >= 0);
+  // si conocemos el horario del profe, manda el horario; si no, el profe que figura en la clase de MOVE
+  const suyo = (ctx.horarios || []).filter(x => normNombre(x.profe) === profe);
+  const conProfe = Object.keys(franjas).filter(h => (suyo.length ? enHorario(suyo, c.sede, dia, h) : franjas[h].profes.indexOf(profe) >= 0));
   if (!conProfe.length) return null;
   const hab = leerHabitos(c.habitos)[String(dia)] || {};
   const suyas = conProfe.filter(h => hab[h]);
@@ -269,7 +271,7 @@ function reevalDeProfe(usuario, deps, hoy, usuarios) {
   const filas = deps.repo.leer('profe_reeval').filter(c => c.profe_dni === usuario.dni);
   if (!filas.length) return null;
   const tareas = deps.repo.leer('tareas');
-  const ctx = { proximas: deps.repo.leer('proximas'), patron: deps.repo.leer('ocupacion') };
+  const ctx = { proximas: deps.repo.leer('proximas'), patron: deps.repo.leer('ocupacion'), horarios: deps.repo.leer('profe_horarios') };
   const pedida = c => reevalYaPedida(tareas, c);
   const noEsMio = c => avisadoNoEsMio(tareas, c);
   const atrasados = filas.filter(c => c.dias !== '' && Number(c.dias) >= DIAS_REEVAL && !pedida(c) && !noEsMio(c));
@@ -804,4 +806,26 @@ function coordinacionPorProfe(deps, sede) {
   const out = {};
   deps.repo.leer('profe_coord').filter(r => !sede || r.sede === sede).forEach(r => { out[r.profe] = Object.assign({ fecha: String(r.fecha).slice(0, 10) }, leerJson(r.datos, {})); });
   return out;
+}
+
+// ---------- Horarios de los profes (Emanuel y Lucía, 11/11/2026) ----------
+function diasDeHorario(s) {
+  const t = String(s || '').trim();
+  const m = t.match(/^(\d)\s*-\s*(\d)$/);
+  if (m) { const out = []; for (let i = Number(m[1]); i <= Number(m[2]); i++) out.push(i); return out; }
+  return t.split(',').map(x => x.trim()).filter(x => /^\d$/.test(x)).map(Number);
+}
+
+function enHorario(filas, sede, dia, hora) {
+  return filas.some(x => x.sede === sede && diasDeHorario(x.dias).indexOf(dia) >= 0 && String(x.desde) <= hora && hora < String(x.hasta));
+}
+
+function cargarProfeHorarios(req, deps) {
+  exigirClave(req, deps);
+  if (!Array.isArray(req.filas)) falla('datos_invalidos');
+  const hora = h => /^\d\d:\d\d$/.test(h);
+  const filas = req.filas.map(x => ({ profe: texto(x && x.profe), sede: texto(x && x.sede), dias: texto(x && x.dias), desde: texto(x && x.desde), hasta: texto(x && x.hasta) }));
+  if (!filas.every(x => x.profe && SEDES.indexOf(x.sede) >= 0 && diasDeHorario(x.dias).length && hora(x.desde) && hora(x.hasta) && x.desde < x.hasta)) falla('datos_invalidos');
+  deps.repo.escribir('profe_horarios', filas);
+  return { filas: filas.length };
 }
