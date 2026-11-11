@@ -223,7 +223,30 @@
       pp(10, 'Profe Tarde (práctica)', Z, hoy, 'Renovar plan', diaHabilDespues(hoy, 1), { estado: 'hecha', hecha_en: new Date().toISOString(), hecha_dni: Z }),
       pp(11, 'Profe Tarde (práctica)', Z, diaHabilDespues(hoy, 2), 'Renovar plan', diaHabilDespues(hoy, 4)),
     ];
-    return { profe_tareas, proximas: proximasDemo(), fichajes: [fichajeDemo('FI1', 'Profe Sol', '', '08:00'), fichajeDemo('FI2', 'Rocío (práctica)', R, '08:00')], fichajes_control: [{ ts: new Date().toISOString() }], reservas_qr: reservasDemo(hoy), ventas, ventas_largas, stock: [{ ts: new Date().toISOString(), fecha: hoy, sede: 'bolson', dni: R, nombre: 'Rocío (práctica)', producto: 'Proteína ENA 930 g', cantidad: '5' }], beneficios: [{ id: 'B-demo', ts: new Date().toISOString(), tipo: 'referido', sede: 'bolson', socio_nombre: 'Marta Quiroga', nuevo_socio: 'Juan Paz', detalle: '', registra_dni: R, estado: 'pendiente', decide_dni: '', comentario: '', decidido_en: '' }, { id: 'B-demo2', ts: new Date().toISOString(), tipo: 'constancia', sede: 'puelo', socio_nombre: 'Rosa Medina', nuevo_socio: '', detalle: '14 días con QR en 4 semanas', registra_dni: '', estado: 'pendiente', decide_dni: '', comentario: '', decidido_en: '' }], uso: [{ ts: hoy + 'T12:00:00.000Z', dni: R, fecha: hoy, activos: rango(480, 50) + ',' + rango(600, 70), quieta: rango(530, 30), otra: rango(560, 25) }], ocupacion: ocupacionDemo(), usuarios, tareas, registro: [], garantia, rendimiento, actividad: [], objetivos: [], cierres: [
+    // Reevaluaciones: socios del profe de práctica, de la evaluación más vieja a la más reciente, con sus horarios de siempre
+    const PM = 'Profe Mañana (práctica)';
+    const atras = n => { const d = new Date(hoy + 'T12:00:00Z'); d.setUTCDate(d.getUTCDate() - n); return d.toISOString().slice(0, 10); };
+    const profe_reeval = [['Marta Quiroga', 210, '1-08:00:6|3-08:00:5'], ['Juan Paz', 150, '2-10:00:4'], ['Lucía Fernández', 120, ''], ['Rosa Medina', 95, '0-15:00:3|4-15:00:3'],
+      ['Diego Ayala', 70, '3-10:00:2'], ['Carla Benítez', 40, '1-08:00:7'], ['Andrés Rey', 20, '2-15:00:5']].map(([n, dias, h], k) => ({
+      id: 're-R' + k, sede: 'bolson', profe: PM, profe_dni: B, socio_id: 'R' + k, socio_nombre: n, ultima_eval: atras(dias), dias: String(dias), habitos: h, cargada: hoy }));
+    const proximasProfe = [];
+    for (let i = 1; i < 8; i++) {
+      const f = new Date(hoy + 'T12:00:00Z'); f.setUTCDate(f.getUTCDate() + i);
+      const fecha = f.toISOString().slice(0, 10);
+      [['08:00', 12, 9], ['10:00', 12, 3], ['15:00', 12, 6]].forEach(([hora, cupo, res]) => proximasProfe.push({ sede: 'bolson', tipo: 'franja', fecha, hora,
+        clase: 'Entrenamiento Personalizado', profe: PM, horario_id: `pm-${fecha}-${hora}`, cupo: String(cupo), reservas: String((res + i) % cupo), nombres: '', actualizado: new Date().toISOString() }));
+    }
+    // Revisión de planes renovados: lo que armaría pulso_planes_revision.py
+    const J = x => JSON.stringify(x);
+    const profe_revision = [
+      { id: 'rev-D1', fecha: atras(1), sede: 'bolson', profe: PM, profe_dni: B, socio_id: 'V1', socio_nombre: 'Iván Molina', pct: '0.96', banda: 'casi_todo',
+        saltos: J([{ bloque: 'Bloque N°2', antes: 'Bisagra de cadera con disco', esc_antes: 0, despues: 'Peso muerto búlgaro con barra', esc_despues: 3, escalones: 3 },
+          { bloque: 'Bloque N°3', antes: 'Remo con banda', esc_antes: 0, despues: 'Remo con barra en bisagra', esc_despues: 2, escalones: 2 }]),
+        rpe: J([{ bloque: 'Movilidad', ejercicio: 'Movilidad de cadera en cuadrupedia', rpe: 8, regla: 'En movilidad el RPE tendría que ser menor a 7' }]), respuesta: '', respondida_en: '', nota: '' },
+      { id: 'rev-D2', fecha: atras(2), sede: 'bolson', profe: PM, profe_dni: B, socio_id: 'V2', socio_nombre: 'Sara Luna', pct: '0.55', banda: 'bien', saltos: '[]', rpe: '[]', respuesta: '', respondida_en: '', nota: '' },
+      { id: 'rev-D3', fecha: atras(3), sede: 'bolson', profe: PM, profe_dni: B, socio_id: 'V3', socio_nombre: 'Raúl Vera', pct: '0.12', banda: 'sin_modificar', saltos: '[]', rpe: '[]', respuesta: '', respondida_en: '', nota: '' },
+    ];
+    return { profe_tareas, profe_reeval, profe_revision, proximas: proximasDemo().concat(proximasProfe), fichajes: [fichajeDemo('FI1', 'Profe Sol', '', '08:00'), fichajeDemo('FI2', 'Rocío (práctica)', R, '08:00')], fichajes_control: [{ ts: new Date().toISOString() }], reservas_qr: reservasDemo(hoy), ventas, ventas_largas, stock: [{ ts: new Date().toISOString(), fecha: hoy, sede: 'bolson', dni: R, nombre: 'Rocío (práctica)', producto: 'Proteína ENA 930 g', cantidad: '5' }], beneficios: [{ id: 'B-demo', ts: new Date().toISOString(), tipo: 'referido', sede: 'bolson', socio_nombre: 'Marta Quiroga', nuevo_socio: 'Juan Paz', detalle: '', registra_dni: R, estado: 'pendiente', decide_dni: '', comentario: '', decidido_en: '' }, { id: 'B-demo2', ts: new Date().toISOString(), tipo: 'constancia', sede: 'puelo', socio_nombre: 'Rosa Medina', nuevo_socio: '', detalle: '14 días con QR en 4 semanas', registra_dni: '', estado: 'pendiente', decide_dni: '', comentario: '', decidido_en: '' }], uso: [{ ts: hoy + 'T12:00:00.000Z', dni: R, fecha: hoy, activos: rango(480, 50) + ',' + rango(600, 70), quieta: rango(530, 30), otra: rango(560, 25) }], ocupacion: ocupacionDemo(), usuarios, tareas, registro: [], garantia, rendimiento, actividad: [], objetivos: [], cierres: [
       { fecha: hoy, ts: hoy + 'T17:30:00.000Z', dni: T, nombre: 'Tomás (práctica)', sede: 'bolson', animo: '5', respuestas: '{}', comentario: '', hechas: '18', pendientes: '0', mensajes: '9', consultas: '2', sala: '4', profes: '', equipo: '', socios: '', pregunta: '😊 ¿Algún socio te alegró el día? Contanos.', lo_mejor: 'Un socio me contó que volvió a correr sin dolor.' },
       { fecha: hoy, ts: hoy + 'T13:30:00.000Z', dni: C, nombre: 'Responsable de sede (práctica)', sede: 'bolson', animo: '3', respuestas: '{}', comentario: 'A la tarde se llenó la sala de golpe.', hechas: '12', pendientes: '4', mensajes: '6', consultas: '1', sala: '2', profes: '', equipo: '', socios: '', pregunta: '', lo_mejor: '' },
     ] };

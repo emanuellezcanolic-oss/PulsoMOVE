@@ -496,3 +496,13 @@ details.grupo summary h2 { display: inline; }
 .dia-prox { font: 700 13px/1 var(--texto); color: var(--gris); text-transform: uppercase; letter-spacing: .06em; margin: 14px 0 8px; }
 .tarjeta .situacion b { font-weight: 700; }
 .tarjeta .fila-accion .aclara { margin: 0; }
+.buscador { width: 100%; box-sizing: border-box; margin: 10px 0; padding: 10px 12px; border: 1px solid var(--linea); border-radius: 8px; font: inherit; background: var(--hoja); }
+
+/* Revisión del plan renovado: la franja verde es lo recomendado (30 a 80%) */
+.barra-custom { grid-column: 1 / -1; position: relative; height: 8px; border-radius: 999px; background: var(--suave); margin: 6px 0 4px; }
+.barra-custom .zona { position: absolute; left: 30%; width: 50%; top: 0; bottom: 0; border-radius: 999px; background: var(--verde-claro); }
+.barra-custom .marca-pct { position: absolute; top: -3px; width: 14px; height: 14px; margin-left: -7px; border-radius: 50%; border: 2px solid var(--hoja); box-shadow: var(--sombra); background: var(--gris); }
+.barra-custom .marca-pct.verde { background: var(--verde); }
+.barra-custom .marca-pct.amarillo { background: var(--naranja); }
+.barra-custom .marca-pct.rojo { background: var(--rojo); }
+.pregunta-salto { flex-basis: 100%; font-size: 13.5px; font-weight: 600; }

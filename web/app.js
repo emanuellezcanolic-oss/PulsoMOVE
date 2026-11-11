@@ -564,6 +564,90 @@
     return `<div class="cifras">${c(r.pendientes_hoy, 'para hoy', r.pendientes_hoy ? '' : 'bien')}${c(r.atrasadas, 'atrasados', r.atrasadas ? 'mal' : 'bien')}${c(r.hechas_hoy, 'hechos hoy', 'bien')}${c(r.hechas_mes, 'hechos este mes')}${c(r.proximas, 'próximos 7 días')}${c(r.en_agenda, 'en los próximos 30 días')}</div>`;
   }
 
+  // Reevaluaciones: solo una recomendación. El profe se la pide a recepción, que la coordina con el socio (Emanuel, 10/11/2026).
+  function haceCuanto(x) {
+    return x.ultima_eval ? `Última evaluación: ${ddmm(x.ultima_eval)} (hace ${x.dias} días)` : 'Sin evaluación cargada';
+  }
+
+  function botonPedir(x) {
+    if (x.pedida) return '<span class="estado hecha">Pedida a recepción</span>';
+    if (!x.propuesta) return '<span class="aclara">Esta semana no encontramos un horario con vos.</span>';
+    const equipo = ((E.planes.mio.reeval.recepcion || {})[x.sede]) || [];
+    const opciones = equipo.map(u => `<option value="${esc(u.dni)}" ${u.dni === x.sugerida_dni ? 'selected' : ''}>${esc(u.nombre)}${u.dni === x.sugerida_dni ? ' (está a esa hora)' : ''}</option>`).join('');
+    return `${equipo.length > 1 ? `<select data-reeval-a="${esc(x.socio_id)}" aria-label="A quién de recepción">${opciones}</select>` : ''}
+      <button class="boton verde" data-accion="reeval-pedir" data-s="${esc(x.socio_id)}" data-f="${esc(x.propuesta.fecha)}" data-h="${esc(x.propuesta.hora)}">${equipo.length === 1 ? 'Pedírsela a ' + esc(equipo[0].nombre.split(' ')[0]) : 'Pedírsela a recepción'}</button>`;
+  }
+
+  function tarjetaReeval(x, i) {
+    const p = x.propuesta;
+    return `<article class="tarjeta${x.pedida ? ' hecha' : ''}" style="--i:${i}"><div class="cabeza">
+        <span class="socio">${esc(x.socio_nombre)}</span>${x.dias != null && x.dias >= (E.planes.mio.reeval.meta_dias || 56) ? '<span class="estado atrasada">Toca reevaluar</span>' : ''}
+        <span class="situacion">${esc(haceCuanto(x))}</span>
+        ${p ? `<span class="accion">${esc(tituloDia(p.fecha))} a las ${esc(p.hora)}</span><span class="nota">${esc(p.motivo)}</span>` : ''}
+      </div><div class="fila-accion">${botonPedir(x)}</div></article>`;
+  }
+
+  function bloqueReeval(M) {
+    const R = M.reeval;
+    if (!R) return '';
+    let i = 0;
+    const filtro = (E.reevalBusca || '').toLowerCase();
+    const otros = R.socios.filter(x => !filtro || x.socio_nombre.toLowerCase().indexOf(filtro) >= 0);
+    return `<section class="grupo"><h2>🩺 Reevaluaciones recomendadas <span class="cuenta">${R.recomendadas.length}</span></h2>
+      <p class="intro-grupo">Es solo una recomendación: una por día, empezando por quien hace más tiempo que no se evalúa, en un horario en que ya viene, con menos gente y con vos. Si te sirve, pedísela a recepción y ellos la coordinan con el socio.</p>
+      ${R.recomendadas.length ? R.recomendadas.map(x => tarjetaReeval(x, i++)).join('') : '<div class="vacio">Esta semana no hay reevaluaciones para recomendarte.</div>'}
+      <details class="catalogo"${E.reevalAbierto ? ' open' : ''}><summary data-accion="reeval-abrir">Elegir otro socio (${R.socios.length} activos, de la evaluación más vieja a la más reciente)</summary>
+        <input class="buscador" type="search" placeholder="Buscar por nombre" data-accion="reeval-buscar" value="${esc(E.reevalBusca || '')}" aria-label="Buscar socio">
+        ${otros.slice(0, 60).map(x => tarjetaReeval(x, i++)).join('')}
+        ${otros.length > 60 ? `<p class="aclara">Hay ${otros.length - 60} más: buscalos por nombre.</p>` : ''}
+      </details></section>`;
+  }
+
+  // Revisión del plan renovado: recomendación, nunca bloquea (Emanuel, 10/11/2026)
+  const TEXTO_BANDA = {
+    sin_modificar: ['rojo', 'Así no cuenta como plan modificado: lo recomendado es cambiar entre el 30 y el 80% del plan.'],
+    poco: ['amarillo', 'Está poco customizado: lo recomendado es cambiar entre el 30 y el 80% del plan.'],
+    bien: ['verde', 'Bien: está entre el 30 y el 80%.'],
+    casi_todo: ['amarillo', 'Cambiaste casi todo. Para eso usá una plantilla modelo y progresá desde ahí: la idea es que el plan nuevo sea una progresión del anterior.'],
+  };
+  const PREGUNTA_SALTO = '¿Te parece que esta progresión es correcta para su nivel? Lo recomendado es de a un escalón por plan.';
+
+  function textoSalto(s) {
+    const n = Math.abs(s.escalones);
+    return `${s.bloque}: ${s.antes} (escalón ${s.esc_antes}) → ${s.despues} (escalón ${s.esc_despues}) · ${s.escalones > 0 ? 'subió' : 'bajó'} ${n} escalones`;
+  }
+
+  function tarjetaRevision(r, i, puedeResponder) {
+    const [color, texto] = TEXTO_BANDA[r.banda] || ['gris', ''];
+    const pct = Math.round(r.pct * 100);
+    const saltos = r.saltos || [];
+    const respuesta = r.respuesta === 'correcta' ? '✅ Dijiste que la progresión es correcta' : r.respuesta === 'corregir' ? '✏️ Dijiste que la vas a corregir' : '';
+    return `<article class="tarjeta revision" style="--i:${i}"><div class="cabeza">
+        <span class="socio">${esc(r.socio_nombre)}</span><span class="estado ${color === 'verde' ? 'hecha' : color === 'rojo' ? 'atrasada' : 'ayer'}">${pct}% cambiado</span>
+        <span class="barra-custom" aria-hidden="true"><span class="zona"></span><span class="marca-pct ${color}" style="left:${Math.min(100, pct)}%"></span></span>
+        <span class="situacion">Plan renovado el ${esc(ddmm(r.fecha))} · ${esc(texto)}</span>
+        ${saltos.length ? `<span class="accion">Hay ${saltos.length} cambio${saltos.length > 1 ? 's' : ''} que saltea${saltos.length > 1 ? 'n' : ''} escalones</span>
+          ${saltos.slice(0, 3).map(s => `<span class="nota">${esc(textoSalto(s))}</span>`).join('')}
+          ${saltos.length > 3 ? `<details class="catalogo"><summary>Ver los otros ${saltos.length - 3}</summary>${saltos.slice(3).map(s => `<span class="nota">${esc(textoSalto(s))}</span>`).join('')}</details>` : ''}` : ''}
+        ${(r.rpe || []).map(x => `<span class="nota">⚠️ ${esc(x.ejercicio)} con RPE ${esc(x.rpe)}: ${esc(x.regla)}</span>`).join('')}
+        ${respuesta ? `<span class="nota"><b>${respuesta}</b>${r.nota ? ' · “' + esc(r.nota) + '”' : ''}</span>` : ''}
+      </div>
+      ${saltos.length && puedeResponder && !r.respuesta ? `<div class="fila-accion"><span class="pregunta-salto">${esc(PREGUNTA_SALTO)}</span>
+        <button class="boton verde" data-accion="revision-responder" data-id="${esc(r.id)}" data-r="correcta">Sí, es correcta</button>
+        <button class="boton claro" data-accion="revision-responder" data-id="${esc(r.id)}" data-r="corregir">La voy a corregir</button></div>` : ''}
+    </article>`;
+  }
+
+  function bloqueRevisiones(M) {
+    const R = M.revisiones;
+    if (!R || !R.lista.length) return '';
+    let i = 0;
+    const s = R.resumen;
+    return `<section class="grupo"><h2>🔎 Revisión de tus planes renovados <span class="cuenta">${R.lista.length}</span></h2>
+      <p class="intro-grupo">Comparamos cada plan nuevo con el anterior del mismo socio. Es una recomendación: lo ideal es cambiar entre el 30 y el 80% y progresar de a un escalón. En las últimas dos semanas: ${s.en_rango} de ${s.revisados} en el rango${s.saltos_sin_responder ? ` · ${s.saltos_sin_responder} con saltos para revisar` : ''}.</p>
+      ${R.lista.map(r => tarjetaRevision(r, i++, true)).join('')}</section>`;
+  }
+
   function vistaPlanes() {
     if (!E.planes) return '<div class="cargando">Cargando tus planes…</div>';
     const M = E.planes.mio;
@@ -581,6 +665,8 @@
       ${nuevos.length ? `<section class="grupo"><h2>🆕 Plan nuevo, hoy <span class="cuenta">${nuevos.length}</span></h2>${nuevos.map(t => tarjetaPlan(t, i++, true)).join('')}</section>` : ''}
       ${resto.length ? `<section class="grupo"><h2>Para renovar hoy <span class="cuenta">${resto.length}</span></h2>${resto.map(t => tarjetaPlan(t, i++, true)).join('')}</section>`
         : (nuevos.length ? '' : '<div class="vacio">Hoy no tenés planes para renovar. 🎉</div>')}
+      ${bloqueRevisiones(M)}
+      ${bloqueReeval(M)}
       ${M.proximas.length ? `<section class="grupo"><h2>Próximos a renovar <span class="cuenta">${M.proximas.length}</span></h2>
         ${Object.keys(porDia).sort().map(f => `<h3 class="dia-prox">${esc(tituloDia(f))}</h3>${porDia[f].map(t => tarjetaPlan(t, i++, false)).join('')}`).join('')}</section>` : ''}
     </div></div>`;
@@ -596,13 +682,14 @@
         let i = 0;
         return `<button class="chip" data-accion="profe-volver">← Todos los profes</button>
           <h1 class="titulo">${esc(p.profe)}</h1><div class="persona">${cifrasPlanes(p.resumen)}</div>
-          <section class="grupo"><h2>Lo de hoy <span class="cuenta">${p.hoy.length}</span></h2>${p.hoy.length ? p.hoy.map(t => tarjetaPlan(t, i++, false)).join('') : '<div class="vacio">Nada para hoy.</div>'}</section>`;
+          <section class="grupo"><h2>Lo de hoy <span class="cuenta">${p.hoy.length}</span></h2>${p.hoy.length ? p.hoy.map(t => tarjetaPlan(t, i++, false)).join('') : '<div class="vacio">Nada para hoy.</div>'}</section>
+          ${p.revisiones && p.revisiones.lista.length ? `<section class="grupo"><h2>🔎 Planes renovados (30 días) <span class="cuenta">${p.revisiones.lista.length}</span></h2>${p.revisiones.lista.map(r => tarjetaRevision(r, i++, false)).join('')}</section>` : ''}`;
       }
     }
     return `<h1 class="titulo">Profes <span>·</span> planes al día</h1>
       <p class="bajada">Lo que cada profe y cada kinesiólogo tiene que renovar hoy, lo atrasado y lo que lleva hecho en el mes.</p>
       ${selector}
-      ${eq.length ? `<div class="personas">${eq.map(p => `<div class="persona"><b>${esc(p.profe)}</b><span class="turno">${p.con_usuario ? 'Con usuario' : 'Todavía sin usuario en PulsoMOVE'}</span>${cifrasPlanes(p.resumen)}
+      ${eq.length ? `<div class="personas">${eq.map(p => `<div class="persona"><b>${esc(p.profe)}</b><span class="turno">${p.con_usuario ? 'Con usuario' : 'Todavía sin usuario en PulsoMOVE'}</span>${cifrasPlanes(p.resumen)}${p.revisiones ? `<span class="uso-hoy">Planes renovados (30 días): ${p.revisiones.resumen.revisados} · en 30-80%: ${p.revisiones.resumen.en_rango} · casi todo cambiado: ${p.revisiones.resumen.casi_todo}${p.revisiones.resumen.con_saltos ? ` · con saltos: ${p.revisiones.resumen.con_saltos} (${p.revisiones.resumen.saltos_sin_responder} sin responder, ${p.revisiones.resumen.corregir} a corregir)` : ''}</span>` : ''}
         <button class="chip ver-lista" data-accion="profe-ver" data-p="${esc(p.profe)}">Ver lo de hoy</button></div>`).join('')}</div>`
         : '<div class="vacio">Todavía no hay planes cargados para esta sede.</div>'}`;
   }
@@ -1725,6 +1812,7 @@
   app.addEventListener('change', ev => {
     const el = ev.target;
     if (el.dataset.accion === 'tipo') { E.tipo = el.value; render(); }
+    if (el.dataset.accion === 'reeval-buscar') { E.reevalBusca = el.value; E.reevalAbierto = true; render(); }
     if (el.dataset.accion === 'resultado') {
       const form = el.closest('form');
       const fecha = PIDEN_FECHA.indexOf(el.value) >= 0;
@@ -1779,6 +1867,28 @@
     else if (a === 'planes-sede') { E.sedeElegida = el.dataset.s; E.planes = null; E.profeVer = null; render(); cargarVista(); }
     else if (a === 'profe-ver') { E.profeVer = el.dataset.p; render(); window.scrollTo(0, 0); }
     else if (a === 'profe-volver') { E.profeVer = null; render(); }
+    else if (a === 'reeval-abrir') { E.reevalAbierto = !el.parentElement.open; }
+    else if (a === 'revision-responder') {
+      el.disabled = true;
+      try {
+        const r = await cliente.llamar('profe_responder_revision', { id: el.dataset.id, respuesta: el.dataset.r });
+        const R = E.planes && E.planes.mio && E.planes.mio.revisiones;
+        if (R) { const x = R.lista.find(v => v.id === r.revision.id); if (x) { Object.assign(x, r.revision); R.resumen.saltos_sin_responder = Math.max(0, R.resumen.saltos_sin_responder - 1); } }
+        render();
+        aviso(el.dataset.r === 'correcta' ? '✅ Anotado: la progresión es correcta.' : '✏️ Anotado: la vas a corregir en MOVE.');
+      } catch (e) { el.disabled = false; aviso(PulsoApi.mensaje(e.codigo || e.message), true); }
+    }
+    else if (a === 'reeval-pedir') {
+      el.disabled = true;
+      try {
+        const sel = [...app.querySelectorAll('select[data-reeval-a]')].find(s => s.dataset.reevalA === el.dataset.s && s.closest('article') === el.closest('article'));
+        const r = await cliente.llamar('profe_pedir_reeval', Object.assign({ socio_id: el.dataset.s, fecha: el.dataset.f, hora: el.dataset.h }, sel ? { dni: sel.value } : {}));
+        const R = E.planes && E.planes.mio && E.planes.mio.reeval;
+        if (R) [].concat(R.recomendadas, R.socios).forEach(x => { if (x.socio_id === el.dataset.s) x.pedida = true; });
+        render();
+        aviso(`✅ Listo: se lo pediste a ${r.recepcionista}. Le aparece como tarea importante.`);
+      } catch (e) { el.disabled = false; aviso(PulsoApi.mensaje(e.codigo || e.message), true); }
+    }
     else if (a === 'filtro') { E.filtro = el.dataset.f; E.abierta = null; render(); }
     else if (a === 'abrir') { E.abierta = E.abierta === el.dataset.id ? null : el.dataset.id; E.abiertaEn = new Date().toISOString(); E.errorForm = ''; render(); }
     else if (a === 'adelantar') { E.adelantar = !E.adelantar; cargarVista(); }

@@ -440,7 +440,7 @@ const NIVELES = [
   { n: 2 },   // sin título: siguen en orden, y "después" o "cuando tengas un rato" confundían (Emanuel, 05/11/2026)
   { n: 3 },
 ];
-const TIPOS_NIVEL_1 = ['Encargo', 'Controlar stock', 'Apertura', 'Pagó y no viene', 'Le vence el plan', 'Vence', 'Socio nuevo', 'Vencieron'];   // el orden de urgencia de Emanuel (03/11/2026)
+const TIPOS_NIVEL_1 = ['Coordinar reevaluación · lo pide', 'Encargo', 'Controlar stock', 'Apertura', 'Pagó y no viene', 'Le vence el plan', 'Vence', 'Socio nuevo', 'Vencieron'];   // el orden de urgencia de Emanuel (03/11/2026)
 const TIPOS_NIVEL_3 = ['Socio antiguo', 'Revisar profesor', 'Completar ficha', 'Asignarle profesor', 'Cierre'];
 
 // La semana del 04 al 06/11/2026 fue de práctica: las estadísticas de recepción arrancan de cero el lunes 09/11 (Emanuel, 07/11/2026).

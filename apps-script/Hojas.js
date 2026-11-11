@@ -28,6 +28,10 @@ const COLUMNAS = {
   cierres: ['fecha', 'ts', 'dni', 'nombre', 'sede', 'animo', 'respuestas', 'comentario', 'hechas', 'pendientes', 'mensajes', 'consultas', 'sala', 'profes', 'lo_mejor', 'equipo', 'socios', 'pregunta'],
   // PulsoMOVE Profes: planes a renovar por profe. No confundir con `profes`, que es la llegada por QR
   profe_tareas: ['id', 'fecha', 'sede', 'profe', 'profe_dni', 'socio_id', 'socio_nombre', 'tipo', 'accion', 'vence', 'alta', 'estado', 'hecha_en', 'hecha_dni', 'nota', 'cargada', 'cerrada_en'],
+  // Socios activos de cada profe con su última evaluación y los horarios en que suelen venir (pulso_profes.py)
+  profe_reeval: ['id', 'sede', 'profe', 'profe_dni', 'socio_id', 'socio_nombre', 'ultima_eval', 'dias', 'habitos', 'cargada'],
+  // Revisión del plan renovado contra el anterior: % customizado, saltos de escalón, RPE y la respuesta del profe
+  profe_revision: ['id', 'fecha', 'sede', 'profe', 'profe_dni', 'socio_id', 'socio_nombre', 'pct', 'banda', 'saltos', 'rpe', 'respuesta', 'respondida_en', 'nota'],
   garantia: ['id', 'ts', 'sede', 'socio_id', 'socio_nombre', 'profe', 'motivo', 'registra_dni', 'estado', 'decide_dni',
              'comentario', 'decidido_en'],
 };
