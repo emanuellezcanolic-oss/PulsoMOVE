@@ -120,3 +120,16 @@ test('en la renovación también se puede decir que no sé de quién es', () => 
   assert.match(d.repo.hojas.tareas[0].situacion, /no sabe de quién es/);
   assert.match(d.repo.hojas.profe_tareas[0].nota, /no sabe de quién es/);
 });
+
+test('recepción marca el cambio de profesor y le cuenta como tarea hecha', () => {
+  const d = entorno();
+  cargar(d, [tarea(1)]);
+  pedir(d, { accion: 'profe_otra_situacion', token: entrar(d, '20111222'), id: 'pp-1', que: 'otro_profe', profe: '', dni: '30111111' });
+  const tk = entrar(d, '30111111');
+  const t = pedir(d, { accion: 'mis_tareas', token: tk }).data.tareas.find(x => x.socio_id === 'profe-1');
+  assert.ok(t, 'le aparece en su lista del día');
+  assert.equal(pedir(d, { accion: 'marcar', token: tk, tarea_id: t.id, id_marca: 'm1', canal: 'SIN CONTACTO', resultado: 'SIN CAMBIO' }).error, 'datos_invalidos');   // sin motivo, no
+  assert.ok(pedir(d, { accion: 'marcar', token: tk, tarea_id: t.id, id_marca: 'm2', canal: 'SIN CONTACTO', resultado: 'CORREGIDO', detalle: 'Es de Enzo' }).ok);
+  assert.equal(d.repo.hojas.tareas[0].estado, 'hecha');
+  assert.equal(d.repo.hojas.registro[0].resultado, 'CORREGIDO');
+});
