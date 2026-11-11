@@ -839,7 +839,7 @@
   const vez = n => n + (n === 1 ? ' vez' : ' veces');
 
   // Almanaque: cuántos planes armó cada día (los últimos 30), con el número grande
-  function almanaque(porDia, desde, hoy, titulo) {
+  function almanaque(porDia, desde, hoy, titulo, cupo, cupoDesde) {
     const dias = [];
     const d = new Date(desde + 'T12:00:00Z');
     const fin = new Date(hoy + 'T12:00:00Z');
@@ -850,7 +850,8 @@
     const celdas = Array(vacios).fill('<div class="alm-dia vacio-dia"></div>').concat(dias.map(f => {
       const n = (porDia || {})[f] || 0;
       const finde = [0, 6].indexOf(new Date(f + 'T12:00:00Z').getUTCDay()) >= 0;
-      return `<div class="alm-dia${finde ? ' finde' : ''}${n ? '' : ' cero'}" style="--int:${(n / max).toFixed(2)}" title="${esc(ddmm(f))}: ${n} plan${n === 1 ? '' : 'es'}"><em>${esc(f.slice(8, 10))}</em><strong>${n || '·'}</strong></div>`;
+      const marca = cupo && !finde && f < hoy && f >= (cupoDesde || '') ? (n >= cupo ? ' llego' : ' falto') : '';
+      return `<div class="alm-dia${finde ? ' finde' : ''}${n ? '' : ' cero'}${marca}" style="--int:${(n / max).toFixed(2)}" title="${esc(ddmm(f))}: ${n} plan${n === 1 ? '' : 'es'}${cupo ? ' de ' + cupo : ''}"><em>${esc(f.slice(8, 10))}</em><strong>${n || '·'}</strong>${cupo && !finde ? `<small>de ${cupo}</small>` : ''}</div>`;
     }));
     return `<div class="almanaque"><div class="alm-cab">${titulo ? `<b>${esc(titulo)}</b>` : ''}</div>
       <div class="alm-grilla">${['Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb', 'Dom'].map(x => `<div class="alm-sem">${x}</div>`).join('')}${celdas.join('')}</div></div>`;
@@ -875,13 +876,15 @@
         <td class="num">${cu.medidos ? pct(cu.mediana_pct) : '—'}</td><td class="num">${cu.medidos ? cu.con_saltos + '/' + cu.medidos : '—'}</td>
         <td class="num">${t.mediana_min != null ? t.mediana_min + ' min' : '—'}</td><td class="num">${t.horas_estimadas != null ? '~' + t.horas_estimadas + ' h' : '—'}</td>
         <td class="num">${c.horas_pagadas != null ? c.horas_pagadas + ' h' : '—'}</td><td class="num"><b>${c.planes_por_hora_pagada != null ? c.planes_por_hora_pagada : '—'}</b></td>
-        <td class="num">${p.auditoria && p.auditoria.puntaje != null ? `<b class="aud-linea ${(NIVEL_AUD[p.auditoria.nivel] || [''])[0]}">${p.auditoria.puntaje}</b>` : '—'}</td></tr>`;
+        <td class="num ${c.cupo && c.dias_cupo < c.dias_habiles / 2 ? 'rojo' : ''}">${c.cupo ? `${c.dias_cupo}/${c.dias_habiles} <small>(${c.cupo}/día)</small>` : '—'}</td>
+        <td class="num">${p.auditoria && p.auditoria.puntaje != null ? `<b class="aud-linea ${(NIVEL_AUD[p.auditoria.nivel] || [''])[0]}">${p.auditoria.puntaje}</b>` : '—'}</td>
+        <td class="para-mirar">${(c.alertas || []).length ? `<span class="alerta-n">⚠️ ${c.alertas.length}</span> ${esc(c.alertas[0])}` : '<span class="verde">✓</span>'}</td></tr>`;
     }).join('');
     const todos = [];
     con.forEach(p => (p.coord.lista || []).forEach(v => { if (v.vino_vencido >= 4) todos.push(Object.assign({ profe: p.profe }, v)); }));
     todos.sort((a, b) => b.vino_vencido - a.vino_vencido);
     return `<section class="bloque tablero-coord"><div class="bloque-cab"><h2>📊 Tablero del equipo</h2><span class="aclara">Datos de MOVE del ${esc(ddmm(con[0].coord.fecha))} · renovaciones de los últimos 30 días</span></div>
-      <div class="envoltura-tabla"><table class="tabla compacta"><thead><tr><th>Profe</th><th>Socios</th><th>Al día</th><th>Vencidos</th><th title="Planes vencidos en los que el socio igual vino 4 veces o más desde que venció">Vencidos que igual vienen</th><th>Renovados</th><th title="Planes renovados con un cambio entre 30 y 80% respecto del anterior">Custom. 30-80%</th><th>Cambio (mediana)</th><th title="Planes con un salto de 2 escalones o más">Con saltos</th><th>Min por plan</th><th>Horas armando</th><th title="Una hora extra paga por día hábil para planificar">Horas pagadas</th><th>Planes por hora paga</th><th>Auditoría</th></tr></thead><tbody>${filas}</tbody></table></div>
+      <div class="envoltura-tabla"><table class="tabla compacta"><thead><tr><th>Profe</th><th>Socios</th><th>Al día</th><th>Vencidos</th><th title="Planes vencidos en los que el socio igual vino 4 veces o más desde que venció">Vencidos que igual vienen</th><th>Renovados</th><th title="Planes renovados con un cambio entre 30 y 80% respecto del anterior">Custom. 30-80%</th><th>Cambio (mediana)</th><th title="Planes con un salto de 2 escalones o más">Con saltos</th><th>Min por plan</th><th>Horas armando</th><th title="Una hora extra paga por día hábil para planificar">Horas pagadas</th><th>Planes por hora paga</th><th title="Días hábiles, desde que arrancó el reparto el 10/11, en que llegó a su cupo diario de planes">Cumplió el cupo</th><th>Auditoría</th><th>Para mirar</th></tr></thead><tbody>${filas}</tbody></table></div>
       ${almanaque(sumarPorDia(con.map(p => p.coord.por_dia)), con[0].coord.desde, con[0].coord.fecha, 'Planes armados por día · todo el equipo')}
       <p class="aclara">Protocolo: el plan se renueva todos los meses. "Vencidos que igual vienen": el socio vino 4 veces o más con el plan vencido (una semana de entrenamiento); 8 o más, dos semanas. Customización comparada con el plan anterior del mismo socio: menos de 15% no cuenta como modificado, 30 a 80% es lo recomendado, más de 80% es casi un plan nuevo (para eso, una plantilla modelo). El tiempo es aproximado: sale de cuándo se creó y se editó cada día del plan en MOVE. Horas pagadas: una hora extra por día hábil (lunes a viernes) en los últimos 30 días, sin descontar francos ni vacaciones.</p>
       ${todos.length ? `<h3 class="sub-coord">🔴 Planes vencidos que más se usaron <span class="cuenta">${todos.length}</span></h3>
@@ -895,7 +898,8 @@
     if (!c) return '';
     const cu = c.custom || {}, t = c.tiempo || {}, b = cu.bandas || {};
     const total = cu.medidos || 0;
-    return `<div class="personas">
+    return `${(c.alertas || []).length ? `<section class="grupo alertas-coord"><h2>⚠️ Para mirar <span class="cuenta">${c.alertas.length}</span></h2>${c.alertas.map(a => `<p class="alerta-coord">${esc(a)}</p>`).join('')}</section>` : ''}
+    <div class="personas">
       <div class="persona"><b>Planes vencidos</b><div class="pts-grande ${c.vienen_mucho ? 'rojo' : c.vienen ? 'amarillo' : 'verde'}"><strong>${c.vencidos}</strong><span>de ${c.socios} socios · al día ${c.al_dia_pct}%</span></div>
         <span class="aclara">${c.vienen} igual vinieron 4 veces o más desde que venció${c.vienen_mucho ? ` (${c.vienen_mucho} con 8 o más)` : ''} · ${c.no_vienen} no volvieron a venir · ${c.sin_plan} sin plan.</span></div>
       <div class="persona"><b>Customización (30 días)</b>${total ? BANDAS_CUSTOM.map(([k, txt, col]) => `<div class="pts-seccion"><span>${esc(txt)}</span><span class="avance"><i class="${col}" style="width:${Math.round(100 * (b[k] || 0) / total)}%"></i></span><b>${b[k] || 0}</b></div>`).join('') +
@@ -905,7 +909,7 @@
       ${c.horas_pagadas != null ? `<div class="persona"><b>Hora extra paga</b><div class="pts-grande"><strong>${c.planes_por_hora_pagada}</strong><span>planes por hora paga</span></div>
         <span class="aclara">${c.planes_30} planes en 30 días (${c.dias_con_planes} días con planes) · ${c.horas_pagadas} h pagadas (1 h por día hábil)${t.horas_estimadas != null ? ` · usó ~${t.horas_estimadas} h armando planes, el ${Math.round(100 * t.horas_estimadas / c.horas_pagadas)}% de lo pago` : ''}.</span></div>` : ''}
     </div>
-    ${c.por_dia ? `<section class="grupo"><h2>🗓️ Planes por día</h2>${almanaque(c.por_dia, c.desde, c.fecha, '')}</section>` : ''}
+    ${c.por_dia ? `<section class="grupo"><h2>🗓️ Planes por día</h2>${c.cupo ? `<p class="intro-grupo">Su cupo es de ${c.cupo} planes por día hábil, para dejar todo al día en un mes. Desde que arrancó el reparto (${esc(ddmm(c.cupo_desde || c.desde))}) llegó en ${c.dias_cupo} de ${c.dias_habiles} días hábiles.</p>` : ''}${almanaque(c.por_dia, c.desde, c.fecha, '', c.cupo, c.cupo_desde)}</section>` : ''}
     ${(c.lista || []).length ? `<section class="grupo"><h2>📅 Vencidos y cuántas veces vino <span class="cuenta">${c.vencidos}</span></h2>
       <div class="envoltura-tabla"><table class="tabla compacta"><thead><tr><th>Socio</th><th>Venció</th><th>Vino desde que venció</th><th>Con este plan</th><th>Por semana</th></tr></thead><tbody>
       ${c.lista.map(v => `<tr><td>${esc(v.nombre)}</td><td>${esc(ddmm(v.vence))} · hace ${v.dias} días</td><td class="num ${colorViene(v.vino_vencido)}"><b>${vez(v.vino_vencido)}</b></td><td class="num">${vez(v.vino_plan)}</td><td class="num">${v.por_semana}</td></tr>`).join('')}

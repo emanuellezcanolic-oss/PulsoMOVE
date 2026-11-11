@@ -262,7 +262,8 @@
     // Tablero de coordinación: lo que subiría pulso_coordinacion.py
     const venc = (n, nombre, dias, vino, plan) => ({ socio_id: 'C' + n, nombre, vence: atras(dias), dias, vino_vencido: vino, vino_plan: plan, por_semana: Math.round(vino / Math.max(1, dias / 7) * 10) / 10 });
     const porDia = semilla => { const o = {}; for (let k = 0; k < 30; k++) { const f = atras(k); const dw = new Date(f + 'T12:00:00Z').getUTCDay(); const n = dw === 0 || dw === 6 ? 0 : (k * semilla + 3) % 6; if (n) o[f] = n; } return o; };
-    const cd = (profe, dni, d) => ({ fecha: hoy, profe, profe_dni: dni, sede: 'bolson', datos: J(Object.assign({ desde: atras(29), horas_pagadas: 22 }, d,
+    const cd = (profe, dni, d) => ({ fecha: hoy, profe, profe_dni: dni, sede: 'bolson', datos: J(Object.assign({ desde: atras(29), horas_pagadas: 22, cupo: 4, dias_habiles: 20, dias_cupo: d.custom.en_rango_pct < 30 ? 6 : 14,
+      alertas: d.custom.en_rango_pct >= 30 ? [] : ['Hace 1.9 planes por hora paga y solo el 23% está customizado (30-80%): con ese tiempo tendría que customizar más', 'Llegó a su cupo de 4 planes por día en 6 de 20 días hábiles', '2 socios entrenan hace 2 semanas o más con el plan vencido'] }, d,
       { por_dia: porDia(d.socios % 5 + 2) }, (() => { const p = porDia(d.socios % 5 + 2); const n = Object.values(p).reduce((a, b) => a + b, 0); return { planes_30: n, dias_con_planes: Object.keys(p).length, planes_por_hora_pagada: Math.round(n / 22 * 10) / 10 }; })())) });
     const profe_coord = [
       cd(PM, B, { socios: 82, vigentes: 61, vencidos: 17, sin_plan: 4, renovados: 44, al_dia_pct: 74, vienen: 4, vienen_mucho: 2, no_vienen: 6, veces_vencidos: 51,
