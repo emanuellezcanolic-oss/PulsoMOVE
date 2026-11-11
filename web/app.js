@@ -178,6 +178,7 @@
     if (tiene('coordinador') || tiene('admin')) p.push(['rend', 'Rendimiento']);
     if (tiene('coordinador') || tiene('admin')) p.push(['profes', 'Profes']);
     if (tiene('admin')) p.push(['admin', 'Equipo']);
+    p.push(['chat', chatEtiqueta()]);   // mensajes entre el equipo: todos
     return p;
   }
 
@@ -1774,6 +1775,9 @@
         cliente.llamar('cierres_ver').then(c => { E.cierres = c.cierres; E.cierresResumen = c.resumen; if (E.vista === 'rend' && !E.rendDni) render(); }).catch(() => {});
         cliente.llamar('profes_ver', tiene('admin') ? { sede: E.sedeElegida } : {}).then(c => { E.profes = c.filas; if (E.vista === 'rend' && !E.rendDni) render(); }).catch(() => {});
         E.rend = await cliente.llamar('rendimiento', Object.assign(E.rendMes ? { mes: E.rendMes } : {}, tiene('admin') ? { sede: E.sedeElegida } : {}));
+      } else if (E.vista === 'chat') {
+        await cargarChat();
+        render();
       } else if (E.vista === 'reservas') {
         E.ocupacion = await cliente.llamar('ocupacion_ver', tiene('admin') || tiene('coordinador') ? { sede: E.sedeElegida } : {});
       } else if (E.vista === 'planes' || E.vista === 'profes' || E.vista === 'pmes') {
@@ -1803,6 +1807,7 @@
 
   function irA(vista) {
     E.vista = vista;
+    E.chatAbierta = null; E.chatConv = null; E.chatNuevo = false; E.chatSumar = false; E.chatBorrador = '';
     E.abierta = null;
     E.personaDni = null;
     E.persona = null;
@@ -1876,14 +1881,17 @@
     if (disponibles.indexOf(E.vista) < 0) { E.vista = disponibles[0] || null; setTimeout(cargarVista); }
     const cuerpo = E.vista === 'hoy' ? vistaHoy() : E.vista === 'sede' ? vistaSede() : E.vista === 'admin' ? vistaAdmin() : E.vista === 'mes' ? vistaMes() : E.vista === 'rend' ? vistaRendimiento()
       : E.vista === 'reservas' ? vistaReservas()
+      : E.vista === 'chat' ? vistaChat()
       : E.vista === 'planes' ? vistaPlanes() : E.vista === 'profes' ? vistaProfes() : E.vista === 'pmes' ? vistaMesProfe()
       : '<div class="vacio">Tu usuario no tiene ninguna vista asignada. Avisale a Emanuel.</div>';
-    const sinDatos = { hoy: !E.tareas, sede: E.personaDni ? !E.persona : !E.sede, mes: !E.rend, rend: !E.rend, admin: !E.usuarios, reservas: !E.ocupacion, planes: !E.planes, profes: !E.planes, pmes: !E.planes }[E.vista];
+    const sinDatos = { hoy: !E.tareas, sede: E.personaDni ? !E.persona : !E.sede, mes: !E.rend, rend: !E.rend, admin: !E.usuarios, reservas: !E.ocupacion, chat: !E.chat, planes: !E.planes, profes: !E.planes, pmes: !E.planes }[E.vista];
     const mostrar = E.errorCarga && sinDatos ? `<div class="vacio" style="margin-top:18px"><p>${esc(E.errorCarga)}</p><p>La pantalla vuelve a intentarlo sola. Tus marcas no se pierden.</p><button class="boton" data-accion="reintentar">Reintentar ahora</button></div>` : cuerpo;
     const bandas = E.vista === 'hoy' ? bandaFichajes() + bandaReservas() : '';
     app.innerHTML = encabezado() + `<main class="contenedor">${bandas}${mostrar}</main>` + (E.vista === 'hoy' && turnoTerminando() ? `<button class="cerrar-app-fijo${DEMO ? ' con-cinta' : ''}" data-accion="cerrar-app">🚪 ${E.dia && E.dia.cierre_hecho ? 'Listo por hoy' : 'Se termina tu turno'}: cerrá la app antes de irte</button>` : '') + (DEMO ? '<div class="cinta-practica">Modo práctica · datos inventados</div>' : '');
     const abierto = app.querySelector('.marca-form select');
     if (abierto && !E.errorForm) abierto.focus({ preventScroll: true });
+    chatDespuesDeRender();
+    if (!E.chat && !E.chatPidiendo && E.vista !== 'chat') { E.chatPidiendo = true; revisarMensajes().finally(() => { E.chatPidiendo = false; }); }   // el numerito de la pestaña, apenas se entra
   }
 
   // Reconocimiento apenas ocurre: la mitad, los últimos pasos y la lista completa
@@ -1901,6 +1909,246 @@
     else if (total >= 4 && hechas / total >= 0.5) una('mitad', () => celebrar('¡Mitad del día hecha!', `Vas ${hechas} de ${total}. Seguí así.`));
   }
 
+  // ---------- Mensajes entre el equipo ----------
+  // Chats de a dos o en grupo. Cada conversación la ven solo quienes participan; las sin movimiento por un año se borran solas.
+  const ROL_CHAT = { recepcion: 'Recepción', profe: 'Profe', coordinador: 'Coordinación', admin: 'Administración', supervision: 'Supervisión' };
+  const SEDE_CHAT = { bolson: 'El Bolsón', puelo: 'Lago Puelo', bariloche: 'Bariloche' };
+  E.chat = null; E.chatAbierta = null; E.chatConv = null; E.chatNuevo = false; E.chatSumar = false; E.chatPersonas = null; E.chatBorrador = ''; E.chatSinLeer = 0;
+
+  function chatCuando(ts) {
+    const d = new Date(ts);
+    if (isNaN(d)) return '';
+    const hora = String(d.getHours()).padStart(2, '0') + ':' + String(d.getMinutes()).padStart(2, '0');
+    return d.toDateString() === new Date().toDateString() ? hora : ddmmDe(ts) + ' ' + hora;
+  }
+
+  const chatRoles = p => (p.roles || []).map(r => ROL_CHAT[r]).filter(Boolean).join(' · ');
+  const chatPersona = p => `${esc(p.nombre)}<small>${esc([chatRoles(p), SEDE_CHAT[p.sede]].filter(Boolean).join(' · '))}</small>`;
+
+  async function cargarChat() {
+    const l = await cliente.llamar('chat_listar');
+    const antes = E.chatSinLeer;
+    E.chat = l.conversaciones;
+    E.chatSinLeer = l.sin_leer;
+    if (E.chatAbierta) {
+      E.chatConv = await cliente.llamar('chat_ver', { id: E.chatAbierta });
+      const c = E.chat.find(x => x.id === E.chatAbierta);
+      if (c && c.sin_leer) {
+        E.chatSinLeer -= c.sin_leer;
+        c.sin_leer = 0;
+        cliente.llamar('chat_leido', { id: E.chatAbierta }).catch(() => {});
+      }
+    }
+    if ((E.chatNuevo || E.chatSumar) && !E.chatPersonas) E.chatPersonas = (await cliente.llamar('chat_personas')).personas;
+    tituloMensajes();
+    return E.chatSinLeer > antes;
+  }
+
+  function chatEtiqueta() {
+    return E.chatSinLeer ? `Mensajes <b class="globito">${E.chatSinLeer}</b>` : 'Mensajes';
+  }
+
+  function chatElegir(excluir) {
+    const ya = excluir || [];
+    return `<input type="search" class="chat-buscar" data-chat-buscar placeholder="Buscar por nombre" aria-label="Buscar persona">
+      <div class="chat-personas">${(E.chatPersonas || []).filter(p => ya.indexOf(p.pid) < 0).map(p => `<label class="chat-persona" data-nombre="${esc(p.nombre.toLowerCase())}"><input type="checkbox" name="para" value="${esc(p.pid)}"><span>${chatPersona(p)}</span></label>`).join('') || '<p class="nota">No hay más gente para sumar.</p>'}</div>`;
+  }
+
+  function vistaChat() {
+    const privacidad = '<p class="nota chat-nota">Solo lo ven quienes participan en la conversación. Las que pasan un año sin mensajes se borran solas.</p>';
+    if (E.chatNuevo) {
+      return `<div class="chat-cabeza"><button class="boton claro chico" data-accion="chat-volver">← Mensajes</button><h2>Mensaje nuevo</h2></div>
+        <form data-form="chat-nuevo" class="chat-form" autocomplete="off">
+          <p class="nota">Elegí a quién. Con una persona es un chat de a dos; con dos o más, un grupo.</p>
+          ${E.chatPersonas ? chatElegir() : '<p class="nota">Cargando…</p>'}
+          <label class="campo chat-nombre-grupo" hidden>Nombre del grupo (opcional)<input name="nombre" maxlength="40" placeholder="Ej. Bolsón mañana"></label>
+          <label class="campo">Mensaje<textarea name="texto" rows="3" maxlength="1000" required data-chat-texto placeholder="Escribí acá"></textarea></label>
+          <button class="boton ancho verde">Enviar</button>
+        </form>${privacidad}`;
+    }
+    if (E.chatAbierta && E.chatConv) {
+      const c = E.chatConv;
+      const ultimoMio = [...c.mensajes].reverse().find(m => m.mio);
+      const leyeron = ultimoMio ? c.miembros.filter(m => !m.yo && m.leyo && m.leyo >= ultimoMio.ts).map(m => m.nombre.split(' ')[0]) : [];
+      const quienes = c.miembros.filter(m => !m.yo).map(m => m.nombre).join(', ');
+      return `<div class="chat-cabeza"><button class="boton claro chico" data-accion="chat-volver">← Mensajes</button>
+          <div><h2>${esc(c.nombre)}</h2>${c.tipo === 'grupo' ? `<p class="nota">Con vos: ${esc(quienes)}</p>` : ''}</div>
+          ${c.tipo === 'grupo' ? '<button class="boton claro chico" data-accion="chat-sumar">+ Sumar gente</button>' : ''}</div>
+        ${E.chatSumar ? `<form data-form="chat-sumar" class="chat-form" autocomplete="off">${E.chatPersonas ? chatElegir(c.miembros.map(m => m.pid)) : '<p class="nota">Cargando…</p>'}<div class="botones"><button class="boton verde">Sumar</button><button type="button" class="boton claro" data-accion="chat-sumar">Cancelar</button></div></form>` : ''}
+        <div class="chat-msgs" role="log">
+          ${c.hay_mas ? '<p class="nota">Se muestran los últimos mensajes.</p>' : ''}
+          ${c.mensajes.map(m => `<div class="chat-msg ${m.mio ? 'mio' : 'otro'}">${m.mio ? '' : `<b>${esc(m.de)}</b>`}${m.ref ? `<span class="chat-ref">Sobre ${esc(m.ref)}</span>` : ''}<p>${esc(m.texto)}</p><time>${esc(chatCuando(m.ts))}</time></div>`).join('') || '<p class="nota">Todavía no hay mensajes.</p>'}
+          ${leyeron.length ? `<p class="nota chat-leido">Leído por ${esc(leyeron.join(', '))}</p>` : ''}
+        </div>
+        <form data-form="chat-enviar" class="chat-redactar" autocomplete="off">
+          <input name="ref" maxlength="80" placeholder="Sobre un socio (opcional)" aria-label="Sobre un socio">
+          <div class="chat-fila"><textarea name="texto" rows="2" maxlength="1000" required data-chat-texto placeholder="Escribí un mensaje">${esc(E.chatBorrador)}</textarea><button class="boton verde">Enviar</button></div>
+        </form>${privacidad}`;
+    }
+    const lista = E.chat || [];
+    return `<div class="chat-cabeza"><h2>Mensajes</h2><button class="boton verde chico" data-accion="chat-nuevo">✉️ Mensaje nuevo</button></div>
+      ${lista.length ? `<div class="chat-lista">${lista.map(c => `<button class="chat-item${c.sin_leer ? ' sin-leer' : ''}" data-accion="chat-abrir" data-id="${esc(c.id)}">
+          <span class="chat-quien"><b>${esc(c.nombre)}</b>${c.tipo === 'grupo' ? `<small>Grupo · ${c.personas} personas</small>` : ''}</span>
+          <span class="chat-ultimo">${c.ultimo ? esc((c.ultimo.mio ? 'Vos: ' : (c.tipo === 'grupo' ? c.ultimo.de.split(' ')[0] + ': ' : '')) + c.ultimo.texto) : 'Sin mensajes'}</span>
+          <span class="chat-hora">${c.ultimo ? esc(chatCuando(c.ultimo.ts)) : ''}${c.sin_leer ? `<b class="globito">${c.sin_leer}</b>` : ''}</span></button>`).join('')}</div>`
+        : '<div class="vacio"><p>Todavía no tenés conversaciones.</p><p>Tocá “Mensaje nuevo” para escribirle a alguien del equipo o armar un grupo.</p></div>'}
+      ${privacidad}`;
+  }
+
+  async function accionChat(a, el) {
+    if (a === 'chat-abrir') { E.chatAbierta = el.dataset.id; E.chatConv = null; E.chatBorrador = ''; E.chatSumar = false; render(); try { await cargarChat(); } catch (e) { falla(e); } render(); }
+    else if (a === 'chat-volver') { E.chatAbierta = null; E.chatConv = null; E.chatNuevo = false; E.chatSumar = false; E.chatBorrador = ''; render(); try { await cargarChat(); render(); } catch (e) { /* queda lo que había */ } }
+    else if (a === 'chat-nuevo') { E.chatNuevo = true; render(); try { await cargarChat(); render(); } catch (e) { falla(e); } }
+    else if (a === 'chat-sumar') { E.chatSumar = !E.chatSumar; render(); if (E.chatSumar && !E.chatPersonas) { try { await cargarChat(); render(); } catch (e) { falla(e); } } }
+  }
+
+  async function enviarFormChat(tipo, form) {
+    const f = new FormData(form);
+    const btn = form.querySelector('button:not([type=button])');
+    const para = f.getAll('para');
+    const texto = String(f.get('texto') || '').trim();
+    try {
+      if (tipo === 'chat-nuevo') {
+        if (!para.length) { aviso('Elegí al menos a una persona.', true); return; }
+        btn.disabled = true;
+        const r = await cliente.llamar('chat_enviar', { para, texto, nombre: String(f.get('nombre') || '').trim() });
+        E.chatNuevo = false; E.chatAbierta = r.id; E.chatConv = null; E.chatBorrador = '';
+        await cargarChat();
+      } else if (tipo === 'chat-enviar') {
+        if (!texto) return;
+        btn.disabled = true;
+        await cliente.llamar('chat_enviar', { id: E.chatAbierta, texto, ref: String(f.get('ref') || '').trim() });
+        E.chatBorrador = '';
+        await cargarChat();
+      } else if (tipo === 'chat-sumar') {
+        if (!para.length) { aviso('Elegí a quién sumar.', true); return; }
+        btn.disabled = true;
+        await cliente.llamar('chat_agregar', { id: E.chatAbierta, para });
+        E.chatSumar = false;
+        await cargarChat();
+        aviso('✅ Listo: ya están en el grupo.');
+      }
+      render();
+    } catch (e) { if (btn) btn.disabled = false; falla(e); }
+  }
+
+  // Aviso apenas llega. La pantalla pregunta "¿hay algo nuevo?" con un pedido liviano (chat_novedad: una fila chica, no la mensajería entera):
+  // cada 20 s con la app a la vista, cada 60 s en segundo plano, y enseguida al volver a ella. Si algo llegó: numerito en la pestaña y en
+  // el título del navegador, sonido corto y aviso del sistema con quién escribió.
+  E.chatTs = null;
+  let relojMensajes = null;
+
+  function sonidoMensaje() {
+    try {
+      const Ctx = window.AudioContext || window.webkitAudioContext;
+      if (!Ctx) return;
+      const c = new Ctx(), t = c.currentTime;
+      [[880, 0], [1175, .12]].forEach(([f, d]) => {
+        const o = c.createOscillator(), g = c.createGain();
+        o.frequency.value = f; o.connect(g); g.connect(c.destination);
+        g.gain.setValueAtTime(.0001, t + d); g.gain.exponentialRampToValueAtTime(.18, t + d + .02); g.gain.exponentialRampToValueAtTime(.0001, t + d + .22);
+        o.start(t + d); o.stop(t + d + .25);
+      });
+      setTimeout(() => c.close && c.close(), 800);
+    } catch (e) { /* sin sonido */ }
+  }
+
+  function tituloMensajes() {
+    document.title = (E.chatSinLeer ? `(${E.chatSinLeer}) ` : '') + 'PulsoMOVE';
+  }
+
+  // El cartel vive fuera de #app: render() reescribe todo lo de adentro y se lo llevaría puesto.
+  let relojCartel = null;
+  // Algunos diálogos de la app (los que se abren con showModal) tapan todo lo demás; un popover queda por encima de ellos.
+  function ocultarCartel() {
+    const b = document.getElementById('aviso-chat');
+    if (!b) return;
+    b.className = '';
+    try { if (b.matches(':popover-open')) b.hidePopover(); } catch (e) { /* navegador sin popover */ }
+  }
+  function cartelMensaje(titulo, cuerpo, id) {
+    let b = document.getElementById('aviso-chat');
+    if (!b) {
+      b = document.createElement('div');
+      b.id = 'aviso-chat';
+      b.setAttribute('role', 'status');
+      b.setAttribute('popover', 'manual');
+      b.addEventListener('click', ev => {
+        if (ev.target.closest('.aviso-chat-x')) { ocultarCartel(); return; }
+        const ir = ev.target.closest('[data-ir-chat]');
+        if (!ir) return;
+        ocultarCartel();
+        E.vista = 'chat'; E.chatAbierta = ir.dataset.irChat || null; E.chatConv = null; E.chatNuevo = false; E.chatSumar = false; E.chatBorrador = '';
+        render();
+        cargarChat().then(render).catch(() => {});
+      });
+      document.body.appendChild(b);
+    }
+    b.innerHTML = `<button class="aviso-chat-cuerpo" data-ir-chat="${esc(id || '')}"><b>💬 ${esc(titulo)}</b><span>${esc(cuerpo)}</span></button><button class="aviso-chat-x" aria-label="Cerrar">×</button>`;
+    b.className = 'visible';
+    try { if (b.showPopover) { if (b.matches(':popover-open')) b.hidePopover(); b.showPopover(); } } catch (e) { /* queda como cartel común */ }
+    clearTimeout(relojCartel);
+    relojCartel = setTimeout(ocultarCartel, 10000);
+  }
+
+  // Al llegar un mensaje con la app abierta, o al abrirla con mensajes sin leer: cartel arriba, sonido y numerito.
+  function avisarMensajeNuevo(alAbrir) {
+    const c = (E.chat || []).find(x => x.ultimo && !x.ultimo.mio && x.sin_leer);
+    if (E.vista === 'chat' && (!c || E.chatAbierta === c.id || !alAbrir)) return;   // ya lo está viendo
+    sonidoMensaje();
+    const quien = c ? (c.tipo === 'grupo' ? `${c.ultimo.de} en ${c.nombre}` : c.nombre) : 'Alguien del equipo';
+    const texto = c ? c.ultimo.texto : '';
+    if (E.chatSinLeer > 1) cartelMensaje(`Tenés ${E.chatSinLeer} mensajes sin leer`, c ? `Último de ${quien}: ${texto}` : '', c ? c.id : '');
+    else cartelMensaje(quien, texto || 'Mensaje nuevo', c ? c.id : '');
+  }
+
+  async function revisarMensajes() {
+    clearTimeout(relojMensajes);
+    relojMensajes = setTimeout(revisarMensajes, document.hidden ? 60000 : 20000);
+    const s = cliente.sesion();
+    if (!s || s.debe_cambiar_pin) return;
+    try {
+      const n = await cliente.llamar('chat_novedad');
+      const alAbrir = E.chatTs === null && n.sin_leer > 0;
+      const nuevo = E.chatTs !== null && n.ts !== E.chatTs && n.sin_leer > E.chatSinLeer;
+      const cambio = n.ts !== E.chatTs || n.sin_leer !== E.chatSinLeer || !E.chat;
+      E.chatTs = n.ts;
+      if (!cambio) return;
+      const antes = JSON.stringify(E.chat);
+      await cargarChat();
+      tituloMensajes();
+      if (nuevo || alAbrir) avisarMensajeNuevo(alAbrir);
+      if (E.vista === 'chat') {
+        const tx = app.querySelector('[data-chat-texto]');
+        if (JSON.stringify(E.chat) !== antes && (!tx || !tx.value)) render();
+      } else {
+        const b = app.querySelector('.pestanas [data-v="chat"]');
+        if (b) b.innerHTML = chatEtiqueta();
+      }
+    } catch (e) { /* sin conexión o sesión vencida: se reintenta */ }
+  }
+  document.addEventListener('visibilitychange', () => { if (!document.hidden) revisarMensajes(); });
+  window.addEventListener('focus', () => revisarMensajes());
+  setTimeout(revisarMensajes, 2500);
+
+  app.addEventListener('input', ev => {
+    const t = ev.target;
+    if (t.matches && t.matches('textarea[data-chat-texto]') && E.chatAbierta) E.chatBorrador = t.value;
+    else if (t.matches && t.matches('[data-chat-buscar]')) {
+      const q = t.value.trim().toLowerCase();
+      app.querySelectorAll('.chat-persona').forEach(l => { l.hidden = !!q && l.dataset.nombre.indexOf(q) < 0; });
+    } else if (t.matches && t.matches('.chat-persona input')) {
+      const n = app.querySelectorAll('.chat-persona input:checked').length;
+      const g = app.querySelector('.chat-nombre-grupo');
+      if (g) g.hidden = n < 2;
+    }
+  });
+
+  function chatDespuesDeRender() {
+    const m = app.querySelector('.chat-msgs');
+    if (m) m.scrollTop = m.scrollHeight;
+  }
+
   // ---------- Eventos ----------
 
   app.addEventListener('submit', async ev => {
@@ -1910,6 +2158,7 @@
     ev.preventDefault();
     const f = new FormData(form);
     const btn = form.querySelector('button:not([type=button])');
+    if (tipo.indexOf('chat-') === 0) { await enviarFormChat(tipo, form); return; }
     if (tipo === 'login') {
       btn.disabled = true;
       try {
@@ -1918,6 +2167,7 @@
         E.mensajeLogin = '';
         E.vista = null;
         E.tareas = null;
+        E.chat = null; E.chatSinLeer = 0; E.chatTs = null; E.chatPersonas = null; E.chatAbierta = null; E.chatConv = null;   // los mensajes son de cada persona
         render();
       } catch (e) {
         E.mensajeLogin = e.message;
@@ -1996,6 +2246,7 @@
       const irse = () => { if (salirDeLaApp()) render(); };
       if (faltaElCierre()) recordarCierre(irse); else irse();
     } else if (a === 'cerrar-app') cerrarApp();
+    else if (a.indexOf('chat-') === 0) accionChat(a, el);
     else if (a === 'fichaje') {
       el.disabled = true;
       try {

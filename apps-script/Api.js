@@ -1286,11 +1286,19 @@ const ACCIONES = {
   cargar_profe_auditoria: (r, d) => cargarProfeAuditoria(r, d),
   profe_auditoria_marcar: (r, d) => profeAuditoriaMarcar(r, d),
   profe_auditoria_marcadas: (r, d) => profeAuditoriaMarcadas(r, d),
+  // Chat del equipo (Chat.js)
+  chat_personas: (r, d) => chatPersonas(r, d),
+  chat_listar: (r, d) => chatListar(r, d),
+  chat_novedad: (r, d) => chatNovedad(r, d),
+  chat_ver: (r, d) => chatVer(r, d),
+  chat_leido: (r, d) => chatLeido(r, d),
+  chat_enviar: (r, d) => chatEnviar(r, d),
+  chat_agregar: (r, d) => chatAgregar(r, d),
 };
 
 // Las pantallas que solo miran no esperan turno: un pedido trabado no las frena. Lista cerrada: lo que no esté acá espera.
 // Respaldo, bajadas y lo que usan los procesos de la PC siguen con turno porque necesitan los datos completos y sin cambios a mitad.
-const SOLO_LECTURA = ['mis_tareas', 'mi_dia', 'sede', 'tareas_de', 'rendimiento', 'cierres_ver', 'profes_ver', 'fichajes_ver', 'usuarios_listar', 'servidor_ver', 'ocupacion_ver', 'profe_tareas'];
+const SOLO_LECTURA = ['mis_tareas', 'mi_dia', 'sede', 'tareas_de', 'rendimiento', 'cierres_ver', 'profes_ver', 'fichajes_ver', 'usuarios_listar', 'servidor_ver', 'ocupacion_ver', 'profe_tareas', 'chat_personas', 'chat_listar', 'chat_ver', 'chat_novedad'];
 const ESPERA_TURNO_MS = 20000;
 const PEDIDO_LENTO_MS = 15000;
 

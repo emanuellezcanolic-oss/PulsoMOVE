@@ -37,6 +37,10 @@ const COLUMNAS = {
   profe_puntajes: ['fecha', 'profe', 'profe_dni', 'socios', 'puntaje', 'gestion', 'diagnostico', 'metodologia', 'custom', 'rpe'],
   // Días en que el profe terminó todo lo del día, y cuánto tardó desde la primera marca
   profe_dias: ['dni', 'fecha', 'primera_ts', 'completado_ts', 'planes', 'minutos'],
+  chat_conv: ['id', 'tipo', 'nombre', 'miembros', 'creada_por', 'creada', 'ultimo_ts'],
+  chat_msg: ['id', 'conv_id', 'ts', 'dni', 'nombre', 'texto', 'ref'],
+  chat_lect: ['conv_id', 'dni', 'ts'],
+  chat_aviso: ['dni', 'sin_leer', 'ts'],
   garantia: ['id', 'ts', 'sede', 'socio_id', 'socio_nombre', 'profe', 'motivo', 'registra_dni', 'estado', 'decide_dni',
              'comentario', 'decidido_en'],
 };
