@@ -833,6 +833,56 @@
     </div></div>`;
   }
 
+  // ---------- Tablero de coordinación: vencidos que igual vienen, customización y tiempo de armado ----------
+  const BANDAS_CUSTOM = [['sin_modificar', 'Menos de 15%: no cuenta como modificado', 'gris'], ['poco', '15 a 30%: poco', 'amarillo'], ['bien', '30 a 80%: bien', 'verde'], ['casi_todo', 'Más de 80%: usar una plantilla modelo', 'rojo']];
+  const colorViene = n => (n >= 8 ? 'rojo' : n >= 4 ? 'amarillo' : 'gris');
+  const vez = n => n + (n === 1 ? ' vez' : ' veces');
+
+  function tablaEquipo(eq) {
+    const con = eq.filter(p => p.coord);
+    if (!con.length) return '';
+    const pct = v => (v == null ? '—' : v + '%');
+    const filas = con.map(p => {
+      const c = p.coord, cu = c.custom || {}, t = c.tiempo || {};
+      return `<tr><td><button class="enlace" data-accion="profe-ver" data-p="${esc(p.profe)}">${esc(p.profe)}</button></td>
+        <td class="num">${c.socios}</td><td class="num">${pct(c.al_dia_pct)}</td><td class="num">${c.vencidos}</td>
+        <td class="num ${c.vienen_mucho ? 'rojo' : c.vienen ? 'amarillo' : ''}"><b>${c.vienen}</b>${c.vienen_mucho ? ` <small>(${c.vienen_mucho} con 8+)</small>` : ''}</td>
+        <td class="num">${c.renovados}</td><td class="num ${cu.en_rango_pct >= 60 ? 'verde' : cu.en_rango_pct >= 30 ? 'amarillo' : cu.medidos ? 'rojo' : ''}">${cu.medidos ? pct(cu.en_rango_pct) : '—'}</td>
+        <td class="num">${cu.medidos ? pct(cu.mediana_pct) : '—'}</td><td class="num">${cu.medidos ? cu.con_saltos + '/' + cu.medidos : '—'}</td>
+        <td class="num">${t.mediana_min != null ? t.mediana_min + ' min' : '—'}</td><td class="num">${t.horas_estimadas != null ? '~' + t.horas_estimadas + ' h' : '—'}</td>
+        <td class="num">${p.auditoria && p.auditoria.puntaje != null ? `<b class="aud-linea ${(NIVEL_AUD[p.auditoria.nivel] || [''])[0]}">${p.auditoria.puntaje}</b>` : '—'}</td></tr>`;
+    }).join('');
+    const todos = [];
+    con.forEach(p => (p.coord.lista || []).forEach(v => { if (v.vino_vencido >= 4) todos.push(Object.assign({ profe: p.profe }, v)); }));
+    todos.sort((a, b) => b.vino_vencido - a.vino_vencido);
+    return `<section class="bloque tablero-coord"><div class="bloque-cab"><h2>📊 Tablero del equipo</h2><span class="aclara">Datos de MOVE del ${esc(ddmm(con[0].coord.fecha))} · renovaciones de los últimos 30 días</span></div>
+      <div class="envoltura-tabla"><table class="tabla compacta"><thead><tr><th>Profe</th><th>Socios</th><th>Al día</th><th>Vencidos</th><th title="Planes vencidos en los que el socio igual vino 4 veces o más desde que venció">Vencidos que igual vienen</th><th>Renovados</th><th title="Planes renovados con un cambio entre 30 y 80% respecto del anterior">Custom. 30-80%</th><th>Cambio (mediana)</th><th title="Planes con un salto de 2 escalones o más">Con saltos</th><th>Min por plan</th><th>Horas armando</th><th>Auditoría</th></tr></thead><tbody>${filas}</tbody></table></div>
+      <p class="aclara">Protocolo: el plan se renueva todos los meses. "Vencidos que igual vienen": el socio vino 4 veces o más con el plan vencido (una semana de entrenamiento); 8 o más, dos semanas. Customización comparada con el plan anterior del mismo socio: menos de 15% no cuenta como modificado, 30 a 80% es lo recomendado, más de 80% es casi un plan nuevo (para eso, una plantilla modelo). El tiempo es aproximado: sale de cuándo se creó y se editó cada día del plan en MOVE.</p>
+      ${todos.length ? `<h3 class="sub-coord">🔴 Planes vencidos que más se usaron <span class="cuenta">${todos.length}</span></h3>
+        <div class="envoltura-tabla"><table class="tabla compacta"><thead><tr><th>Socio</th><th>Profe</th><th>Venció</th><th>Vino desde que venció</th><th>Con este plan</th><th>Por semana</th></tr></thead><tbody>
+        ${todos.slice(0, 25).map(v => `<tr><td>${esc(v.nombre)}</td><td>${esc(v.profe.split(' ')[0])}</td><td>hace ${v.dias} días</td><td class="num ${colorViene(v.vino_vencido)}"><b>${vez(v.vino_vencido)}</b></td><td class="num">${vez(v.vino_plan)}</td><td class="num">${v.por_semana}</td></tr>`).join('')}
+        </tbody></table></div>${todos.length > 25 ? `<p class="aclara">Y ${todos.length - 25} más: entrá a cada profe para ver todos.</p>` : ''}` : ''}
+    </section>`;
+  }
+
+  function coordDeProfe(c) {
+    if (!c) return '';
+    const cu = c.custom || {}, t = c.tiempo || {}, b = cu.bandas || {};
+    const total = cu.medidos || 0;
+    return `<div class="personas">
+      <div class="persona"><b>Planes vencidos</b><div class="pts-grande ${c.vienen_mucho ? 'rojo' : c.vienen ? 'amarillo' : 'verde'}"><strong>${c.vencidos}</strong><span>de ${c.socios} socios · al día ${c.al_dia_pct}%</span></div>
+        <span class="aclara">${c.vienen} igual vinieron 4 veces o más desde que venció${c.vienen_mucho ? ` (${c.vienen_mucho} con 8 o más)` : ''} · ${c.no_vienen} no volvieron a venir · ${c.sin_plan} sin plan.</span></div>
+      <div class="persona"><b>Customización (30 días)</b>${total ? BANDAS_CUSTOM.map(([k, txt, col]) => `<div class="pts-seccion"><span>${esc(txt)}</span><span class="avance"><i class="${col}" style="width:${Math.round(100 * (b[k] || 0) / total)}%"></i></span><b>${b[k] || 0}</b></div>`).join('') +
+        `<span class="aclara">${total} planes renovados medidos · cambio mediano ${cu.mediana_pct}% · con saltos de 2+ escalones: ${cu.con_saltos} · RPE fuera de lo indicado: ${cu.rpe_fuera}</span>` : '<span class="aclara">Todavía no hay planes renovados medidos.</span>'}</div>
+      <div class="persona"><b>Tiempo armando planes</b><div class="pts-grande"><strong>${t.mediana_min != null ? t.mediana_min : '—'}</strong><span>min por plan (mediana)</span></div>
+        <span class="aclara">${c.renovados} planes renovados en 30 días${t.horas_estimadas != null ? ` · ~${t.horas_estimadas} h en total` : ''} · medido en ${t.medidos || 0}. Aproximado con las fechas de MOVE: 1-2 min suele ser un plan copiado.</span></div>
+    </div>
+    ${(c.lista || []).length ? `<section class="grupo"><h2>📅 Vencidos y cuántas veces vino <span class="cuenta">${c.vencidos}</span></h2>
+      <div class="envoltura-tabla"><table class="tabla compacta"><thead><tr><th>Socio</th><th>Venció</th><th>Vino desde que venció</th><th>Con este plan</th><th>Por semana</th></tr></thead><tbody>
+      ${c.lista.map(v => `<tr><td>${esc(v.nombre)}</td><td>${esc(ddmm(v.vence))} · hace ${v.dias} días</td><td class="num ${colorViene(v.vino_vencido)}"><b>${vez(v.vino_vencido)}</b></td><td class="num">${vez(v.vino_plan)}</td><td class="num">${v.por_semana}</td></tr>`).join('')}
+      </tbody></table></div></section>` : ''}`;
+  }
+
   function vistaProfes() {
     if (!E.planes) return '<div class="cargando">Cargando los profes…</div>';
     const eq = E.planes.equipo || [];
@@ -843,6 +893,7 @@
         let i = 0;
         return `<button class="chip" data-accion="profe-volver">← Todos los profes</button>
           <h1 class="titulo">${esc(p.profe)}</h1><div class="persona">${cifrasPlanes(p.resumen)}</div>
+          ${coordDeProfe(p.coord)}
           <section class="grupo"><h2>Lo de hoy <span class="cuenta">${p.hoy.length}</span></h2>${p.hoy.length ? p.hoy.map(t => tarjetaPlan(t, i++, false)).join('') : '<div class="vacio">Nada para hoy.</div>'}</section>
           ${p.auditoria ? `<div class="personas">${puntajeAuditoria(p.auditoria, 'Auditoría')}</div>${p.auditoria.pendientes.length ? `<section class="grupo"><h2>🧾 Para corregir <span class="cuenta">${p.auditoria.cuantos.pendientes}</span></h2>${p.auditoria.pendientes.map(h => tarjetaHallazgo(h, i++, false)).join('')}</section>` : ''}` : ''}
           ${p.revisiones && p.revisiones.lista.length ? `<section class="grupo"><h2>🔎 Planes renovados (30 días) <span class="cuenta">${p.revisiones.lista.length}</span></h2>${p.revisiones.lista.map(r => tarjetaRevision(r, i++, false)).join('')}</section>` : ''}`;
@@ -851,6 +902,7 @@
     return `<h1 class="titulo">Profes <span>·</span> planes al día</h1>
       <p class="bajada">Lo que cada profe y cada kinesiólogo tiene que renovar hoy, lo atrasado y lo que lleva hecho en el mes.</p>
       ${selector}
+      ${tablaEquipo(eq)}
       ${eq.length ? `<div class="personas">${eq.map(p => `<div class="persona"><b>${esc(p.profe)}</b><span class="turno">${p.con_usuario ? 'Con usuario' : 'Todavía sin usuario en PulsoMOVE'}</span>${cifrasPlanes(p.resumen)}${p.auditoria && p.auditoria.puntaje != null ? `<span class="uso-hoy aud-linea ${(NIVEL_AUD[p.auditoria.nivel] || [''])[0]}">🧾 Auditoría: <b>${p.auditoria.puntaje}</b> ${esc((NIVEL_AUD[p.auditoria.nivel] || ['', ''])[1])}${p.auditoria.cambio_semana ? ` (${p.auditoria.cambio_semana > 0 ? '▲' : '▼'} ${Math.abs(p.auditoria.cambio_semana)})` : ''} · ${p.auditoria.cuantos.pendientes} para corregir${p.auditoria.cuantos.no_corregidos ? ` · ${p.auditoria.cuantos.no_corregidos} dijo que corrigió y sigue` : ''}</span>` : ''}${p.dias ? `<span class="uso-hoy">Días completos este mes: ${p.dias.completos} (en menos de 1 hora: ${p.dias.en_una_hora})${p.revisiones && p.revisiones.resumen.minutos_mediana != null ? ` · arma un plan en ~${p.revisiones.resumen.minutos_mediana} min` : ''}${p.resumen.en_papel ? ` · en papel: ${p.resumen.en_papel}` : ''}</span>` : ''}${p.revisiones ? `<span class="uso-hoy">Planes renovados (30 días): ${p.revisiones.resumen.revisados} · en 30-80%: ${p.revisiones.resumen.en_rango} · casi todo cambiado: ${p.revisiones.resumen.casi_todo}${p.revisiones.resumen.con_saltos ? ` · con saltos: ${p.revisiones.resumen.con_saltos} (${p.revisiones.resumen.saltos_sin_responder} sin responder, ${p.revisiones.resumen.corregir} a corregir)` : ''}</span>` : ''}
         <button class="chip ver-lista" data-accion="profe-ver" data-p="${esc(p.profe)}">Ver lo de hoy</button></div>`).join('')}</div>`
         : '<div class="vacio">Todavía no hay planes cargados para esta sede.</div>'}`;

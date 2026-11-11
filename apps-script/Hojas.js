@@ -34,6 +34,8 @@ const COLUMNAS = {
   profe_revision: ['id', 'fecha', 'sede', 'profe', 'profe_dni', 'socio_id', 'socio_nombre', 'pct', 'banda', 'saltos', 'rpe', 'respuesta', 'respondida_en', 'nota', 'minutos', 'dias_plan'],
   // Auditoría de planes (F2.18): hallazgos como tareas, y el puntaje de cada profe por día
   profe_auditoria: ['id', 'fecha', 'ultima', 'sede', 'profe', 'profe_dni', 'socio_id', 'socio_nombre', 'seccion', 'gravedad', 'texto', 'cuantos', 'estado', 'marcada_en', 'corregido_en', 'reaparecio'],
+  // Tablero de coordinación: lo que calcula la PC por profe (vencidos y cuántas veces vino, customización, tiempo). Solo la última corrida
+  profe_coord: ['fecha', 'profe', 'profe_dni', 'sede', 'datos'],
   profe_puntajes: ['fecha', 'profe', 'profe_dni', 'socios', 'puntaje', 'gestion', 'diagnostico', 'metodologia', 'custom', 'rpe'],
   // Días en que el profe terminó todo lo del día, y cuánto tardó desde la primera marca
   profe_dias: ['dni', 'fecha', 'primera_ts', 'completado_ts', 'planes', 'minutos'],

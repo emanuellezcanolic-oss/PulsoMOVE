@@ -587,3 +587,14 @@ header.barra .pestanas { width: 100%; }
 #aviso-chat .aviso-chat-cuerpo span { font-size: 13px; opacity: .85; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
 #aviso-chat .aviso-chat-x { background: none; border: 0; color: inherit; font-size: 22px; padding: 0 14px; cursor: pointer; opacity: .7; }
 @media (prefers-reduced-motion: reduce) { #aviso-chat { transition: none; } }
+
+/* Tablero de coordinación */
+.tablero-coord { margin-bottom: 18px; }
+.tablero-coord .bloque-cab { display: flex; flex-wrap: wrap; align-items: baseline; gap: 10px; }
+.tabla td.rojo b, .tabla td.rojo { color: var(--rojo); }
+.tabla td.amarillo b, .tabla td.amarillo { color: var(--naranja); }
+.tabla td.verde { color: var(--verde-texto); }
+.tabla td small { color: var(--gris); font-weight: 400; }
+.sub-coord { font: 700 15px/1.3 var(--display); margin: 16px 0 4px; }
+.enlace { background: none; border: 0; padding: 0; font: inherit; font-weight: 700; color: var(--tinta); text-decoration: underline; text-underline-offset: 2px; cursor: pointer; text-align: left; }
+.pts-seccion .avance i.gris { background: var(--gris); }

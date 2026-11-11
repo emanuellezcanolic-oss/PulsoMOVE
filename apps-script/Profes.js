@@ -128,13 +128,14 @@ function profeTareas(req, deps) {
     deSede.forEach(t => { if (nombres.indexOf(t.profe) < 0) nombres.push(t.profe); });
     out.sede = sede || '';
     const rev = revisionesPorProfe(deps, hoy, sede);
+    const coord = coordinacionPorProfe(deps, sede);
     const diasMes = deps.repo.leer('profe_dias').filter(d => String(d.fecha).slice(0, 7) === hoy.slice(0, 7));
     out.equipo = nombres.sort().map(n => {
       const a = agendaDeProfe(deSede.filter(t => t.profe === n), hoy);
       const dni = (deSede.find(t => t.profe === n && t.profe_dni) || {}).profe_dni;
       const dias = diasMes.filter(d => d.dni === dni);
       const aud = dni ? auditoriaDeProfe(dni, deps, hoy) : null;
-      return { profe: n, con_usuario: !!dni, resumen: a.resumen, hoy: a.hoy, revisiones: rev[n] || null,
+      return { profe: n, con_usuario: !!dni, resumen: a.resumen, hoy: a.hoy, revisiones: rev[n] || null, coord: coord[n] || null,
         auditoria: aud ? { puntaje: aud.puntaje, nivel: aud.nivel, cambio_semana: aud.cambio_semana, secciones: aud.secciones, cuantos: aud.cuantos, repetido: aud.repetido, pendientes: aud.pendientes.slice(0, 40) } : null,
         dias: { completos: dias.length, en_una_hora: dias.filter(d => Number(d.minutos) <= META_HORA_MIN).length } };
     });
@@ -783,4 +784,24 @@ function profeAuditoriaMarcadas(req, deps) {
   const ids = {};
   deps.repo.leer('profe_auditoria').forEach(h => { if (h.estado === 'marcada') ids[h.socio_id] = true; });
   return { socios: Object.keys(ids) };
+}
+
+// ---------- Tablero de coordinación (Emanuel, 11/11/2026) ----------
+// La PC sube, por profe, los planes vencidos con cuántas veces vino el socio desde que se le venció, cuántos planes
+// renovó en 30 días, cómo los customizó (criterio 30-80%) y cuánto tiempo pasa armándolos. Se guarda solo la última.
+function cargarProfeCoordinacion(req, deps) {
+  exigirClave(req, deps);
+  const hoy = texto(req.hoy) || deps.hoy();
+  if (!fechaIsoValida(hoy) || !Array.isArray(req.filas)) falla('datos_invalidos');
+  const filas = req.filas.map(x => ({ fecha: hoy, profe: texto(x && x.profe), profe_dni: normalizarDni(x && x.profe_dni), sede: texto(x && x.sede),
+    datos: typeof (x && x.datos) === 'string' ? x.datos : JSON.stringify((x && x.datos) || {}) }));
+  if (!filas.every(x => x.profe && SEDES.indexOf(x.sede) >= 0 && x.datos.length < 48000 && leerJson(x.datos, null))) falla('datos_invalidos');
+  deps.repo.escribir('profe_coord', filas);
+  return { filas: filas.length };
+}
+
+function coordinacionPorProfe(deps, sede) {
+  const out = {};
+  deps.repo.leer('profe_coord').filter(r => !sede || r.sede === sede).forEach(r => { out[r.profe] = Object.assign({ fecha: String(r.fecha).slice(0, 10) }, leerJson(r.datos, {})); });
+  return out;
 }

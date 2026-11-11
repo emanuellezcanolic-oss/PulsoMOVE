@@ -1286,6 +1286,7 @@ const ACCIONES = {
   cargar_profe_auditoria: (r, d) => cargarProfeAuditoria(r, d),
   profe_auditoria_marcar: (r, d) => profeAuditoriaMarcar(r, d),
   profe_auditoria_marcadas: (r, d) => profeAuditoriaMarcadas(r, d),
+  cargar_profe_coordinacion: (r, d) => cargarProfeCoordinacion(r, d),
   // Chat del equipo (Chat.js)
   chat_personas: (r, d) => chatPersonas(r, d),
   chat_listar: (r, d) => chatListar(r, d),
