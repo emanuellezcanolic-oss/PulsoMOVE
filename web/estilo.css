@@ -598,3 +598,16 @@ header.barra .pestanas { width: 100%; }
 .sub-coord { font: 700 15px/1.3 var(--display); margin: 16px 0 4px; }
 .enlace { background: none; border: 0; padding: 0; font: inherit; font-weight: 700; color: var(--tinta); text-decoration: underline; text-underline-offset: 2px; cursor: pointer; text-align: left; }
 .pts-seccion .avance i.gris { background: var(--gris); }
+
+/* Almanaque de planes por día */
+.almanaque { margin-top: 14px; }
+.alm-cab b { font: 700 15px/1.3 var(--display); }
+.alm-grilla { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 5px; margin-top: 6px; max-width: 620px; }
+.alm-sem { font-size: 11px; text-transform: uppercase; letter-spacing: .06em; color: var(--gris); text-align: center; }
+.alm-dia { position: relative; border: 1px solid var(--linea); border-radius: 10px; min-height: 58px; display: flex; flex-direction: column; justify-content: center; align-items: center;
+  background: color-mix(in srgb, var(--verde) calc(var(--int, 0) * 55%), var(--hoja)); }
+.alm-dia em { position: absolute; top: 3px; left: 6px; font-style: normal; font-size: 10.5px; color: var(--gris); }
+.alm-dia strong { font: 800 26px/1 var(--display); color: var(--tinta); }
+.alm-dia.cero strong { color: var(--gris); font-weight: 400; }
+.alm-dia.finde { border-style: dashed; }
+.vacio-dia { border: 0; background: none; }

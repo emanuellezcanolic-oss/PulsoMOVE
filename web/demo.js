@@ -261,7 +261,9 @@
     const profe_puntajes = [pp_(14, 64), pp_(7, 68), pp_(0, 71)];
     // Tablero de coordinación: lo que subiría pulso_coordinacion.py
     const venc = (n, nombre, dias, vino, plan) => ({ socio_id: 'C' + n, nombre, vence: atras(dias), dias, vino_vencido: vino, vino_plan: plan, por_semana: Math.round(vino / Math.max(1, dias / 7) * 10) / 10 });
-    const cd = (profe, dni, d) => ({ fecha: hoy, profe, profe_dni: dni, sede: 'bolson', datos: J(Object.assign({ desde: atras(30) }, d)) });
+    const porDia = semilla => { const o = {}; for (let k = 0; k < 30; k++) { const f = atras(k); const dw = new Date(f + 'T12:00:00Z').getUTCDay(); const n = dw === 0 || dw === 6 ? 0 : (k * semilla + 3) % 6; if (n) o[f] = n; } return o; };
+    const cd = (profe, dni, d) => ({ fecha: hoy, profe, profe_dni: dni, sede: 'bolson', datos: J(Object.assign({ desde: atras(29), horas_pagadas: 22 }, d,
+      { por_dia: porDia(d.socios % 5 + 2) }, (() => { const p = porDia(d.socios % 5 + 2); const n = Object.values(p).reduce((a, b) => a + b, 0); return { planes_30: n, dias_con_planes: Object.keys(p).length, planes_por_hora_pagada: Math.round(n / 22 * 10) / 10 }; })())) });
     const profe_coord = [
       cd(PM, B, { socios: 82, vigentes: 61, vencidos: 17, sin_plan: 4, renovados: 44, al_dia_pct: 74, vienen: 4, vienen_mucho: 2, no_vienen: 6, veces_vencidos: 51,
         custom: { medidos: 40, mediana_pct: 92, bandas: { sin_modificar: 1, poco: 2, bien: 9, casi_todo: 28 }, en_rango_pct: 23, con_saltos: 31, rpe_fuera: 6 },
