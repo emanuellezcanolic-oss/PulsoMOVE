@@ -112,3 +112,27 @@ test('el profe elige a quién de recepción pedírsela', () => {
   assert.equal(r.data.recepcionista, 'Recepción Tarde');
   assert.equal(d.repo.hojas.tareas[0].asignado_dni, '30222222');
 });
+
+test('no es mi entrenado desde las reevaluaciones: aviso a recepción y deja de recomendarse', () => {
+  const OTRO = usuario({ dni: '20333444', nombre: 'Profe Dos', roles: 'profe' });
+  const d = depsFalsas({ repo: repoFalso({ usuarios: [PROFE, OTRO, MANANA, TARDE], profe_reeval: [socio(1, 300), socio(2, 200)], proximas: todasLasFranjas(), ocupacion: [],
+    tareas: [], profe_tareas: [{ id: 'pp-1', fecha: HOY, sede: 'bolson', profe: 'Profe Uno', profe_dni: '20111222', socio_id: '1', socio_nombre: 'Socio 1', tipo: 'Plan vencido', estado: 'pendiente', vence: '2026-11-01' }] }),
+    hoy: HOY, ahora: Date.parse(HOY + 'T15:00:00Z') });
+  const tk = entrar(d);
+  assert.equal(reeval(d).recomendadas[0].socio_id, '1');
+  // sabe de quién es
+  const r = pedir(d, { accion: 'profe_no_es_mio', token: tk, socio_id: '1', profe: 'Profe Dos', dni: '30222222' });
+  assert.ok(r.ok, JSON.stringify(r));
+  const t = d.repo.hojas.tareas[0];
+  assert.deepEqual([t.tipo, t.asignado_dni, t.socio_id], ['Cambiar profesor · lo pide el profe', '30222222', 'profe-1']);
+  const v = reeval(d);
+  assert.ok(!v.recomendadas.some(x => x.socio_id === '1') && !v.socios.some(x => x.socio_id === '1'));
+  assert.equal(d.repo.hojas.profe_tareas[0].estado, 'derivada');                    // su renovación pendiente también sale
+  assert.equal(pedir(d, { accion: 'profe_no_es_mio', token: tk, socio_id: '1', profe: '', dni: '30111111' }).error, 'ya_avisado');
+  // no sabe de quién es
+  const r2 = pedir(d, { accion: 'profe_no_es_mio', token: tk, socio_id: '2', profe: '', dni: '30111111' });
+  assert.ok(r2.ok, JSON.stringify(r2));
+  assert.match(d.repo.hojas.tareas[1].situacion, /no es su entrenado y no sabe de quién es/);
+  assert.match(d.repo.hojas.tareas[1].accion, /Fijate en qué horario viene/);
+  assert.equal(pedir(d, { accion: 'profe_no_es_mio', token: tk, socio_id: '2', profe: 'Profe Dos', dni: '30111111' }).error, 'ya_avisado');
+});

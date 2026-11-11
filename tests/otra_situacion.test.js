@@ -111,3 +111,12 @@ test('mi mes: medallas y día completo', () => {
   assert.equal(mes.medallas.find(m => m.clave === 'dia').n, 1);
   assert.equal(mes.medallas.find(m => m.clave === 'hora').n, 1);
 });
+
+test('en la renovación también se puede decir que no sé de quién es', () => {
+  const d = entorno();
+  cargar(d, [tarea(1)]);
+  const r = pedir(d, { accion: 'profe_otra_situacion', token: entrar(d, '20111222'), id: 'pp-1', que: 'otro_profe', profe: '', dni: '30111111' });
+  assert.ok(r.ok, JSON.stringify(r));
+  assert.match(d.repo.hojas.tareas[0].situacion, /no sabe de quién es/);
+  assert.match(d.repo.hojas.profe_tareas[0].nota, /no sabe de quién es/);
+});

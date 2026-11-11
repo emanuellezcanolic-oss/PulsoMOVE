@@ -561,14 +561,30 @@
     </article>`;
   }
 
+  function opcionesProfes(op) {
+    return `<option value="">No sé de quién es</option>${op.profes.map(n => `<option>${esc(n)}</option>`).join('')}`;
+  }
+
+  // En las reevaluaciones: siempre la opción de avisar que no es mi entrenado
+  function noEsMioSocio(x) {
+    const op = (E.planes.mio && E.planes.mio.opciones) || { profes: [], recepcion: [] };
+    return `<details class="otra-situacion"><summary>No es mi entrenado</summary>
+      <div class="fila-accion"><span class="aclara">Es de</span>
+        <select data-noes-profe="${esc(x.socio_id)}" aria-label="De qué profesional es">${opcionesProfes(op)}</select>
+        <span class="aclara">· avisarle a</span>
+        <select data-noes-rec="${esc(x.socio_id)}" aria-label="A quién de recepción">${op.recepcion.map(u => `<option value="${esc(u.dni)}">${esc(u.nombre)}</option>`).join('')}</select>
+        <button class="boton claro" data-accion="no-es-mio" data-s="${esc(x.socio_id)}" ${op.recepcion.length ? '' : 'disabled'}>Avisar a recepción</button></div>
+    </details>`;
+  }
+
   function otraSituacion(t) {
     const op = (E.planes.mio && E.planes.mio.opciones) || { profes: [], recepcion: [] };
     return `<details class="otra-situacion"><summary>Otra situación</summary>
       <div class="fila-accion"><span class="aclara">No es mi entrenado, es de</span>
-        <select data-otra-profe="${esc(t.id)}" aria-label="De qué profesional es">${op.profes.map(n => `<option>${esc(n)}</option>`).join('')}</select>
+        <select data-otra-profe="${esc(t.id)}" aria-label="De qué profesional es">${opcionesProfes(op)}</select>
         <span class="aclara">· avisarle a</span>
         <select data-otra-rec="${esc(t.id)}" aria-label="A quién de recepción">${op.recepcion.map(u => `<option value="${esc(u.dni)}">${esc(u.nombre)}</option>`).join('')}</select>
-        <button class="boton claro" data-accion="otra-situacion" data-que="otro_profe" data-id="${esc(t.id)}" ${op.profes.length && op.recepcion.length ? '' : 'disabled'}>Avisar a recepción</button></div>
+        <button class="boton claro" data-accion="otra-situacion" data-que="otro_profe" data-id="${esc(t.id)}" ${op.recepcion.length ? '' : 'disabled'}>Avisar a recepción</button></div>
       <div class="fila-accion"><button class="boton claro" data-accion="otra-situacion" data-que="papel" data-id="${esc(t.id)}">Tiene el plan en papel</button></div>
     </details>`;
   }
@@ -598,7 +614,7 @@
         <span class="socio">${esc(x.socio_nombre)}</span>${x.dias != null && x.dias >= (E.planes.mio.reeval.meta_dias || 56) ? '<span class="estado atrasada">Toca reevaluar</span>' : ''}
         <span class="situacion">${esc(haceCuanto(x))}</span>
         ${p ? `<span class="accion">${esc(tituloDia(p.fecha))} a las ${esc(p.hora)}</span><span class="nota">${esc(p.motivo)}</span>` : ''}
-      </div><div class="fila-accion">${botonPedir(x)}</div></article>`;
+      </div><div class="fila-accion">${botonPedir(x)}</div>${x.pedida ? '' : noEsMioSocio(x)}</article>`;
   }
 
   function bloqueReeval(M) {
@@ -1956,6 +1972,16 @@
     else if (a === 'profe-ver') { E.profeVer = el.dataset.p; render(); window.scrollTo(0, 0); }
     else if (a === 'profe-volver') { E.profeVer = null; render(); }
     else if (a === 'reeval-abrir') { E.reevalAbierto = !el.parentElement.open; }
+    else if (a === 'no-es-mio') {
+      const s = el.dataset.s, art = el.closest('article');
+      const valor = attr => { const x = art.querySelector('select[' + attr + ']'); return x ? x.value : ''; };
+      el.disabled = true;
+      try {
+        const r = await cliente.llamar('profe_no_es_mio', { socio_id: s, profe: valor('data-noes-profe'), dni: valor('data-noes-rec') });
+        await cargarVista();
+        aviso(`✅ Listo: le avisamos a ${r.recepcionista} para que le cambie el profesor. Ya no te aparece.`);
+      } catch (e) { el.disabled = false; aviso(PulsoApi.mensaje(e.codigo || e.message), true); }
+    }
     else if (a === 'plan-traer' || a === 'plan-deshacer') {
       el.disabled = true;
       try {
