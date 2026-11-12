@@ -980,7 +980,7 @@ function respaldo(req, deps) {
   exigirClave(req, deps);
   const usuarios = deps.repo.leer('usuarios').map(u => { const c = Object.assign({}, u); delete c.pin_hash; delete c.sal; return c; });
   const out = { usuarios: usuarios };
-  ['tareas', 'registro', 'garantia', 'actividad', 'rendimiento', 'objetivos', 'cierres', 'profes', 'fichajes', 'reservas_qr', 'avisos', 'uso', 'beneficios', 'stock', 'ventas', 'ventas_largas', 'ocupacion', 'proximas'].forEach(h => { out[h] = deps.repo.leer(h); });
+  ['tareas', 'registro', 'garantia', 'actividad', 'rendimiento', 'objetivos', 'cierres', 'profes', 'fichajes', 'reservas_qr', 'avisos', 'uso', 'beneficios', 'stock', 'ventas', 'ventas_largas', 'ocupacion', 'proximas', 'liquidacion', 'liq_qr'].forEach(h => { out[h] = deps.repo.leer(h); });
   return out;
 }
 
@@ -1293,6 +1293,13 @@ const ACCIONES = {
   profe_sabados_guardar: (r, d) => profeSabadosGuardar(r, d),
   profe_sabados_generar: (r, d) => profeSabadosGenerar(r, d),
   profe_feriado: (r, d) => profeFeriado(r, d),
+  // Liquidación de recepción (Liquidacion.js)
+  liquidacion_ver: (r, d) => liquidacionVer(r, d),
+  liquidacion_guardar: (r, d) => liquidacionGuardar(r, d),
+  liquidacion_config_guardar: (r, d) => liquidacionConfigGuardar(r, d),
+  liquidacion_horas_guardar: (r, d) => liquidacionHorasGuardar(r, d),
+  cargar_liquidacion: (r, d) => cargarLiquidacion(r, d),
+  cargar_liq_qr: (r, d) => cargarLiqQr(r, d),
   // Chat del equipo (Chat.js)
   chat_personas: (r, d) => chatPersonas(r, d),
   chat_listar: (r, d) => chatListar(r, d),
@@ -1305,7 +1312,7 @@ const ACCIONES = {
 
 // Las pantallas que solo miran no esperan turno: un pedido trabado no las frena. Lista cerrada: lo que no esté acá espera.
 // Respaldo, bajadas y lo que usan los procesos de la PC siguen con turno porque necesitan los datos completos y sin cambios a mitad.
-const SOLO_LECTURA = ['mis_tareas', 'mi_dia', 'sede', 'tareas_de', 'rendimiento', 'cierres_ver', 'profes_ver', 'fichajes_ver', 'usuarios_listar', 'servidor_ver', 'ocupacion_ver', 'profe_tareas', 'chat_personas', 'chat_listar', 'chat_ver', 'chat_novedad'];
+const SOLO_LECTURA = ['mis_tareas', 'mi_dia', 'sede', 'tareas_de', 'rendimiento', 'cierres_ver', 'profes_ver', 'fichajes_ver', 'usuarios_listar', 'servidor_ver', 'ocupacion_ver', 'profe_tareas', 'liquidacion_ver', 'chat_personas', 'chat_listar', 'chat_ver', 'chat_novedad'];
 const ESPERA_TURNO_MS = 20000;
 const PEDIDO_LENTO_MS = 15000;
 

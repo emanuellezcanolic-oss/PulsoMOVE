@@ -177,6 +177,7 @@
     if (tiene('coordinador') || tiene('admin')) p.push(['sede', 'Sede']);
     if (tiene('coordinador') || tiene('admin')) p.push(['rend', 'Rendimiento']);
     if (tiene('coordinador') || tiene('admin')) p.push(['profes', 'Profes']);
+    if (tiene('admin') || tiene('recepcion') || tiene('coordinador')) p.push(['liq', tiene('admin') ? 'Liquidación' : 'Mis ingresos']);   // cada una ve lo suyo; admin ve a todas
     if (tiene('admin')) p.push(['admin', 'Equipo']);
     p.push(['chat', chatEtiqueta()]);   // mensajes entre el equipo: todos
     return p;
@@ -2019,6 +2020,9 @@
         cliente.llamar('cierres_ver').then(c => { E.cierres = c.cierres; E.cierresResumen = c.resumen; if (E.vista === 'rend' && !E.rendDni) render(); }).catch(() => {});
         cliente.llamar('profes_ver', tiene('admin') ? { sede: E.sedeElegida } : {}).then(c => { E.profes = c.filas; if (E.vista === 'rend' && !E.rendDni) render(); }).catch(() => {});
         E.rend = await cliente.llamar('rendimiento', Object.assign(E.rendMes ? { mes: E.rendMes } : {}, tiene('admin') ? { sede: E.sedeElegida } : {}));
+      } else if (E.vista === 'liq') {
+        E.liq = await cliente.llamar('liquidacion_ver', E.liqMes ? { mes: E.liqMes } : {});
+        E.liqMes = E.liq.mes;
       } else if (E.vista === 'chat') {
         await cargarChat();
         render();
@@ -2057,6 +2061,7 @@
     E.persona = null;
     E.rend = null;
     E.rendDni = null;
+    E.liqDni = null; E.liqBorrador = null;
     E.planes = null;
     E.profeVer = null;
     render();
@@ -2125,10 +2130,11 @@
     if (disponibles.indexOf(E.vista) < 0) { E.vista = disponibles[0] || null; setTimeout(cargarVista); }
     const cuerpo = E.vista === 'hoy' ? vistaHoy() : E.vista === 'sede' ? vistaSede() : E.vista === 'admin' ? vistaAdmin() : E.vista === 'mes' ? vistaMes() : E.vista === 'rend' ? vistaRendimiento()
       : E.vista === 'reservas' ? vistaReservas()
+      : E.vista === 'liq' ? vistaLiquidacion()
       : E.vista === 'chat' ? vistaChat()
       : E.vista === 'planes' ? vistaPlanes() : E.vista === 'profes' ? vistaProfes() : E.vista === 'pmes' ? vistaMesProfe()
       : '<div class="vacio">Tu usuario no tiene ninguna vista asignada. Avisale a Emanuel.</div>';
-    const sinDatos = { hoy: !E.tareas, sede: E.personaDni ? !E.persona : !E.sede, mes: !E.rend, rend: !E.rend, admin: !E.usuarios, reservas: !E.ocupacion, chat: !E.chat, planes: !E.planes, profes: !E.planes, pmes: !E.planes }[E.vista];
+    const sinDatos = { hoy: !E.tareas, sede: E.personaDni ? !E.persona : !E.sede, mes: !E.rend, rend: !E.rend, admin: !E.usuarios, reservas: !E.ocupacion, liq: !E.liq, chat: !E.chat, planes: !E.planes, profes: !E.planes, pmes: !E.planes }[E.vista];
     const mostrar = E.errorCarga && sinDatos ? `<div class="vacio" style="margin-top:18px"><p>${esc(E.errorCarga)}</p><p>La pantalla vuelve a intentarlo sola. Tus marcas no se pierden.</p><button class="boton" data-accion="reintentar">Reintentar ahora</button></div>` : cuerpo;
     const bandas = E.vista === 'hoy' ? bandaFichajes() + bandaReservas() : '';
     app.innerHTML = encabezado() + `<main class="contenedor">${bandas}${mostrar}</main>` + (E.vista === 'hoy' && turnoTerminando() ? `<button class="cerrar-app-fijo${DEMO ? ' con-cinta' : ''}" data-accion="cerrar-app">🚪 ${E.dia && E.dia.cierre_hecho ? 'Listo por hoy' : 'Se termina tu turno'}: cerrá la app antes de irte</button>` : '') + (DEMO ? '<div class="cinta-practica">Modo práctica · datos inventados</div>' : '');
@@ -2393,6 +2399,148 @@
     if (m) m.scrollTop = m.scrollHeight;
   }
 
+  // ---------- Liquidación ----------
+  // Sueldo por hora + comisión por ingresos nuevos + extras, mes a mes, y las horas que salen del QR de ingreso.
+  // Coordinación (admin) ve y edita a todas; cada persona ve solo lo suyo (Emanuel, 12/11/2026).
+  const liqPlata = n => (Number(n) < 0 ? '−' : '') + '$' + Math.abs(Math.round(Number(n) || 0)).toLocaleString('es-AR');
+  const liqNum = n => (n == null || n === '' ? '—' : String(Math.round(Number(n) * 100) / 100).replace('.', ','));
+  const liqCorto = n => (Math.abs(n) >= 1e6 ? (n / 1e6).toFixed(2).replace('.', ',') + ' M' : Math.round(n / 1000) + ' mil');
+  const liqMesCorto = m => nombreMes(m).slice(0, 3) + ' ' + m.slice(2, 4);
+  const liqDDMM = f => f.slice(8, 10) + '/' + f.slice(5, 7);
+  const LIQ_DIAS = ['Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb', 'Dom'];
+
+  function liqBorradorDe(p, l) {
+    const b = E.liqBorrador;
+    if (b && b.dni === p.dni && b.mes === E.liq.mes) return b;
+    return { dni: p.dni, mes: E.liq.mes, valor_hora: l.valor_hora || '', horas: l.horas || '', nuevos: l.nuevos_manual ? l.nuevos : '', comision: l.comision_manual ? l.comision : '', nota: l.nota, extras: l.extras.map(x => ({ c: x.c, m: x.m })) };
+  }
+
+  function liqCapturar(form) {
+    const v = n => { const i = form.querySelector(`[name="${n}"]`); return i ? i.value : ''; };
+    return {
+      dni: form.dataset.dni, mes: form.dataset.mes, valor_hora: v('valor_hora'), horas: v('horas'), nuevos: v('nuevos'), comision: v('comision'), nota: v('nota'),
+      extras: [...form.querySelectorAll('[data-liq-extra]')].map(f => ({ c: f.querySelector('select').value, m: f.querySelector('input').value })),
+    };
+  }
+
+  function vistaLiquidacion() {
+    const D = E.liq;
+    if (!D) return '<div class="cargando">Calculando…</div>';
+    const admin = D.puede_editar;
+    const selector = `<div class="filtros">${D.meses.slice(-12).map(m => `<button class="chip" data-accion="liq-mes" data-m="${m}" aria-pressed="${D.mes === m}">${esc(liqMesCorto(m))}</button>`).join('')}</div>`;
+    const p = admin ? D.personas.find(x => x.dni === E.liqDni) : D.personas[0];
+    if (p) return `${admin ? '<div class="filtros"><button class="chip" data-accion="liq-volver">← Volver al equipo</button></div>' : ''}${selector}${liqDetalle(p, D, admin)}`;
+    const T = D.personas.reduce((a, x) => { const l = x.liquidacion; a.base += l.base; a.comision += l.comision; a.extras += l.total_extras; a.total += l.total; return a; }, { base: 0, comision: 0, extras: 0, total: 0 });
+    const filas = D.personas.map(x => {
+      const l = x.liquidacion, q = x.qr;
+      return `<tr class="fila-tocable" data-accion="liq-persona" data-dni="${esc(x.dni)}" tabindex="0">
+        <td><b>${esc(x.nombre)}</b><br><span class="profe">${esc(SEDES[x.sede] || '')}${l.cargado ? '' : ' · sin cargar'}</span></td>
+        <td class="num">${liqNum(l.horas)}</td><td class="num">${q.dias_con_qr ? liqNum(q.total) : '—'}</td>
+        <td class="num">${l.nuevos == null ? '—' : l.nuevos}${l.etiqueta ? `<br><span class="profe">${esc(l.etiqueta)}</span>` : ''}</td>
+        <td class="num">${liqPlata(l.base)}</td><td class="num">${liqPlata(l.comision)}</td><td class="num">${l.total_extras ? liqPlata(l.total_extras) : '—'}</td><td class="num"><b>${liqPlata(l.total)}</b></td></tr>`;
+    }).join('');
+    return `${selector}<h1 class="titulo">Liquidación <span>·</span> ${nombreMes(D.mes)}</h1>
+      <p class="bajada">Tocá una persona para ver el detalle, editar la liquidación y ver sus horas por QR.</p>
+      ${D.personas.length ? `<div class="envoltura-tabla"><table class="tabla"><thead><tr><th>Persona</th><th>Horas liquidadas</th><th>Horas por QR</th><th>Nuevos</th><th>Base</th><th>Comisión</th><th>Extras</th><th>Total</th></tr></thead><tbody>${filas}</tbody>
+        <tfoot><tr><td colspan="4"><b>Total del equipo</b></td><td class="num"><b>${liqPlata(T.base)}</b></td><td class="num"><b>${liqPlata(T.comision)}</b></td><td class="num"><b>${liqPlata(T.extras)}</b></td><td class="num"><b>${liqPlata(T.total)}</b></td></tr></tfoot></table></div>` : '<div class="vacio">No hay recepcionistas cargados.</div>'}
+      <p class="aclara">Sale de las planillas de recepción (pestaña Objetivos): valor hora por horas del mes, más la comisión por ingresos nuevos según el objetivo de la sede, más los extras. Si un mes no está cargado se usa el valor hora y las horas del último mes cargado, y queda marcado "sin cargar". Las horas por QR son una estimación: no reemplazan a las horas liquidadas.</p>
+      ${liqConfigForm(D)}`;
+  }
+
+  function liqConfigForm(D) {
+    const c = D.config, campo = (n, v, ph) => `<input name="${n}" type="number" step="any" min="0" value="${v == null ? '' : esc(v)}" placeholder="${ph || ''}" inputmode="decimal">`;
+    const sedes = Object.keys(SEDES).map(s => `<div class="liq-fila"><b>${esc(SEDES[s])}</b>${[0, 1, 2, 3].map(i => `<label class="campo">${esc(D.etiquetas[i])}${campo(`m_${s}_${i}`, (c.metas[s] || [])[i], 'sin objetivo')}</label>`).join('')}</div>`).join('');
+    return `<section class="bloque"><div class="bloque-cab"><h2>Objetivos y tarifas · ${nombreMes(D.mes)}</h2><span class="sello">${c.desde ? 'Cargado desde ' + esc(liqMesCorto(c.desde)) : 'Valores de las planillas'}</span></div>
+      <form data-form="liq-config" data-mes="${esc(D.mes)}">
+        <div class="liq-fila"><b>Plata por ingreso nuevo</b>${[0, 1, 2, 3].map(i => `<label class="campo">${esc(D.etiquetas[i])}${campo('t' + i, c.tarifas[i])}</label>`).join('')}</div>
+        <p class="aclara">Ingresos nuevos del mes que hay que alcanzar en cada sede para cada tramo. Los objetivos de las planillas son de 4 horas. Una sede sin objetivos (Bariloche) no calcula la comisión sola: se carga a mano en cada persona.</p>
+        ${sedes}
+        <div class="botones"><button class="boton verde">Guardar desde ${esc(nombreMes(D.mes))}</button></div>
+        <p class="aclara">Vale desde este mes hasta que cargues otra configuración en un mes posterior. Los meses anteriores no cambian.</p>
+      </form></section>`;
+  }
+
+  function liqDetalle(p, D, admin) {
+    const l = p.liquidacion, q = p.qr;
+    const filaC = (t, v, cls) => `<tr${cls ? ` class="${cls}"` : ''}><td>${t}</td><td class="num">${v}</td></tr>`;
+    const extras = l.extras.map(x => filaC(esc(x.c), liqPlata(x.m))).join('');
+    const dif = l.comision_manual && l.comision_calculada != null && l.comision_calculada !== l.comision;
+    const metas = l.metas.length === 4 ? `<div class="liq-metas">${l.metas.map((m, i) => `<div class="liq-meta${l.tramo === i ? ' actual' : ''}"><span>${esc(D.etiquetas[i])}</span><b>${liqNum(m)}</b><i>${liqPlata(D.config.tarifas[i])} c/u</i></div>`).join('')}</div>
+      <p class="aclara">${l.nuevos == null ? 'Todavía no hay ingresos nuevos para este mes.' : `Llevás ${l.nuevos} ingresos nuevos${l.nuevos_manual ? '' : ' (los cuenta la app)'}. ${l.tramo != null && l.tramo < 3 ? `Para el ${esc(D.etiquetas[l.tramo + 1])} faltan ${liqNum(Math.max(0, l.metas[l.tramo + 1] - l.nuevos))}.` : l.tramo === 3 ? 'Alcanzaste el máximo.' : ''}`}</p>`
+      : '<p class="aclara">Esta sede no tiene objetivos de ingresos cargados: la comisión se carga a mano.</p>';
+    return `<h1 class="titulo">${esc(p.nombre)} <span>·</span> ${nombreMes(D.mes)}</h1><p class="bajada">${esc(SEDES[p.sede] || '')}${p.turno ? ' · ' + esc(TURNOS[p.turno] || '') : ''}</p>
+      ${l.cargado ? '' : '<p class="aclara alerta">Este mes todavía no está cargado: se usan el valor hora y las horas del último mes cargado.</p>'}
+      <section class="bloque"><div class="bloque-cab"><h2>${admin ? 'Liquidación del mes' : 'Mis ingresos del mes'}</h2><span class="sello bien">${liqPlata(l.total)}</span></div>
+        <table class="tabla compacta liq-resumen"><tbody>
+          ${filaC(`Horas: ${liqNum(l.horas)} h × ${liqPlata(l.valor_hora)}`, liqPlata(l.base))}
+          ${filaC(`Comisión por ingresos nuevos${l.comision_manual ? ' (cargada a mano)' : l.tramo != null ? ` · ${l.nuevos} × ${liqPlata(l.tarifa)} · ${esc(l.etiqueta)}` : ''}`, liqPlata(l.comision))}
+          ${dif ? filaC(`<span class="profe">Con la regla de objetivos daría ${liqPlata(l.comision_calculada)}</span>`, '', 'liq-aparte') : ''}
+          ${extras}
+          ${filaC('<b>Total a liquidar</b>', `<b>${liqPlata(l.total)}</b>`, 'liq-total')}
+        </tbody></table>
+        ${l.nota ? `<p class="aclara">${esc(l.nota)}</p>` : ''}</section>
+      <section class="bloque"><div class="bloque-cab"><h2>Objetivos de ingresos nuevos</h2></div>${metas}</section>
+      ${admin ? liqFormulario(p, l, D) : ''}
+      ${liqProgresion(p, D)}
+      ${liqQr(p, l, q, D, admin)}`;
+  }
+
+  function liqFormulario(p, l, D) {
+    const b = liqBorradorDe(p, l);
+    const num = (n, v, ph) => `<input name="${n}" type="number" step="any" value="${v == null ? '' : esc(v)}" placeholder="${esc(ph || '')}" inputmode="decimal">`;
+    const fila = (x, i) => `<div class="liq-extra" data-liq-extra><select aria-label="Concepto">${D.conceptos.map(c => `<option${c === x.c ? ' selected' : ''}>${esc(c)}</option>`).join('')}${D.conceptos.indexOf(x.c) < 0 && x.c ? `<option selected>${esc(x.c)}</option>` : ''}</select>
+      <input type="number" step="any" value="${esc(x.m)}" placeholder="Monto (negativo si se descuenta)" inputmode="decimal" aria-label="Monto"><button type="button" class="boton claro" data-accion="liq-extra-menos" data-i="${i}" aria-label="Quitar">✕</button></div>`;
+    return `<section class="bloque"><div class="bloque-cab"><h2>Editar la liquidación</h2><span class="sello">${nombreMes(D.mes)}</span></div>
+      <form data-form="liq-guardar" data-dni="${esc(p.dni)}" data-mes="${esc(D.mes)}">
+        <div class="liq-fila">
+          <label class="campo">Valor por hora${num('valor_hora', b.valor_hora)}</label>
+          <label class="campo">Horas del mes${num('horas', b.horas)}</label>
+          <label class="campo">Ingresos nuevos <span class="opcional">(vacío: los cuenta la app${l.nuevos_app == null ? '' : ': ' + l.nuevos_app})</span>${num('nuevos', b.nuevos, l.nuevos_app == null ? '' : String(l.nuevos_app))}</label>
+          <label class="campo">Comisión a mano <span class="opcional">(vacío: ${l.comision_calculada == null ? 'sin objetivos' : 'la regla da ' + liqPlata(l.comision_calculada)})</span>${num('comision', b.comision)}</label>
+        </div>
+        <h3 class="liq-sub">Extras del mes</h3>
+        ${b.extras.length ? b.extras.map(fila).join('') : '<p class="aclara">Sin extras este mes.</p>'}
+        <div class="botones"><button type="button" class="boton claro" data-accion="liq-extra-mas">+ Agregar extra</button></div>
+        <label class="campo">Nota <span class="opcional">(opcional)</span><textarea name="nota" maxlength="300">${esc(b.nota)}</textarea></label>
+        <div class="botones"><button class="boton verde">Guardar liquidación</button></div>
+      </form></section>`;
+  }
+
+  function liqProgresion(p, D) {
+    const S = p.serie;
+    if (!S.length) return '';
+    const max = Math.max(1, ...S.map(s => s.total));
+    const barras = S.map(s => `<div class="liq-barra${s.mes === D.mes ? ' elegida' : ''}" title="${esc(nombreMes(s.mes))}: ${liqPlata(s.total)}"><span class="liq-v">${liqCorto(s.total)}</span>
+      <div class="liq-pila" style="height:${Math.max(3, Math.round(s.total / max * 100))}%">${s.extras > 0 ? `<i class="b-extra" style="flex:${s.extras}"></i>` : ''}${s.comision > 0 ? `<i class="b-com" style="flex:${s.comision}"></i>` : ''}<i class="b-base" style="flex:${Math.max(1, s.base)}"></i></div><span class="mes">${esc(liqMesCorto(s.mes))}</span></div>`).join('');
+    const filas = S.slice().reverse().map((s, i, arr) => {
+      const ant = arr[i + 1], variacion = ant && ant.total ? Math.round((s.total - ant.total) / ant.total * 1000) / 10 : null;
+      const ex = (s.extras_detalle || []).map(x => `${esc(x.c)} ${liqPlata(x.m)}`).join(' · ');
+      return `<tr><td>${esc(nombreMes(s.mes))}${s.cargado ? '' : ' <span class="profe">sin cargar</span>'}</td><td class="num">${liqNum(s.horas)}</td><td class="num">${s.nuevos == null ? '—' : s.nuevos}</td><td class="num">${liqPlata(s.base)}</td><td class="num">${liqPlata(s.comision)}</td><td>${ex || '—'}</td><td class="num"><b>${liqPlata(s.total)}</b></td><td class="num">${variacion == null ? '—' : (variacion > 0 ? '+' : '') + String(variacion).replace('.', ',') + '%'}</td></tr>`;
+    }).join('');
+    return `<section class="bloque"><div class="bloque-cab"><h2>Mes a mes</h2><span class="sello">Últimos ${S.length}</span></div>
+      <div class="liq-barras">${barras}</div>
+      <p class="liq-leyenda"><i class="b-base"></i>Horas <i class="b-com"></i>Comisión <i class="b-extra"></i>Extras</p>
+      <div class="envoltura-tabla"><table class="tabla compacta"><thead><tr><th>Mes</th><th>Horas</th><th>Nuevos</th><th>Base</th><th>Comisión</th><th>Extras</th><th>Total</th><th>Vs. mes anterior</th></tr></thead><tbody>${filas}</tbody></table></div></section>`;
+  }
+
+  function liqQr(p, l, q, D, admin) {
+    const resumen = q.dias_con_qr
+      ? `<div class="liq-metas"><div class="liq-meta"><span>Horas por QR</span><b>${liqNum(q.total)}</b><i>${q.dias_con_qr} días con QR</i></div>
+          <div class="liq-meta"><span>Previstas hasta hoy</span><b>${liqNum(q.previstas_pasadas)}</b><i>mes completo: ${liqNum(q.previstas_mes)}</i></div>
+          <div class="liq-meta"><span>Liquidadas</span><b>${liqNum(l.horas)}</b><i>${l.horas ? 'el QR lleva el ' + Math.round(q.total / l.horas * 100) + '% de esas horas' : ''}</i></div>
+          <div class="liq-meta${q.dias_sin_qr ? ' atencion' : ''}"><span>Días sin QR</span><b>${q.dias_sin_qr}</b><i>días previstos sin escaneo</i></div></div>`
+      : '<p class="aclara">Todavía no hay ingresos por QR cargados para este mes.</p>';
+    const semanas = q.semanas.length ? `<div class="envoltura-tabla"><table class="tabla compacta"><thead><tr><th>Semana</th><th>Días con QR</th><th>Horas</th></tr></thead><tbody>${q.semanas.map(s => `<tr><td>Desde el ${liqDDMM(s.desde)}</td><td class="num">${s.dias}</td><td class="num"><b>${liqNum(s.horas)}</b></td></tr>`).join('')}</tbody></table></div>` : '';
+    const dias = q.dias.length ? `<details class="liq-dias"><summary>Ver día por día</summary><div class="envoltura-tabla"><table class="tabla compacta"><thead><tr><th>Día</th><th>Entrada</th><th>Salida</th><th>Horas</th><th></th></tr></thead><tbody>${q.dias.map(d => `<tr><td>${LIQ_DIAS[(new Date(d.fecha + 'T12:00:00Z').getUTCDay() + 6) % 7]} ${liqDDMM(d.fecha)}</td><td>${esc(d.entrada || '—')}</td><td>${esc(d.salida || '—')}</td><td class="num">${liqNum(d.horas)}</td><td><span class="profe">${d.real ? 'con entrada y salida' : d.fuera ? 'día sin horas previstas' : 'estimada: sin salida por QR'}</span></td></tr>`).join('')}</tbody></table></div></details>` : '';
+    const horasDia = admin
+      ? `<form data-form="liq-horas" data-dni="${esc(p.dni)}"><div class="liq-fila">${LIQ_DIAS.map((d, i) => `<label class="campo">${d}<input name="d${i}" type="number" step="0.25" min="0" max="16" value="${esc(p.dias_horas[i])}" inputmode="decimal"></label>`).join('')}</div><div class="botones"><button class="boton verde">Guardar horas por día</button></div></form>`
+      : `<p class="aclara">Horas previstas por día: ${LIQ_DIAS.map((d, i) => p.dias_horas[i] ? `${d} ${liqNum(p.dias_horas[i])} h` : '').filter(Boolean).join(' · ')}.</p>`;
+    return `<section class="bloque"><div class="bloque-cab"><h2>Horas por QR de ingreso</h2><span class="sello">${q.dias_reales} reales · ${q.dias_con_qr - q.dias_reales} estimadas</span></div>
+      ${resumen}${semanas}${dias}
+      <h3 class="liq-sub">Horas previstas por día</h3>${horasDia}
+      <p class="aclara">Cuenta la primera entrada y la última salida de cada día. Si falta la salida o es dudosa, se toman las horas previstas de ese día (se marca "estimada"). Si alguien no escanea, el día queda sin horas: sirve para conversar, no para descontar sin hablarlo.${D.qr_actualizado ? ` Actualizado ${esc(horaLocal(D.qr_actualizado))}.` : ''}</p></section>`;
+  }
+
   // ---------- Eventos ----------
 
   app.addEventListener('submit', async ev => {
@@ -2428,6 +2576,32 @@
         render();
         aviso('PIN guardado.');
       } catch (e) { E.mensajeLogin = e.message; render(); }
+    } else if (tipo === 'liq-guardar') {
+      const b = liqCapturar(form);
+      const extras = b.extras.filter(x => x.m !== '').map(x => ({ c: x.c, m: Number(x.m) }));
+      btn.disabled = true;
+      try {
+        await cliente.llamar('liquidacion_guardar', { dni: b.dni, mes: b.mes, datos: { valor_hora: b.valor_hora, horas: b.horas, nuevos: b.nuevos, comision: b.comision, extras, nota: b.nota } });
+        E.liqBorrador = null;
+        aviso('Liquidación guardada.');
+        cargarVista();
+      } catch (e) { btn.disabled = false; falla(e); }
+    } else if (tipo === 'liq-config') {
+      const n = k => f.get(k);
+      const tarifas = [0, 1, 2, 3].map(i => n('t' + i));
+      const metas = {};
+      for (const s of Object.keys(SEDES)) {
+        const v = [0, 1, 2, 3].map(i => n(`m_${s}_${i}`));
+        if (v.every(x => x === '')) metas[s] = [];
+        else if (v.some(x => x === '')) { aviso(`En ${SEDES[s]} completá los 4 objetivos o dejá los 4 vacíos.`, true); return; }
+        else metas[s] = v;
+      }
+      if (tarifas.some(x => x === '')) { aviso('Completá la plata por ingreso nuevo de los 4 tramos.', true); return; }
+      btn.disabled = true;
+      try { await cliente.llamar('liquidacion_config_guardar', { mes: form.dataset.mes, tarifas, metas }); aviso('Objetivos y tarifas guardados.'); cargarVista(); } catch (e) { btn.disabled = false; falla(e); }
+    } else if (tipo === 'liq-horas') {
+      btn.disabled = true;
+      try { await cliente.llamar('liquidacion_horas_guardar', { dni: form.dataset.dni, dias: [0, 1, 2, 3, 4, 5, 6].map(i => f.get('d' + i) || 0) }); aviso('Horas por día guardadas.'); cargarVista(); } catch (e) { btn.disabled = false; falla(e); }
     } else if (tipo === 'marcar') {
       const marca = { canal: f.get('canal'), resultado: f.get('resultado'), fecha: f.get('fecha') || '', detalle: String(f.get('detalle') || '').trim() };
       const sinTildar = [...form.querySelectorAll('[data-check]')].filter(c => !c.checked).map(c => c.dataset.check);
@@ -2698,6 +2872,16 @@
     else if (a === 'rend-sede') { E.sedeElegida = el.dataset.s; E.rend = null; E.rendDni = null; render(); cargarVista(); }
     else if (a === 'rend-persona') { E.rendDni = el.dataset.dni; render(); window.scrollTo(0, 0); }
     else if (a === 'rend-volver') { E.rendDni = null; render(); }
+    else if (a === 'liq-mes') { E.liqMes = el.dataset.m; E.liq = null; E.liqBorrador = null; render(); cargarVista(); }
+    else if (a === 'liq-persona') { E.liqDni = el.dataset.dni; E.liqBorrador = null; render(); window.scrollTo(0, 0); }
+    else if (a === 'liq-volver') { E.liqDni = null; E.liqBorrador = null; render(); }
+    else if (a === 'liq-extra-mas' || a === 'liq-extra-menos') {
+      const form = el.closest('form');
+      const b = liqCapturar(form);
+      if (a === 'liq-extra-mas') b.extras.push({ c: 'Otro', m: '' }); else b.extras.splice(Number(el.dataset.i), 1);
+      E.liqBorrador = b;
+      render();
+    }
     else if (a === 'objetivos-guardar') {
       const valores = {};
       app.querySelectorAll('[data-objetivo]').forEach(i => { if (i.value !== '') valores[i.dataset.objetivo] = Number(i.value) / (i.dataset.pct === '1' ? 100 : 1); });

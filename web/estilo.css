@@ -661,3 +661,39 @@ header.barra .pestanas { width: 100%; }
 .tabla-sabados th small.rot { display: block; font-weight: 400; font-size: .75rem; text-transform: none; margin: 2px 0; }
 .enlace.chico { display: block; font-size: .72rem; }
 th.mes-actual, td.mes-actual { background: #eef6f2; }
+
+
+/* ---------- Liquidación ---------- */
+.liq-fila { display: flex; flex-wrap: wrap; gap: 10px 14px; align-items: flex-end; margin: 10px 0; }
+.liq-fila > b { flex: 0 0 100%; font-size: 13px; }
+.liq-fila .campo { flex: 1 1 130px; min-width: 120px; }
+.liq-sub { font: 700 13px var(--display); text-transform: uppercase; letter-spacing: .05em; color: var(--gris); margin: 16px 0 6px; }
+.liq-extra { display: flex; gap: 8px; margin: 6px 0; }
+.liq-extra select, .liq-extra input { border: 1px solid var(--linea); background: var(--hoja); border-radius: 8px; padding: 8px 10px; min-width: 0; }
+.liq-extra input { flex: 1; }
+.liq-extra .boton { padding: 6px 12px; }
+.liq-resumen td { padding: 9px 12px; }
+.liq-resumen .liq-total td { border-top: 2px solid var(--tinta); font-size: 16px; }
+.liq-resumen .liq-aparte td { padding-top: 0; border-bottom: 0; }
+.liq-metas { display: grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap: 8px; margin: 10px 0 4px; }
+.liq-meta { border: 1px solid var(--linea); border-radius: var(--radio); background: var(--hoja); padding: 10px 12px; display: grid; gap: 2px; }
+.liq-meta span { font-size: 11px; text-transform: uppercase; letter-spacing: .05em; color: var(--gris); font-weight: 700; }
+.liq-meta b { font: 700 22px var(--display); }
+.liq-meta i { font-style: normal; font-size: 12px; color: var(--gris); }
+.liq-meta.actual { border-color: var(--verde); background: var(--verde-claro); }
+.liq-meta.atencion { border-color: var(--naranja); background: var(--naranja-claro); }
+.liq-barras { display: flex; align-items: flex-end; gap: 8px; height: 190px; margin: 14px 0 6px; padding-top: 18px; }
+.liq-barra { flex: 1; min-width: 0; max-width: 70px; height: 100%; display: grid; grid-template-rows: auto 1fr auto; justify-items: center; gap: 3px; }
+.liq-barra .liq-v { font: 700 11px var(--display); white-space: nowrap; }
+.liq-barra .mes { font-size: 11px; color: var(--gris); white-space: nowrap; }
+.liq-barra.elegida .mes { color: var(--tinta); font-weight: 700; }
+.liq-pila { width: 100%; align-self: end; display: flex; flex-direction: column; border-radius: 4px 4px 0 0; overflow: hidden; gap: 2px; }
+.liq-pila i, .liq-leyenda i { display: block; }
+.b-base { background: var(--verde); }
+.b-com { background: var(--naranja); }
+.b-extra { background: var(--tinta); }
+.liq-leyenda { display: flex; gap: 14px; flex-wrap: wrap; font-size: 12px; color: var(--gris); margin: 4px 0 12px; align-items: center; }
+.liq-leyenda i { width: 10px; height: 10px; border-radius: 2px; display: inline-block; margin-right: 4px; }
+.liq-dias { margin: 10px 0; }
+.liq-dias summary { cursor: pointer; font-weight: 700; font-size: 13px; padding: 6px 0; }
+.tabla tfoot td { border-top: 2px solid var(--tinta); border-bottom: 0; }
