@@ -625,3 +625,39 @@ header.barra .pestanas { width: 100%; }
 .avance-dia i { display: block; height: 100%; background: var(--verde); transition: width .3s; }
 .hallazgo .nota.motivo { font-style: normal; color: var(--tinta); }
 .hallazgo .otra-situacion input[type=text] { min-width: 180px; flex: 1; padding: 8px 10px; border: 1px solid var(--linea); border-radius: 8px; font: inherit; }
+
+/* Horarios y sábados (11/11/2026) */
+.aviso-sabado { display: flex; gap: 14px; align-items: center; margin: 10px 0 16px; padding: 16px 18px; border-radius: 14px;
+  background: linear-gradient(135deg, #fff4d6, #ffe3a3); border: 2px solid #f0b429; color: #5a3d00; box-shadow: 0 4px 14px rgba(240, 180, 41, .25); }
+.aviso-sabado-ico { font-size: 2.4rem; line-height: 1; }
+.aviso-sabado b { display: block; font-size: 1.35rem; margin-bottom: 2px; }
+.aviso-sabado span { font-size: 1rem; }
+.lista-sabados { margin: 6px 0 0; padding-left: 18px; }
+.lista-sabados li { margin: 2px 0; }
+.tabla-sabados select { min-width: 150px; font: inherit; padding: 4px 6px; border-radius: 8px; border: 1px solid #c9d3dc; }
+.tabla-sabados tr.esta-semana td { background: #fff7e0; }
+.tabla-sabados td.pasado { color: #8a96a3; }
+.tabla-sabados th .chip { margin-top: 4px; font-size: .78rem; }
+.nota-sab { display: block; color: #a06000; font-size: .75rem; }
+.horario-profe { border: 1px solid #dde4ea; border-radius: 12px; padding: 10px 12px; margin: 10px 0; background: #fff; }
+.horario-cab { display: flex; gap: 10px; align-items: baseline; flex-wrap: wrap; margin-bottom: 6px; }
+.franja { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; padding: 6px 0; border-top: 1px dashed #e4e9ee; }
+.franja:first-child { border-top: 0; }
+.franja select, .franja input[type=time] { font: inherit; padding: 4px 6px; border-radius: 8px; border: 1px solid #c9d3dc; }
+.franja.solo-ver { color: #667; gap: 14px; }
+.dias-chk { display: inline-flex; gap: 3px; }
+.dias-chk label { cursor: pointer; }
+.dias-chk input { position: absolute; opacity: 0; pointer-events: none; }
+.dias-chk span { display: inline-block; width: 28px; height: 28px; line-height: 28px; text-align: center; border-radius: 50%; border: 1px solid #c9d3dc; font-weight: 600; font-size: .85rem; }
+.dias-chk input:checked + span { background: #1f6f5c; border-color: #1f6f5c; color: #fff; }
+.dias-chk input:focus-visible + span { outline: 2px solid #1f3b57; outline-offset: 1px; }
+
+.aviso-feriado { display: flex; gap: 14px; align-items: flex-start; margin: 10px 0; padding: 14px 16px; border-radius: 14px; background: #fdecea; border: 2px solid #e0624f; color: #5c1a10; }
+.aviso-feriado b { display: block; font-size: 1.15rem; }
+.marca-feriado { display: block; font-size: .75rem; color: #a06000; }
+.marca-feriado.cerrado { color: #b3261e; }
+.marca-feriado.abierto { color: #1f6f5c; }
+.tabla-sabados tr.fila-feriado td { background: #fff1ef; }
+.tabla-sabados th small.rot { display: block; font-weight: 400; font-size: .75rem; text-transform: none; margin: 2px 0; }
+.enlace.chico { display: block; font-size: .72rem; }
+th.mes-actual, td.mes-actual { background: #eef6f2; }

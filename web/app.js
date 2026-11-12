@@ -842,9 +842,10 @@
     M.proximas.forEach(t => { (porDia[t.fecha] = porDia[t.fecha] || []).push(t); });
     return `<div class="dos-columnas"><aside class="lado"><div class="persona"><b>Tu mes</b>${cifrasPlanes(M.resumen)}</div>
         <p class="aclara">Cada día tenés una cantidad pareja de planes: así, a fin de mes, todos tus socios quedan con el plan al día. Lo que no llegás a hacer pasa al día siguiente.</p>
-        ${bloquePlanExtra(M)}</aside>
+        ${bloquePlanExtra(M)}${proximosSabados(M)}</aside>
       <div class="principal">
       <h1 class="titulo">${esc(tituloDia(E.planes.hoy))} <span>·</span> tus planes</h1>
+      ${avisoSabado(M)}
       <p class="bajada">Primero el socio nuevo, después los vencidos y después los que están por vencer.</p>
       ${bandaConcentrado(M)}
       ${nuevos.length ? `<section class="grupo"><h2>🆕 Plan nuevo, hoy <span class="cuenta">${nuevos.length}</span></h2>${nuevos.map(t => tarjetaPlan(t, i++, true)).join('')}</section>` : ''}
@@ -942,8 +943,138 @@
       </tbody></table></div></section>` : ''}`;
   }
 
+  // ---------- Horarios y sábados: coordinación los carga, al profe le aparece el aviso (Emanuel, 11/11/2026) ----------
+  const DIAS_LETRA = ['L', 'M', 'X', 'J', 'V', 'S', 'D'];
+  const normN = s => String(s || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-z ]/g, ' ').trim().split(/\s+/).filter(Boolean);
+  const mismoN = (a, b) => { const x = normN(a), y = normN(b); if (!x[0] || !y[0]) return false; const [c, l] = x.length <= y.length ? [x, y] : [y, x]; return c.every(t => l.indexOf(t) >= 0); };
+  const sabadoLargo = f => { const d = new Date(f + 'T12:00:00Z'); return 'sábado ' + d.getUTCDate() + ' de ' + MESES[d.getUTCMonth()]; };
+
+  function avisoSabado(M) {
+    const s = M.sabados && M.sabados.esta_semana;
+    if (!s) return '';
+    const hoyEs = s.fecha === E.planes.hoy;
+    return `<div class="aviso-sabado" role="status"><span class="aviso-sabado-ico">📅</span><div><b>${hoyEs ? 'Hoy, sábado, te toca trabajar' : 'Este ' + esc(sabadoLargo(s.fecha)) + ' te toca trabajar'}</b>
+      <span>En ${esc(SEDES[s.sede] || s.sede)}${s.nota ? ' · ' + esc(s.nota) : ''}. ${hoyEs ? '¡Buen sábado!' : 'Acordate de organizar tu semana.'}</span></div></div>`;
+  }
+
+  function proximosSabados(M) {
+    const S = M.sabados;
+    if (!S || !S.proximos.length) return '';
+    return `<div class="persona"><b>🗓️ Tus próximos sábados</b>${S.en_el_mes ? `<span class="aclara">Este mes: ${S.en_el_mes} ${S.en_el_mes === 1 ? 'sábado' : 'sábados'}</span>` : ''}<ul class="lista-sabados">${S.proximos.map(s => `<li>${esc(ddmm(s.fecha))} · ${esc(SEDES[s.sede] || s.sede)}${s.nota ? ` <small>${esc(s.nota)}</small>` : ''}</li>`).join('')}</ul></div>`;
+  }
+
+  function sabadosDesde(hoy, atras, n) {
+    const d = new Date(hoy + 'T12:00:00Z');
+    d.setUTCDate(d.getUTCDate() + ((6 - d.getUTCDay() + 7) % 7) - 7 * atras);
+    const out = [];
+    for (let i = 0; i < n + atras; i++) { out.push(d.toISOString().slice(0, 10)); d.setUTCDate(d.getUTCDate() + 7); }
+    return out;
+  }
+
+  function profesDeSede(A, sede) {
+    const n = [];
+    A.horarios.filter(h => h.sede === sede).forEach(h => { if (!n.some(x => mismoN(x, h.profe))) n.push(h.profe); });
+    A.profes.filter(p => p.sede === sede).forEach(p => { if (!n.some(x => mismoN(x, p.nombre))) n.push(p.nombre); });
+    return n.sort((a, b) => a.localeCompare(b));
+  }
+
+  // Feriados: coordinación contesta si se trabaja; si no, se cierra y se puede reordenar
+  function preguntaFeriado(A) {
+    const lista = (A && A.pregunta_feriado) || [];
+    if (!lista.length) return '';
+    return lista.map(f => `<div class="aviso-feriado" role="alert"><span class="aviso-sabado-ico">🎌</span><div><b>El ${esc(sabadoLargo(f.fecha))} es feriado: ¿se trabaja?</b>
+      <span>${esc(f.nombre)}. Si no se trabaja, el sábado queda cerrado y podés reordenar: cada uno pasa al sábado siguiente, así nadie pierde ni suma de más.</span>
+      <div class="fila-accion"><button class="boton verde" data-accion="feriado-resp" data-f="${f.fecha}" data-r="si">Sí, se trabaja</button>
+      <button class="boton claro" data-accion="feriado-resp" data-f="${f.fecha}" data-r="no" data-reordenar="1">No: cerrar y reordenar</button>
+      <button class="boton claro" data-accion="feriado-resp" data-f="${f.fecha}" data-r="no">No: cerrar sin reordenar</button></div></div></div>`).join('');
+  }
+
+  // Sábados por mes de cada uno (lo cerrado por feriado no cuenta): después se usa para las horas
+  function tablaSabadosMes(A, sedes) {
+    const hoy = E.planes.hoy;
+    const meses = [-1, 0, 1, 2, 3].map(n => { const d = new Date(hoy.slice(0, 7) + '-15T12:00:00Z'); d.setUTCMonth(d.getUTCMonth() + n); return d.toISOString().slice(0, 7); });
+    const nombres = [];
+    sedes.forEach(k => (A.rotaciones[k] || []).forEach(n => { if (!nombres.some(x => mismoN(x, n))) nombres.push(n); }));
+    (A.por_mes || []).forEach(p => { if (A.sabados.some(s => sedes.indexOf(s.sede) >= 0 && mismoN(s.profe, p.profe)) && !nombres.some(x => mismoN(x, p.profe))) nombres.push(p.profe); });
+    if (!nombres.length) return '';
+    const cuenta = (n, m) => (A.por_mes || []).filter(p => mismoN(p.profe, n)).reduce((t, p) => t + (p.meses[m] || 0), 0);
+    return `<h3 class="sub-coord">Sábados por mes</h3><div class="envoltura-tabla"><table class="tabla compacta"><thead><tr><th>Profe</th>${meses.map(m => `<th class="${m === hoy.slice(0, 7) ? 'mes-actual' : ''}">${esc(nombreMes(m + '-01'))}</th>`).join('')}</tr></thead>
+      <tbody>${nombres.map(n => `<tr><td>${esc(n)}</td>${meses.map(m => `<td class="num ${m === hoy.slice(0, 7) ? 'mes-actual' : ''}"><b>${cuenta(n, m) || '·'}</b></td>`).join('')}</tr>`).join('')}</tbody></table></div>
+      <p class="aclara">Cuenta lo pasado y lo ya cargado para adelante. Los sábados cerrados por feriado no suman.</p>`;
+  }
+
+  function filaFranja(h, sedes) {
+    const dias = h ? String(h.dias).indexOf('-') > 0 ? (() => { const [a, b] = h.dias.split('-').map(Number); const o = []; for (let i = a; i <= b; i++) o.push(i); return o; })() : String(h.dias).split(',').map(Number) : [0, 1, 2, 3, 4];
+    const sede = h ? h.sede : sedes[0];
+    if (h && sedes.indexOf(h.sede) < 0) {
+      return `<div class="franja solo-ver"><span>${esc(SEDES[h.sede] || h.sede)}</span><span>${dias.map(i => DIAS_LETRA[i]).join(' ')}</span><span>${esc(h.desde)} a ${esc(h.hasta)}</span><small class="aclara">la edita otra coordinación</small></div>`;
+    }
+    return `<div class="franja" data-franja>
+      <select data-h="sede" aria-label="Sede">${sedes.map(k => `<option value="${k}" ${k === sede ? 'selected' : ''}>${esc(SEDES[k])}</option>`).join('')}</select>
+      <span class="dias-chk">${DIAS_LETRA.map((l, i) => `<label title="${['lunes', 'martes', 'miércoles', 'jueves', 'viernes', 'sábado', 'domingo'][i]}"><input type="checkbox" data-h="d" value="${i}" ${dias.indexOf(i) >= 0 ? 'checked' : ''}><span>${l}</span></label>`).join('')}</span>
+      <input type="time" data-h="desde" value="${esc(h ? h.desde : '08:00')}" aria-label="Desde"> <span>a</span> <input type="time" data-h="hasta" value="${esc(h ? h.hasta : '12:00')}" aria-label="Hasta">
+      <button type="button" class="chip" data-accion="horario-quitar" title="Quitar esta franja">✕</button></div>`;
+  }
+
+  function vistaAgendaEquipo() {
+    const A = E.planes.agenda;
+    if (!A) return '<div class="vacio">No tenés acceso a los horarios del equipo.</div>';
+    const hoy = E.planes.hoy;
+    const sedes = (A.sede ? [A.sede] : Object.keys(SEDES)).filter(k => A.editables.indexOf(k) >= 0 || tiene('admin'));
+    const fechas = sabadosDesde(hoy, 2, 16);
+    const desdeHoy = fechas[2];
+    const celda = (f, sede) => {
+      const s = A.sabados.find(x => x.fecha === f && x.sede === sede);
+      const editable = A.editables.indexOf(sede) >= 0 && f >= desdeHoy;
+      if (!editable) return `<td class="${f < desdeHoy ? 'pasado' : ''}">${s && s.profe ? esc(s.profe) : '—'}${s && s.nota ? `<small class="nota-sab">${esc(s.nota)}</small>` : ''}</td>`;
+      const ops = profesDeSede(A, sede);
+      if (s && s.profe && !ops.some(o => mismoN(o, s.profe))) ops.push(s.profe);
+      return `<td><select data-accion="sabado-elegir" data-f="${f}" data-s="${sede}" aria-label="Quién trabaja el sábado ${ddmm(f)} en ${esc(SEDES[sede])}"><option value="">— nadie cargado —</option>${ops.map(o => `<option value="${esc(o)}" ${s && mismoN(o, s.profe) ? 'selected' : ''}>${esc(o)}</option>`).join('')}</select>${s && s.nota ? `<small class="nota-sab">${esc(s.nota)}</small>` : ''}</td>`;
+    };
+    const puedeEditar = A.editables.length > 0;
+    const feriado = f => (A.feriados || []).find(x => x.fecha === f);
+    const colFecha = f => {
+      const fe = feriado(f);
+      const marca = fe ? `<span class="marca-feriado ${fe.se_trabaja === 'no' ? 'cerrado' : fe.se_trabaja === 'si' ? 'abierto' : ''}" title="${esc(fe.nombre)}">🎌 ${fe.se_trabaja === 'no' ? 'feriado, cerrado' : fe.se_trabaja === 'si' ? 'feriado, se trabaja' : 'feriado: ¿se trabaja?'}</span>` : '';
+      const boton = puedeEditar && f >= desdeHoy ? (fe ? `<button class="enlace chico" data-accion="feriado-quitar" data-f="${f}">quitar feriado</button>` : `<button class="enlace chico" data-accion="feriado-marcar" data-f="${f}">es feriado</button>`) : '';
+      return `<td><b>${esc(ddmm(f))}</b>${f === desdeHoy ? ' <small>esta semana</small>' : ''}${marca}${boton}</td>`;
+    };
+    const cab = k => {
+      const rot = (A.rotaciones || {})[k] || [];
+      return `<th>${esc(SEDES[k])}${rot.length ? `<small class="rot">Rotan: ${rot.map(n => esc(n.split(' ')[0])).join(' → ')}</small>` : ''}${A.editables.indexOf(k) >= 0 ? `<button class="chip" data-accion="sabado-rotar" data-s="${k}" title="Completa los sábados vacíos: le toca a quien hace más tiempo que no va">↻ Completar la rotación</button>` : ''}</th>`;
+    };
+    const tabla = `<div class="envoltura-tabla"><table class="tabla compacta tabla-sabados"><thead><tr><th>Sábado</th>${sedes.map(cab).join('')}</tr></thead>
+      <tbody>${fechas.map(f => `<tr class="${f === desdeHoy ? 'esta-semana' : ''}${feriado(f) ? ' fila-feriado' : ''}">${colFecha(f)}${sedes.map(k => celda(f, k)).join('')}</tr>`).join('')}</tbody></table></div>`;
+    // horarios por profe
+    const nombres = [];
+    A.horarios.forEach(h => { if ((sedes.indexOf(h.sede) >= 0) && !nombres.some(n => mismoN(n, h.profe))) nombres.push(h.profe); });
+    A.profes.forEach(p => { if (sedes.indexOf(p.sede) >= 0 && !nombres.some(n => mismoN(n, p.nombre))) nombres.push(p.nombre); });
+    nombres.sort((a, b) => a.localeCompare(b));
+    const editables = sedes.filter(k => A.editables.indexOf(k) >= 0);
+    const bloqueProfe = n => {
+      const suyos = A.horarios.filter(h => mismoN(h.profe, n));
+      const horas = Math.round(suyos.reduce((t, h) => { const m = x => Number(x.slice(0, 2)) * 60 + Number(x.slice(3, 5)); const d = String(h.dias).indexOf('-') > 0 ? Number(h.dias.split('-')[1]) - Number(h.dias.split('-')[0]) + 1 : String(h.dias).split(',').length; return t + d * (m(h.hasta) - m(h.desde)); }, 0) / 6) / 10;
+      return `<div class="horario-profe" data-p="${esc(n)}"><div class="horario-cab"><b>${esc(n)}</b><span class="aclara">${suyos.length ? horas + ' h por semana' : 'sin horario cargado'}</span></div>
+        <div class="franjas">${suyos.map(h => filaFranja(h, editables)).join('')}</div>
+        ${editables.length ? `<div class="fila-accion"><button type="button" class="boton claro" data-accion="horario-agregar">+ Agregar franja</button><button type="button" class="boton verde" data-accion="horario-guardar">Guardar el horario de ${esc(n.split(' ')[0])}</button></div>` : ''}</div>`;
+    };
+    return `<button class="chip" data-accion="agenda-cerrar">← Volver a los profes</button>
+      <h1 class="titulo">Horarios y sábados <span>·</span> profes y kinesiólogos</h1>
+      <p class="bajada">Lo carga coordinación. A cada profe le aparece un aviso grande en "Mis planes" desde el lunes de la semana en que le toca el sábado.</p>
+      <section class="grupo"><h2>🗓️ Quién trabaja cada sábado</h2>
+        <p class="intro-grupo">Se arma solo: en cada sede rotan los profes de turno (mañana, tarde y noche; en Lago Puelo, los dos), y cada sábado le toca a quien hace más tiempo que no va. Se completa todas las mañanas para los próximos 4 meses. Podés cambiar cualquier sábado: se guarda al elegir. Si un sábado es feriado, te preguntamos si se trabaja.</p>
+        ${preguntaFeriado(A)}
+        ${tabla}
+        ${tablaSabadosMes(A, sedes)}</section>
+      <section class="grupo"><h2>🕒 Horario de cada uno</h2>
+        <p class="intro-grupo">Marcá los días y el horario en que cada uno está en la sede. Se usa para proponer las reevaluaciones y para las horas por semana del tablero.</p>
+        ${nombres.map(bloqueProfe).join('') || '<div class="vacio">No hay profes cargados.</div>'}</section>
+      <template id="tpl-franja">${filaFranja(null, editables.length ? editables : ['bolson'])}</template>`;
+  }
+
   function vistaProfes() {
     if (!E.planes) return '<div class="cargando">Cargando los profes…</div>';
+    if (E.agendaVer && E.planes.agenda) return vistaAgendaEquipo();
     const eq = E.planes.equipo || [];
     const selector = tiene('admin') ? `<div class="filtros">${Object.keys(SEDES).map(k => `<button class="chip" data-accion="planes-sede" data-s="${k}" aria-pressed="${E.sedeElegida === k}">${SEDES[k]}</button>`).join('')}</div>` : '';
     if (E.profeVer) {
@@ -962,6 +1093,7 @@
     return `<h1 class="titulo">Profes <span>·</span> planes al día</h1>
       <p class="bajada">Lo que cada profe y cada kinesiólogo tiene que renovar hoy, lo atrasado y lo que lleva hecho en el mes.</p>
       ${selector}
+      ${E.planes.agenda ? preguntaFeriado(E.planes.agenda) + '<div class="fila-accion"><button class="boton claro" data-accion="agenda-abrir">🗓️ Horarios y sábados</button></div>' : ''}
       ${tablaEquipo(eq)}
       ${eq.length ? `<div class="personas">${eq.map(p => `<div class="persona"><b>${esc(p.profe)}</b><span class="turno">${p.con_usuario ? 'Con usuario' : 'Todavía sin usuario en PulsoMOVE'}</span>${cifrasPlanes(p.resumen)}${p.auditoria && p.auditoria.puntaje != null ? `<span class="uso-hoy aud-linea ${(NIVEL_AUD[p.auditoria.nivel] || [''])[0]}">🧾 Auditoría: <b>${p.auditoria.puntaje}</b> ${esc((NIVEL_AUD[p.auditoria.nivel] || ['', ''])[1])}${p.auditoria.cambio_semana ? ` (${p.auditoria.cambio_semana > 0 ? '▲' : '▼'} ${Math.abs(p.auditoria.cambio_semana)})` : ''} · ${p.auditoria.cuantos.pendientes} para corregir${p.auditoria.cuantos.no_corregidos ? ` · ${p.auditoria.cuantos.no_corregidos} dijo que corrigió y sigue` : ''}${p.auditoria.cuantos.dejadas ? ` · ${p.auditoria.cuantos.dejadas} dejó así` : ''}</span>` : ''}${p.dias ? `<span class="uso-hoy">Días completos este mes: ${p.dias.completos} (en menos de 1 hora: ${p.dias.en_una_hora})${p.revisiones && p.revisiones.resumen.minutos_mediana != null ? ` · arma un plan en ~${p.revisiones.resumen.minutos_mediana} min` : ''}${p.resumen.en_papel ? ` · en papel: ${p.resumen.en_papel}` : ''}</span>` : ''}${p.revisiones ? `<span class="uso-hoy">Planes renovados (30 días): ${p.revisiones.resumen.revisados} · en 30-80%: ${p.revisiones.resumen.en_rango} · casi todo cambiado: ${p.revisiones.resumen.casi_todo}${p.revisiones.resumen.con_saltos ? ` · con saltos: ${p.revisiones.resumen.con_saltos} (${p.revisiones.resumen.saltos_sin_responder} sin responder, ${p.revisiones.resumen.corregir} a corregir)` : ''}</span>` : ''}
         <button class="chip ver-lista" data-accion="profe-ver" data-p="${esc(p.profe)}">Ver lo de hoy</button></div>`).join('')}</div>`
@@ -2336,6 +2468,16 @@
   app.addEventListener('change', ev => {
     const el = ev.target;
     if (el.dataset.accion === 'tipo') { E.tipo = el.value; render(); }
+    if (el.dataset.accion === 'sabado-elegir') {
+      const A = E.planes && E.planes.agenda;
+      const s = { fecha: el.dataset.f, sede: el.dataset.s, profe: el.value };
+      el.disabled = true;
+      cliente.llamar('profe_sabados_guardar', { sabados: [s] }).then(() => {
+        if (A) { A.sabados = A.sabados.filter(x => !(x.fecha === s.fecha && x.sede === s.sede)); if (s.profe) A.sabados.push(s); }
+        el.disabled = false;
+        aviso(s.profe ? `✅ El sábado ${ddmm(s.fecha)} en ${SEDES[s.sede]} va ${s.profe}.` : `Sábado ${ddmm(s.fecha)} sin nadie cargado.`);
+      }).catch(e => { el.disabled = false; aviso(PulsoApi.mensaje(e.codigo || e.message), true); });
+    }
     if (el.dataset.accion === 'reeval-buscar') { E.reevalBusca = el.value; E.reevalAbierto = true; render(); }
     if (el.dataset.accion === 'resultado') {
       const form = el.closest('form');
@@ -2393,6 +2535,63 @@
     else if (a === 'planes-sede') { E.sedeElegida = el.dataset.s; E.planes = null; E.profeVer = null; render(); cargarVista(); }
     else if (a === 'profe-ver') { E.profeVer = el.dataset.p; render(); window.scrollTo(0, 0); }
     else if (a === 'profe-volver') { E.profeVer = null; render(); }
+    else if (a === 'agenda-abrir') { E.agendaVer = true; render(); window.scrollTo(0, 0); }
+    else if (a === 'agenda-cerrar') { E.agendaVer = false; render(); }
+    else if (a === 'horario-quitar') { el.closest('[data-franja]').remove(); }
+    else if (a === 'horario-agregar') {
+      const tpl = app.querySelector('#tpl-franja');
+      el.closest('.horario-profe').querySelector('.franjas').insertAdjacentHTML('beforeend', tpl.innerHTML);
+    }
+    else if (a === 'horario-guardar') {
+      const caja = el.closest('.horario-profe');
+      const profe = caja.dataset.p;
+      const A = E.planes.agenda;
+      const porSede = {};
+      let mal = false;
+      caja.querySelectorAll('[data-franja]').forEach(f => {
+        const dias = [...f.querySelectorAll('[data-h=d]:checked')].map(x => x.value).join(',');
+        const desde = f.querySelector('[data-h=desde]').value, hasta = f.querySelector('[data-h=hasta]').value, sede = f.querySelector('[data-h=sede]').value;
+        if (!dias || !desde || !hasta || desde >= hasta) mal = true;
+        (porSede[sede] = porSede[sede] || []).push({ dias, desde, hasta });
+      });
+      if (mal) { aviso('Revisá las franjas: cada una necesita al menos un día y un horario "desde" antes del "hasta".', true); return; }
+      const sedes = Object.keys(porSede);
+      A.horarios.filter(h => mismoN(h.profe, profe) && A.editables.indexOf(h.sede) >= 0).forEach(h => { if (sedes.indexOf(h.sede) < 0) sedes.push(h.sede); });
+      el.disabled = true;
+      try {
+        let r = null;
+        for (const s of sedes) r = await cliente.llamar('profe_horarios_guardar', { profe, sede: s, filas: porSede[s] || [] });
+        E.planes = await cliente.llamar('profe_tareas', E.sedeElegida ? { sede: E.sedeElegida } : {});
+        render();
+        aviso(`✅ Guardado el horario de ${profe}${r ? ': ' + r.horas_semana + ' h por semana' : ''}.`);
+      } catch (e) { el.disabled = false; aviso(PulsoApi.mensaje(e.codigo || e.message), true); }
+    }
+    else if (a === 'sabado-rotar') {
+      const sede = el.dataset.s;
+      el.disabled = true;
+      try {
+        const r = await cliente.llamar('profe_sabados_generar', { sede });
+        E.planes = await cliente.llamar('profe_tareas', E.sedeElegida ? { sede: E.sedeElegida } : {});
+        render();
+        const n = r.nuevos[sede] || 0;
+        aviso(n ? `✅ ${n} sábados de ${SEDES[sede]} cargados con la rotación. Revisalos por si hay vacaciones o cambios.` : `Los sábados de ${SEDES[sede]} ya estaban completos (para la rotación hacen falta al menos dos profes de lunes a viernes).`);
+      } catch (e) { el.disabled = false; aviso(PulsoApi.mensaje(e.codigo || e.message), true); }
+    }
+    else if (a === 'feriado-marcar' || a === 'feriado-quitar' || a === 'feriado-resp') {
+      const f = el.dataset.f;
+      const pedido = { fecha: f };
+      if (a === 'feriado-marcar') { const n = prompt(`¿Qué feriado es el sábado ${ddmm(f)}?`, 'Feriado'); if (n === null) return; pedido.nombre = n.trim() || 'Feriado'; }
+      if (a === 'feriado-quitar') pedido.borrar = true;
+      if (a === 'feriado-resp') { pedido.se_trabaja = el.dataset.r; pedido.reordenar = !!el.dataset.reordenar; }
+      el.disabled = true;
+      try {
+        const r = await cliente.llamar('profe_feriado', pedido);
+        E.planes = await cliente.llamar('profe_tareas', E.sedeElegida ? { sede: E.sedeElegida } : {});
+        render();
+        aviso(a === 'feriado-marcar' ? `🎌 Sábado ${ddmm(f)} marcado como feriado: contestá si se trabaja.` : a === 'feriado-quitar' ? `Sábado ${ddmm(f)} sin feriado.`
+          : pedido.se_trabaja === 'si' ? `✅ El ${ddmm(f)} se trabaja: queda como estaba.` : `✅ El ${ddmm(f)} queda cerrado${r.movidos ? ` y reordenamos ${r.movidos} sábados: cada uno pasó al siguiente` : ''}.`);
+      } catch (e) { el.disabled = false; aviso(PulsoApi.mensaje(e.codigo || e.message), true); }
+    }
     else if (a === 'reeval-abrir') { E.reevalAbierto = !el.parentElement.open; }
     else if (a === 'aud-seccion') { E.audSeccion = el.dataset.s; E.audAbierto = true; render(); }
     else if (a === 'aud-abrir') { E.audAbierto = !el.parentElement.open; }

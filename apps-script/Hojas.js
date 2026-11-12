@@ -37,6 +37,10 @@ const COLUMNAS = {
   // Tablero de coordinación: lo que calcula la PC por profe (vencidos y cuántas veces vino, customización, tiempo). Solo la última corrida
   // Horario de cada profe y kinesiólogo en cada sede (lo carga la PC; días 0=lunes … 6=domingo, '0-4' o '0,2,4')
   profe_horarios: ['profe', 'sede', 'dias', 'desde', 'hasta'],
+  // A quién le toca cada sábado en cada sede (lo carga coordinación en la app; arrancó con las planillas)
+  profe_sabados: ['fecha', 'sede', 'profe', 'profe_dni', 'nota', 'por_dni', 'en'],
+  // Sábados feriados: si se trabaja o no (lo contesta coordinación)
+  profe_feriados: ['fecha', 'nombre', 'se_trabaja', 'borrado', 'por_dni', 'en'],
   profe_coord: ['fecha', 'profe', 'profe_dni', 'sede', 'datos'],
   profe_puntajes: ['fecha', 'profe', 'profe_dni', 'socios', 'puntaje', 'gestion', 'diagnostico', 'metodologia', 'custom', 'rpe'],
   // Días en que el profe terminó todo lo del día, y cuánto tardó desde la primera marca
