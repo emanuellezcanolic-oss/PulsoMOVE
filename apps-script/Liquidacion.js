@@ -156,6 +156,27 @@ function liqHorasQr(filasQr, dias, mes, hoy) {
   };
 }
 
+// Socios nuevos que cobró una persona en un mes según sus cajas de MOVE (todo el mes, desde el día 1). null si no hay cajas de ese mes.
+function liqNuevosDeCajas(filasVentas, dni, m) {
+  const propias = filasVentas.filter(f => f.dni === dni && String(f.fecha).indexOf(m) === 0);
+  return propias.length ? propias.reduce((a, f) => a + (Number(f.nuevos) || 0), 0) : null;
+}
+
+// Socios nuevos mes a mes de una persona: lo cargado en la liquidación (planilla o a mano) manda; si no hay, lo que suman sus cajas.
+// Es la venta que más pesa, por eso se muestra aparte en Rendimiento.
+function liqNuevosPorMes(dni, filasLiq, filasVentas, hoyMes) {
+  const meses = {};
+  filasLiq.forEach(f => { if (f.dni === dni && /^\d{4}-\d{2}$/.test(f.mes)) meses[f.mes] = 1; });
+  filasVentas.forEach(f => { if (f.dni === dni && /^\d{4}-\d{2}/.test(String(f.fecha))) meses[String(f.fecha).slice(0, 7)] = 1; });
+  return Object.keys(meses).sort().filter(m => m <= hoyMes).map(m => {
+    const fl = filasLiq.find(f => f.dni === dni && f.mes === m);
+    const cargado = fl ? liqJson(fl.datos).nuevos : null;
+    const cajas = liqNuevosDeCajas(filasVentas, dni, m);
+    const hayCargado = cargado != null && cargado !== '';
+    return { mes: m, nuevos: hayCargado ? Number(cargado) : cajas, cajas: cajas, fuente: hayCargado ? 'liquidacion' : 'cajas' };
+  }).filter(x => x.nuevos != null).slice(-12);
+}
+
 function liqRecepcionistas(usuarios) {
   return usuarios.filter(u => esVerdad(u.activo) && tieneRol(u, 'recepcion'));
 }
@@ -179,7 +200,10 @@ function liquidacionVer(req, deps) {
   const rendimiento = deps.repo.leer('rendimiento');
   const configs = {};
   const config = m => configs[m] || (configs[m] = liqConfigDelMes(filas, m));
+  const filasVentas = deps.repo.leer('ventas');
   const nuevosApp = (dni, m) => {
+    const deCajas = liqNuevosDeCajas(filasVentas, dni, m);      // el mes entero, desde el día 1
+    if (deCajas != null) return deCajas;
     const r = rendimiento.find(x => x.mes === m && x.dni === dni);
     const v = r ? liqJson(r.datos).nuevos : null;
     return v == null ? null : Number(v);

@@ -1222,7 +1222,7 @@
         <div class="puntaje"><span class="puntaje-n">${nota(P.total)}</span><span class="puntaje-de">${P.total == null ? '' : 'de 100'}</span>
           <span class="sello ${cls}">${ico} ${txt}</span></div>
         <div class="grupos">${P.grupos.map(g => `<div class="grupo-mini"><strong>${nota(g.puntaje)}</strong><span>${esc(g.nombre)}</span></div>`).join('')}</div>
-      </section>${incentivo}<div class="tablero-columnas">${graficoDias(p.serie)}${propia ? '' : bloqueUso(p) + bloqueTiempos(p)}${grupos}${bloqueVentasPersona(p)}${ventas}${actividad}</div>
+      </section>${incentivo}${bloqueNuevosPersona(p, E.rend && E.rend.mes)}<div class="tablero-columnas">${graficoDias(p.serie)}${propia ? '' : bloqueUso(p) + bloqueTiempos(p)}${grupos}${bloqueVentasPersona(p)}${ventas}${actividad}</div>
       ${editable ? `<div class="botones"><button class="boton verde" data-accion="objetivos-guardar" data-dni="${esc(p.dni)}">Guardar objetivos</button></div>` : ''}`;
   }
 
@@ -1268,7 +1268,32 @@
       <p class="bajada">Tocá una persona para ver el detalle${tiene('admin') ? ' y ajustar sus objetivos' : ''}.</p>
       ${R.personas.length ? `<div class="envoltura-tabla"><table class="tabla"><thead><tr><th>#</th><th>Persona</th><th>Puntaje</th><th>Cumpl.</th><th>Reten.</th><th>Ventas</th><th>Exper.</th><th>Nuevos</th><th>Mostrador</th><th>Tareas</th></tr></thead><tbody>${filas}</tbody></table></div>`
         : '<div class="vacio">No hay recepcionistas cargados en esta sede.</div>'}
-      ${aclaracionDatos(R)}${bloqueEficiencia(R)}${bloqueProfes()}${bloqueCierres()}`;
+      ${bloqueNuevosEquipo(R)}${aclaracionDatos(R)}${bloqueEficiencia(R)}${bloqueProfes()}${bloqueCierres()}`;
+  }
+
+  // Socios nuevos mes a mes: es la venta que más pesa. Sale de lo cargado en Liquidación (planilla de recepción) y, si no hay, de las cajas del mes entero.
+  const NOTA_NUEVOS = 'Los meses con * salen de las cajas de MOVE (cuentan para quien abrió la caja, desde el día 1); el resto, de la planilla de recepción o de lo cargado en Liquidación.';
+  function barrasNuevos(serie, actual) {
+    const max = Math.max(1, ...serie.map(s => s.nuevos));
+    return `<div class="liq-barras">${serie.map(s => `<div class="liq-barra${s.mes === actual ? ' elegida' : ''}" title="${esc(nombreMes(s.mes))}: ${s.nuevos} socios nuevos"><span class="liq-v">${s.nuevos}</span><div class="liq-pila" style="height:${Math.max(3, Math.round(s.nuevos / max * 100))}%"><i class="b-base" style="flex:1"></i></div><span class="mes">${esc(liqMesCorto(s.mes))}${s.fuente === 'cajas' ? '*' : ''}</span></div>`).join('')}</div>`;
+  }
+  function bloqueNuevosPersona(p, mes) {
+    const S = (p.nuevos_meses || []).slice(-9);
+    if (!S.length) return '';
+    return `<section class="bloque"><div class="bloque-cab"><h2>⭐ Socios nuevos mes a mes</h2><span class="sello">${S.reduce((a, s) => a + s.nuevos, 0)} en ${S.length} meses</span></div>${barrasNuevos(S, mes)}
+      ${S.some(s => s.fuente === 'cajas') ? `<p class="aclara">${NOTA_NUEVOS}</p>` : ''}</section>`;
+  }
+  function bloqueNuevosEquipo(R) {
+    const con = R.personas.filter(p => (p.nuevos_meses || []).length);
+    if (!con.length) return '';
+    const meses = Array.from(new Set(con.reduce((a, p) => a.concat(p.nuevos_meses.map(s => s.mes)), []))).sort().slice(-8);
+    const celda = (p, m) => { const s = p.nuevos_meses.find(x => x.mes === m); return s ? `<td class="num${m === R.mes ? ' actual' : ''}">${s.nuevos}${s.fuente === 'cajas' ? '*' : ''}</td>` : `<td class="num">—</td>`; };
+    const total = m => con.reduce((a, p) => a + ((p.nuevos_meses.find(x => x.mes === m) || {}).nuevos || 0), 0);
+    return `<section class="bloque"><div class="bloque-cab"><h2>⭐ Socios nuevos mes a mes</h2><span class="sello">La venta que más pesa</span></div>
+      <div class="envoltura-tabla"><table class="tabla compacta"><thead><tr><th>Persona</th>${meses.map(m => `<th>${esc(liqMesCorto(m))}</th>`).join('')}</tr></thead>
+      <tbody>${con.map(p => `<tr><td><b>${esc(p.nombre)}</b></td>${meses.map(m => celda(p, m)).join('')}</tr>`).join('')}</tbody>
+      <tfoot><tr><td><b>Equipo</b></td>${meses.map(m => `<td class="num"><b>${total(m)}</b></td>`).join('')}</tr></tfoot></table></div>
+      <p class="aclara">${NOTA_NUEVOS}</p></section>`;
   }
 
   // Solo admin: lo que rinde cada hora de turno

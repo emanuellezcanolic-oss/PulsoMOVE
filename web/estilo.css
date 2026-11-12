@@ -697,3 +697,4 @@ th.mes-actual, td.mes-actual { background: #eef6f2; }
 .liq-dias { margin: 10px 0; }
 .liq-dias summary { cursor: pointer; font-weight: 700; font-size: 13px; padding: 6px 0; }
 .tabla tfoot td { border-top: 2px solid var(--tinta); border-bottom: 0; }
+.tabla td.actual { background: var(--verde-claro); }

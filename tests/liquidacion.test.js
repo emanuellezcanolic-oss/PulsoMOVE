@@ -148,3 +148,18 @@ test('cargar_liq_qr reemplaza los mismos días y deja los demás', () => {
   assert.equal(hoja.length, 2);
   assert.equal(hoja.find(f => f.fecha === '2026-11-09').salida, '21:00');
 });
+
+test('los socios nuevos de noviembre salen de las cajas del mes entero y los meses anteriores de la planilla', () => {
+  const venta = (dni, fecha, nuevos) => ({ fecha, sede: 'bolson', dni, nombre: 'x', nuevos: String(nuevos) });
+  const d = entorno({
+    liquidacion: [fila(TANI.dni, '2026-10', { valor_hora: 8748, horas: 120, nuevos: 18 })],
+    ventas: [venta(TANI.dni, '2026-10', 99), venta(TANI.dni, '2026-11-02', 4), venta(TANI.dni, '2026-11-10', 3), venta(AZUL.dni, '2026-11-05', 9)],
+  });
+  const serie = L.liqNuevosPorMes(TANI.dni, d.repo.leer('liquidacion'), d.repo.leer('ventas'), '2026-11');
+  assert.deepEqual(serie.map(s => [s.mes, s.nuevos, s.fuente]), [['2026-10', 18, 'liquidacion'], ['2026-11', 7, 'cajas']]);
+  const r = pedir(d, { accion: 'liquidacion_ver', token: entrar(d, TANI.dni) });
+  assert.equal(r.data.personas[0].liquidacion.nuevos, 7, 'la comisión de noviembre cuenta desde el día 1');
+  const rend = pedir(d, { accion: 'rendimiento', token: entrar(d, ADMIN.dni), sede: 'bolson' });
+  const tani = rend.data.personas.find(p => p.dni === TANI.dni);
+  assert.equal(tani.nuevos_meses.length, 2);
+});

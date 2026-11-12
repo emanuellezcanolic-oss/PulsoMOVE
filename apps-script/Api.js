@@ -1023,6 +1023,7 @@ function vistaRendimiento(req, deps) {
   const objetivos = deps.repo.leer('objetivos');
   const filasVentas = deps.repo.leer('ventas');
   const filasLargas = deps.repo.leer('ventas_largas');
+  const filasLiq = deps.repo.leer('liquidacion');
   let actualizado = '';
   const personas = equipo.map(u => {
     const fila = calculado.find(r => r.dni === u.dni);
@@ -1035,7 +1036,7 @@ function vistaRendimiento(req, deps) {
     const puntaje = puntuar(valores, propios);
     const puntos = calcularPuntos(valores);
     if (!coordina) SOLO_COORDINACION.forEach(k => { delete valores[k]; });
-    const out = { dni: u.dni, nombre: u.nombre, turno: u.turno, sede: u.sede, valores: valores, puntaje: puntaje, puntos: puntos, serie: serieTareas(u.dni, mes, tareas), ventas_dias: ventasDePersona(u.dni, mes, coordina, filasVentas) };
+    const out = { dni: u.dni, nombre: u.nombre, turno: u.turno, sede: u.sede, valores: valores, puntaje: puntaje, puntos: puntos, serie: serieTareas(u.dni, mes, tareas), ventas_dias: ventasDePersona(u.dni, mes, coordina, filasVentas), nuevos_meses: liqNuevosPorMes(u.dni, filasLiq, filasVentas, deps.hoy().slice(0, 7)) };
     if (veUso(usuario)) {
       out.tiempos = tiemposDe(u.dni, mes, registro, u.hora_fin);
       out.uso = usoDelMes(u, mes, filasUso, registro, deps);
