@@ -12,6 +12,11 @@ const COLUMNAS = {
   stock: ['ts', 'fecha', 'sede', 'dni', 'nombre', 'producto', 'cantidad'],
   ventas: ['fecha', 'sede', 'dni', 'nombre', 'planes', 'planes_monto', 'nuevos', 'renovaciones', 'largos', 'mostrador', 'mostrador_monto', 'efectivo', 'transferencia', 'mercadopago', 'otros_medios', 'productos', 'sin_clasificar'],
   ventas_largas: ['id', 'fecha', 'sede', 'dni_cobro', 'nombre_cobro', 'socio_id', 'socio_nombre', 'plan', 'tipo', 'largo', 'sugerido_dni', 'estado', 'pide_dni', 'responde_dni', 'hacia_dni', 'dni_vendio', 'ts_pedido', 'ts_decidido', 'decide_dni'],
+  // Seguimiento de consultas (Seguimiento.js): el estado y el próximo paso de cada consulta registrada en `actividad`
+  consulta_estado: ['id', 'estado', 'proximo_fecha', 'proximo_paso', 'nota', 'dni', 'sede', 'actualizado'],
+  // Pase de turno: lo que deja quien termina para quien sigue (leidos: dni separados por coma)
+  pases: ['id', 'fecha', 'sede', 'dni', 'nombre', 'turno', 'pendientes', 'esperando', 'novedades', 'ts', 'leidos'],
+  coberturas: ['id', 'fecha', 'titular_dni', 'cubre_dni', 'horas', 'descuenta', 'motivo', 'nota', 'creado_por', 'actualizado'],
   beneficios: ['id', 'ts', 'tipo', 'sede', 'socio_nombre', 'nuevo_socio', 'detalle', 'registra_dni', 'estado', 'decide_dni', 'comentario', 'decidido_en'],
   objetivos: ['dni', 'clave', 'valor'],
   // Liquidación (Liquidacion.js): dni + mes → datos en JSON. dni '*' es la configuración del mes; mes 'horas' son las horas por día de la persona

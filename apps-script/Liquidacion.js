@@ -93,11 +93,13 @@ function liqTramo(nuevos, metas) {
 
 // La liquidación de una persona en un mes. `fila` es lo cargado para ese mes (o null); `previa` lo del último mes con datos,
 // de donde se arrastran el valor hora y las horas cuando el mes todavía no se cargó.
-function liqCalcular(sede, fila, previa, cfg, nuevosApp) {
+function liqCalcular(sede, fila, previa, cfg, nuevosApp, ajusteHoras) {
   const d = fila ? liqJson(fila.datos) : {};
   const p = previa ? liqJson(previa.datos) : {};
   const valorHora = d.valor_hora != null ? Number(d.valor_hora) : (p.valor_hora != null ? Number(p.valor_hora) : 0);
-  const horas = d.horas != null ? Number(d.horas) : (p.horas != null ? Number(p.horas) : 0);
+  const horasPlanilla = d.horas != null ? Number(d.horas) : (p.horas != null ? Number(p.horas) : 0);
+  const ajuste = Number(ajusteHoras) || 0;           // coberturas del mes: horas que cubrió menos las que le cubrieron
+  const horas = Math.max(0, horasPlanilla + ajuste);
   const nuevos = d.nuevos != null && d.nuevos !== '' ? Number(d.nuevos) : (nuevosApp != null ? Number(nuevosApp) : null);
   const metas = Array.isArray(d.metas) && d.metas.length === 4 ? d.metas.map(Number) : (cfg.metas[sede] || []);
   const tramo = liqTramo(nuevos, metas);
@@ -109,7 +111,7 @@ function liqCalcular(sede, fila, previa, cfg, nuevosApp) {
   const totalExtras = extras.reduce((a, x) => a + x.m, 0);
   const base = Math.round(valorHora * horas);
   return {
-    cargado: !!fila, valor_hora: valorHora, horas: horas, base: base,
+    cargado: !!fila, valor_hora: valorHora, horas: horas, horas_planilla: horasPlanilla, ajuste_horas: ajuste, base: base,
     nuevos: nuevos, nuevos_app: nuevosApp == null ? null : Number(nuevosApp), nuevos_manual: d.nuevos != null && d.nuevos !== '',
     metas: metas, tramo: tramo, etiqueta: tramo == null ? '' : LIQ_ETIQUETAS[tramo], tarifa: tarifa,
     comision_calculada: calculada, comision: comision, comision_manual: manual,
@@ -120,8 +122,10 @@ function liqCalcular(sede, fila, previa, cfg, nuevosApp) {
 
 // Horas por QR de un mes. dias = horas por día de la semana (lunes a domingo).
 // Con entrada y salida del QR son horas reales; sin salida se toman las horas previstas de ese día (estimadas).
-function liqHorasQr(filasQr, dias, mes, hoy) {
-  const prev = d => Number(dias[liqDiaSemana(d)]) || 0;
+function liqHorasQr(filasQr, dias, mes, hoy, omitir) {
+  const salteados = {};
+  (omitir || []).forEach(f => { salteados[f] = 1; });      // días en que otra persona la cubrió: no se le prevén horas
+  const prev = d => (salteados[d] ? 0 : Number(dias[liqDiaSemana(d)]) || 0);
   const porFecha = {};
   filasQr.forEach(f => { if (texto(f.fecha).slice(0, 7) === mes) porFecha[f.fecha] = f; });
   const out = [];
@@ -177,6 +181,50 @@ function liqNuevosPorMes(dni, filasLiq, filasVentas, hoyMes) {
   }).filter(x => x.nuevos != null).slice(-12);
 }
 
+// Cuánto falta para el próximo escalón de la comisión, con lo que se lleva y el ritmo del mes. null si la sede no tiene objetivos (Bariloche).
+function liqEscalon(u, mes, hoy, filasLiq, nuevosApp) {
+  const cfg = liqConfigDelMes(filasLiq, mes);
+  const l = liqCalcular(u.sede, filasLiq.find(f => f.dni === u.dni && f.mes === mes) || null, null, cfg, nuevosApp);
+  if (l.tramo == null || l.nuevos == null) return null;
+  const dias = liqDiasDelMes(mes).length;
+  const corridos = mes === hoy.slice(0, 7) ? Number(hoy.slice(8, 10)) : dias;
+  const restantes = Math.max(0, dias - corridos);
+  const proyeccion = corridos ? liqRedondeo(l.nuevos / corridos * dias, 1) : l.nuevos;
+  const tramoProyectado = liqTramo(proyeccion, l.metas);
+  let siguiente = null;
+  if (l.tramo < 3) {
+    const meta = l.metas[l.tramo + 1], tarifa = cfg.tarifas[l.tramo + 1];
+    const faltan = Math.max(0, Math.ceil(meta - l.nuevos));
+    siguiente = {
+      etiqueta: LIQ_ETIQUETAS[l.tramo + 1], meta: meta, tarifa: tarifa, faltan: faltan,
+      por_dia: restantes > 0 ? liqRedondeo(faltan / restantes, 1) : null,
+      comision_al_llegar: Math.round(Math.ceil(meta) * tarifa), comision_hoy: Math.round(l.nuevos * cfg.tarifas[l.tramo]),
+    };
+  }
+  return {
+    mes: mes, nuevos: l.nuevos, tramo: l.tramo, etiqueta: l.etiqueta, tarifa: l.tarifa, metas: l.metas,
+    proyeccion: proyeccion, tramo_proyectado: tramoProyectado, etiqueta_proyectada: tramoProyectado == null ? '' : LIQ_ETIQUETAS[tramoProyectado],
+    dias_restantes: restantes, siguiente: siguiente, maximo: l.tramo === 3,
+  };
+}
+
+// Coberturas y cambios de turno (eventuales): quién cubrió a quién, un día y por cuántas horas.
+// A quien cubre se le suman esas horas; a la titular se le descuentan salvo que se le pague igual (descuenta = 'false').
+function liqCoberturasDe(filas, dni, mes) {
+  const delMes = filas.filter(c => texto(c.fecha).slice(0, 7) === mes && (c.cubre_dni === dni || c.titular_dni === dni));
+  let ajuste = 0;
+  const omitir = [];
+  delMes.forEach(c => {
+    const h = Number(c.horas) || 0;
+    if (c.cubre_dni === dni) ajuste += h;
+    if (c.titular_dni === dni) {
+      if (c.descuenta !== 'false' && c.descuenta !== false) ajuste -= h;
+      omitir.push(c.fecha);
+    }
+  });
+  return { ajuste: liqRedondeo(ajuste, 2), omitir: omitir, lista: delMes };
+}
+
 function liqRecepcionistas(usuarios) {
   return usuarios.filter(u => esVerdad(u.activo) && tieneRol(u, 'recepcion'));
 }
@@ -198,6 +246,8 @@ function liquidacionVer(req, deps) {
   const filas = deps.repo.leer('liquidacion');
   const qr = deps.repo.leer('liq_qr');
   const rendimiento = deps.repo.leer('rendimiento');
+  const coberturas = deps.repo.leer('coberturas');
+  const nombreDe = dni => ((usuarios.find(u => u.dni === dni) || {}).nombre) || 'Otra persona';
   const configs = {};
   const config = m => configs[m] || (configs[m] = liqConfigDelMes(filas, m));
   const filasVentas = deps.repo.leer('ventas');
@@ -215,15 +265,17 @@ function liquidacionVer(req, deps) {
     if (meses.indexOf(mes) < 0 && mes <= hoy.slice(0, 7)) meses.push(mes);
     meses.sort();
     const serie = meses.slice(-12).map(m => {
-      const l = liqCalcular(u.sede, propias.find(f => f.mes === m) || null, previaDe(m), config(m), nuevosApp(u.dni, m));
+      const l = liqCalcular(u.sede, propias.find(f => f.mes === m) || null, previaDe(m), config(m), nuevosApp(u.dni, m), liqCoberturasDe(coberturas, u.dni, m).ajuste);
       return { mes: m, cargado: l.cargado, base: l.base, comision: l.comision, extras: l.total_extras, extras_detalle: l.extras, total: l.total, nuevos: l.nuevos, horas: l.horas };
     });
-    const actual = liqCalcular(u.sede, propias.find(f => f.mes === mes) || null, previaDe(mes), config(mes), nuevosApp(u.dni, mes));
+    const cob = liqCoberturasDe(coberturas, u.dni, mes);
+    const actual = liqCalcular(u.sede, propias.find(f => f.mes === mes) || null, previaDe(mes), config(mes), nuevosApp(u.dni, mes), cob.ajuste);
     const dias = liqDiasDe(filas, u.dni);
     return {
       dni: u.dni, nombre: u.nombre, sede: u.sede, turno: u.turno,
       liquidacion: actual, serie: serie, dias_horas: dias,
-      qr: liqHorasQr(qr.filter(f => f.dni === u.dni), dias, mes, hoy),
+      qr: liqHorasQr(qr.filter(f => f.dni === u.dni), dias, mes, hoy, cob.omitir),
+      coberturas: cob.lista.map(c => ({ id: c.id, fecha: c.fecha, horas: Number(c.horas) || 0, rol: c.cubre_dni === u.dni ? 'cubrio' : 'cubierta', con: nombreDe(c.cubre_dni === u.dni ? c.titular_dni : c.cubre_dni), descuenta: c.descuenta !== 'false', motivo: c.motivo })).sort((a, b) => String(a.fecha).localeCompare(String(b.fecha))),
     };
   }).sort((a, b) => String(a.sede).localeCompare(String(b.sede)) || String(a.nombre).localeCompare(String(b.nombre)));
   const todos = {};
@@ -331,4 +383,73 @@ function cargarLiqQr(req, deps) {
   nuevas.forEach(f => quedan.push(Object.assign(f, { actualizado: ts })));
   deps.repo.escribir('liq_qr', quedan);
   return { filas: nuevas.length };
+}
+
+// ---------- Coberturas y cambios de turno ----------
+
+function exigirCoordinacionCob(req, deps) {
+  const s = sesion(req, deps);
+  if (!tieneRol(s.usuario, 'admin') && !tieneRol(s.usuario, 'coordinador')) falla('prohibido');
+  return s;
+}
+
+// Admin: todas las sedes. Coordinación: solo su sede.
+function liqPuedeConCob(usuario, a, b) {
+  if (tieneRol(usuario, 'admin')) return true;
+  return [a, b].every(u => !u || u.sede === usuario.sede);
+}
+
+function coberturasVer(req, deps) {
+  const { usuario, usuarios } = exigirCoordinacionCob(req, deps);
+  const hoy = deps.hoy();
+  const mes = liqMes(req.mes) || hoy.slice(0, 7);
+  const admin = tieneRol(usuario, 'admin');
+  const equipo = liqRecepcionistas(usuarios).filter(u => admin || u.sede === usuario.sede);
+  const filas = deps.repo.leer('liquidacion');
+  const dnis = {};
+  equipo.forEach(u => { dnis[u.dni] = 1; });
+  const nombreDe = dni => ((usuarios.find(u => u.dni === dni) || {}).nombre) || '';
+  const lista = deps.repo.leer('coberturas').filter(c => texto(c.fecha).slice(0, 7) === mes && (dnis[c.cubre_dni] || dnis[c.titular_dni]))
+    .map(c => ({ id: c.id, fecha: c.fecha, titular_dni: c.titular_dni, titular: nombreDe(c.titular_dni), cubre_dni: c.cubre_dni, cubre: nombreDe(c.cubre_dni), horas: Number(c.horas) || 0, descuenta: c.descuenta !== 'false', motivo: c.motivo, nota: c.nota }))
+    .sort((a, b) => String(b.fecha).localeCompare(String(a.fecha)));
+  return { mes: mes, hoy: hoy, coberturas: lista, motivos: LIQ_MOTIVOS_COB, personas: equipo.map(u => ({ dni: u.dni, nombre: u.nombre, sede: u.sede, dias: liqDiasDe(filas, u.dni) })) };
+}
+
+const LIQ_MOTIVOS_COB = ['Faltó', 'Enfermedad', 'Cambio de horario', 'Cubre un extra', 'Otro'];
+
+function coberturaGuardar(req, deps) {
+  const { usuario, usuarios } = exigirCoordinacionCob(req, deps);
+  const fecha = liqFecha(req.fecha);
+  const cubre = usuarios.find(u => u.dni === normalizarDni(req.cubre_dni) && esVerdad(u.activo) && tieneRol(u, 'recepcion'));
+  const titularDni = texto(req.titular_dni) ? normalizarDni(req.titular_dni) : '';
+  const titular = titularDni ? usuarios.find(u => u.dni === titularDni && tieneRol(u, 'recepcion')) : null;
+  const horas = liqNumero(req.horas, 0.5, 16);
+  if (!fecha || !cubre || (titularDni && !titular) || horas == null || (titular && titular.dni === cubre.dni)) falla('datos_invalidos');
+  if (!liqPuedeConCob(usuario, cubre, titular)) falla('prohibido');
+  const motivo = LIQ_MOTIVOS_COB.indexOf(texto(req.motivo)) >= 0 ? texto(req.motivo) : 'Otro';
+  const filas = deps.repo.leer('coberturas');
+  const id = texto(req.id);
+  const fila = {
+    id: id || 'C-' + deps.aleatorio(6), fecha: fecha, titular_dni: titular ? titular.dni : '', cubre_dni: cubre.dni, horas: String(horas),
+    descuenta: req.descuenta === false || req.descuenta === 'false' ? 'false' : 'true', motivo: motivo, nota: texto(req.nota).slice(0, 200),
+    creado_por: usuario.dni, actualizado: new Date(deps.ahora()).toISOString(),
+  };
+  if (id) {
+    const i = filas.findIndex(c => c.id === id);
+    if (i < 0) falla('no_encontrado');
+    filas[i] = fila;
+  } else filas.push(fila);
+  deps.repo.escribir('coberturas', filas);
+  return { id: fila.id };
+}
+
+function coberturaBorrar(req, deps) {
+  const { usuario, usuarios } = exigirCoordinacionCob(req, deps);
+  const filas = deps.repo.leer('coberturas');
+  const c = filas.find(x => x.id === texto(req.id));
+  if (!c) falla('no_encontrado');
+  const u = dni => usuarios.find(x => x.dni === dni);
+  if (!liqPuedeConCob(usuario, u(c.cubre_dni), u(c.titular_dni))) falla('prohibido');
+  deps.repo.escribir('coberturas', filas.filter(x => x.id !== c.id));
+  return {};
 }

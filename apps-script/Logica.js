@@ -235,7 +235,7 @@ function historialDeSocios(registro, reservas) {
 
 // Tareas internas: no hay ningún socio del otro lado, así que no cuentan como contacto (Emanuel, 09/11/2026).
 // Todo lo demás que se marcó con un canal real sí cuenta: felicitar, invitar a escanear, recordarle que reserve, etc.
-const TAREAS_INTERNAS = /^(Controlar stock|Encargo|Apertura|Cierre|Profes de hoy|Corregir calendario)/;
+const TAREAS_INTERNAS = /^(Controlar stock|Encargo|Apertura|Cierre|Profes de hoy|Corregir calendario|Asignarle profesor|Completar ficha)/;
 function esContactoConSocio(marca) {
   return marca.canal && marca.canal !== 'SIN CONTACTO' && !TAREAS_INTERNAS.test(String(marca.tipo));
 }
@@ -276,6 +276,12 @@ function metaDelDia(horas, hechas) {
 
 function seVerificaEnMove(tipo) {
   return SE_VERIFICAN_EN_MOVE.some(v => String(tipo).indexOf(v) === 0);
+}
+
+// Lo que se hace en MOVE y se confirma recién a la mañana siguiente, cuando MOVE lo muestra. Hasta entonces la recepcionista no lo puede cerrar
+// y no debe contarle como pendiente ni bajarle el cumplimiento (Emanuel, 13/11/2026).
+function esperaAMove(t) {
+  return t.estado === 'pendiente' && seVerificaEnMove(t.tipo);
 }
 
 function fechaIsoValida(s) {

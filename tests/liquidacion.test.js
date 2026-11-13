@@ -163,3 +163,124 @@ test('los socios nuevos de noviembre salen de las cajas del mes entero y los mes
   const tani = rend.data.personas.find(p => p.dni === TANI.dni);
   assert.equal(tani.nuevos_meses.length, 2);
 });
+
+test('el escalón dice cuánto falta, el ritmo del mes y lo que cambiaría la comisión', () => {
+  const u = { dni: 'x', sede: 'bolson' };
+  const e = L.liqEscalon(u, '2026-11', '2026-11-12', [], 12);
+  assert.equal(e.tramo, 0);
+  assert.equal(e.siguiente.meta, 20);
+  assert.equal(e.siguiente.faltan, 8);
+  assert.equal(e.dias_restantes, 18);
+  assert.equal(e.proyeccion, 30, '12 en 12 días son 30 en el mes');
+  assert.equal(e.tramo_proyectado, 3);
+  assert.equal(L.liqEscalon({ dni: 'x', sede: 'bariloche' }, '2026-11', '2026-11-12', [], 12), null, 'sin objetivos no hay escalón');
+  assert.equal(L.liqEscalon(u, '2026-11', '2026-11-12', [], 30).maximo, true);
+});
+
+test('una cobertura suma horas a quien cubre, las descuenta a la titular y no le prevé ese día', () => {
+  const cob = [{ id: 'C-1', fecha: '2026-11-12', titular_dni: TANI.dni, cubre_dni: AZUL.dni, horas: '6', descuenta: 'true', motivo: 'Faltó' }];
+  assert.equal(L.liqCoberturasDe(cob, AZUL.dni, '2026-11').ajuste, 6);
+  assert.equal(L.liqCoberturasDe(cob, TANI.dni, '2026-11').ajuste, -6);
+  cob[0].descuenta = 'false';
+  assert.equal(L.liqCoberturasDe(cob, TANI.dni, '2026-11').ajuste, 0, 'con goce no se descuenta');
+  const l = L.liqCalcular('bolson', fila('x', '2026-11', { valor_hora: 1000, horas: 120 }), null, L.liqConfigDelMes([], '2026-11'), null, 6);
+  assert.equal(l.horas, 126);
+  assert.equal(l.base, 126000);
+  const qr = L.liqHorasQr([], [6, 6, 6, 6, 6, 0, 0], '2026-11', '2026-11-13', ['2026-11-12']);
+  assert.equal(qr.dias_sin_qr, 8, 'el jueves 12 cubierto no cuenta como día sin QR');
+});
+
+test('coordinación carga coberturas de su sede y la liquidación se ajusta sola', () => {
+  const d = entorno({ liquidacion: [fila(TANI.dni, '2026-11', { valor_hora: 1000, horas: 120 }), fila(AZUL.dni, '2026-11', { valor_hora: 1000, horas: 120 })] });
+  const admin = entrar(d, ADMIN.dni);
+  const ok = pedir(d, { accion: 'cobertura_guardar', token: admin, fecha: '2026-11-12', titular_dni: TANI.dni, cubre_dni: AZUL.dni, horas: 6, motivo: 'Faltó' });
+  assert.equal(ok.ok, true, JSON.stringify(ok));
+  const r = pedir(d, { accion: 'liquidacion_ver', token: admin });
+  const por = dni => r.data.personas.find(p => p.dni === dni);
+  assert.equal(por(AZUL.dni).liquidacion.horas, 126);
+  assert.equal(por(TANI.dni).liquidacion.horas, 114);
+  assert.equal(por(TANI.dni).coberturas[0].rol, 'cubierta');
+  const ver = pedir(d, { accion: 'coberturas_ver', token: admin });
+  assert.equal(ver.data.coberturas.length, 1);
+  const propia = pedir(d, { accion: 'cobertura_guardar', token: entrar(d, TANI.dni), fecha: '2026-11-12', cubre_dni: AZUL.dni, horas: 6 });
+  assert.equal(propia.ok, false, 'recepción no carga coberturas');
+  assert.equal(pedir(d, { accion: 'cobertura_borrar', token: admin, id: ver.data.coberturas[0].id }).ok, true);
+  assert.equal(pedir(d, { accion: 'liquidacion_ver', token: admin }).data.personas.find(p => p.dni === AZUL.dni).liquidacion.horas, 120);
+});
+
+test('el ranking junta todas las sedes, marca récords y no muestra plata', () => {
+  const venta = (dni, sede, fecha, nuevos) => ({ fecha, sede, dni, nombre: 'x', nuevos: String(nuevos), planes_monto: '99000' });
+  const d = entorno({
+    liquidacion: [fila(TANI.dni, '2026-10', { nuevos: 5 })],
+    ventas: [venta(TANI.dni, 'bolson', '2026-11-03', 4), venta(TANI.dni, 'bolson', '2026-11-09', 3), venta(AZUL.dni, 'puelo', '2026-11-05', 9), venta(AZUL.dni, 'puelo', '2026-10-05', 2)],
+  });
+  const r = pedir(d, { accion: 'ranking_ver', token: entrar(d, TANI.dni) });
+  assert.equal(r.ok, true, JSON.stringify(r));
+  assert.deepEqual(r.data.personas.map(p => [p.nombre, p.nuevos, p.puesto]), [['Azul', 9, 1], ['Tani', 7, 2]]);
+  assert.equal(r.data.personas[1].bate_record, true, '7 supera su récord anterior de 5');
+  assert.equal(r.data.equipo.nuevos, 16);
+  assert.equal(JSON.stringify(r.data).indexOf('99000'), -1, 'sin plata');
+  assert.equal(pedir(d, { accion: 'ranking_ver', token: entrar(d, PROFE.dni) }).ok, false);
+});
+
+test('el resumen semanal es solo para administración y compara con la semana anterior', () => {
+  const venta = (dni, sede, fecha, nuevos, monto) => ({ fecha, sede, dni, nombre: 'x', nuevos: String(nuevos), planes_monto: String(monto), mostrador_monto: '0' });
+  const d = entorno({ ventas: [venta(TANI.dni, 'bolson', '2026-11-05', 4, 100000), venta(TANI.dni, 'bolson', '2026-10-29', 2, 50000)] });
+  const r = pedir(d, { accion: 'resumen_semanal', token: entrar(d, ADMIN.dni) });
+  assert.equal(r.ok, true, JSON.stringify(r));
+  assert.equal(r.data.desde, '2026-11-02');
+  assert.equal(r.data.hasta, '2026-11-08');
+  const b = r.data.sedes.find(s => s.sede === 'bolson');
+  assert.deepEqual([b.nuevos, b.nuevos_ant, b.entro, b.entro_ant], [4, 2, 100000, 50000]);
+  assert.equal(pedir(d, { accion: 'resumen_semanal', token: entrar(d, TANI.dni) }).ok, false);
+});
+
+test('una consulta avanza por el embudo, su próximo paso se vuelve tarea y al cerrarla se retira', () => {
+  const act = { id: 'A1', ts: '2026-11-10T14:00:00.000Z', dni: TANI.dni, sede: 'bolson', tipo: 'consulta', nombre: 'Marta', canal: 'WhatsApp', origen: '', interes: 'alto', categoria: '', detalle: '' };
+  const d = entorno({ actividad: [act] });
+  const t = entrar(d, TANI.dni);
+  let r = pedir(d, { accion: 'consultas_ver', token: t });
+  assert.equal(r.data.consultas.length, 1);
+  assert.equal(r.data.embudo.consultas, 1);
+  const upd = pedir(d, { accion: 'consulta_actualizar', token: t, id: 'A1', estado: 'visita', proximo_fecha: '2026-11-14', proximo_paso: 'Confirmar la visita del sábado' });
+  assert.equal(upd.ok, true, JSON.stringify(upd));
+  assert.equal(d.repo.leer('tareas').filter(x => x.socio_id === 'consulta-A1' && x.fecha === '2026-11-14').length, 1);
+  r = pedir(d, { accion: 'consultas_ver', token: t });
+  assert.equal(r.data.consultas[0].estado, 'visita');
+  assert.equal(r.data.embudo.visita, 1);
+  pedir(d, { accion: 'consulta_actualizar', token: t, id: 'A1', estado: 'vendida' });
+  assert.equal(d.repo.leer('tareas').filter(x => x.socio_id === 'consulta-A1').length, 0, 'al cerrarla no queda nada pendiente');
+  assert.equal(pedir(d, { accion: 'consulta_actualizar', token: entrar(d, AZUL.dni), id: 'A1', estado: 'perdida' }).ok, false, 'otra sede no la toca');
+});
+
+test('el pase de turno lo lee el equipo de la misma sede y queda marcado como leído', () => {
+  const OTRA = usuario({ dni: '20000006', nombre: 'Ara', roles: 'recepcion', sede: 'bolson', turno: 'manana' });
+  const d = entorno({ usuarios: [ADMIN, TANI, AZUL, KEILA, PROFE, OTRA] });
+  const t = entrar(d, TANI.dni), o = entrar(d, OTRA.dni);
+  assert.equal(pedir(d, { accion: 'pase_guardar', token: t }).ok, false, 'vacío no se guarda');
+  assert.equal(pedir(d, { accion: 'pase_guardar', token: t, pendientes: 'Llamar a Marta', esperando: 'Juan espera precio' }).ok, true);
+  assert.equal(pedir(d, { accion: 'pase_ver', token: t }).data.sin_leer, 0, 'el propio no cuenta como sin leer');
+  let v = pedir(d, { accion: 'pase_ver', token: o });
+  assert.equal(v.data.sin_leer, 1);
+  assert.equal(pedir(d, { accion: 'pase_leido', token: o, id: v.data.pases[0].id }).ok, true);
+  assert.equal(pedir(d, { accion: 'pase_ver', token: o }).data.sin_leer, 0);
+  assert.equal(pedir(d, { accion: 'pase_ver', token: entrar(d, AZUL.dni) }).data.pases.length, 0, 'otra sede no lo ve');
+});
+
+test('lo que se confirma en MOVE no cuenta como pendiente, y la recepcionista puede dejarlo como hecho', () => {
+  const tarea = (id, tipo, estado) => ({ id, fecha: '2026-11-12', sede: 'bolson', socio_id: id, socio_nombre: 'Socio ' + id, profe: '', tipo, prioridad: '2', situacion: 's', accion: 'a', ultima_anotacion: '', asignado_dni: TANI.dni, pendiente_desde: '2026-11-12', estado, hecha_en: estado === 'hecha' ? '2026-11-12T15:00:00.000Z' : '', intro: '' });
+  const d = entorno({ tareas: [tarea('1', 'Seguimiento de consulta', 'hecha'), tarea('2', 'Asignarle profesor', 'pendiente'), tarea('3', 'Completar ficha', 'pendiente'), tarea('4', 'Coordinar evaluación inicial', 'pendiente')] });
+  const t = entrar(d, TANI.dni), admin = entrar(d, ADMIN.dni);
+  const rend = () => pedir(d, { accion: 'rendimiento', token: admin, sede: 'bolson' }).data.personas.find(p => p.dni === TANI.dni).valores;
+  assert.equal(rend().tareas_total, 2, 'las dos que esperan a MOVE no entran en el total');
+  const sede = () => pedir(d, { accion: 'sede', token: admin, sede: 'bolson' }).data.personas.find(p => p.dni === TANI.dni);
+  assert.equal(sede().pendientes_hoy, 1);
+  assert.equal(sede().esperan_move, 2);
+  const mal = pedir(d, { accion: 'marcar', token: t, id_marca: 'm1', tarea_id: '2', canal: 'PR', resultado: 'HECHO' });
+  assert.equal(mal.ok, false, 'solo se deja como hecha con CORREGIDO y sin canal de contacto');
+  const ok = pedir(d, { accion: 'marcar', token: t, id_marca: 'm2', tarea_id: '2', canal: 'SIN CONTACTO', resultado: 'CORREGIDO' });
+  assert.equal(ok.ok, true, JSON.stringify(ok));
+  assert.equal(rend().tareas_total, 3);
+  assert.equal(rend().tareas_hechas, 2, 'la que dejó hecha ya suma');
+  assert.equal(sede().esperan_move, 1);
+});

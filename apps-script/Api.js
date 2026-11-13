@@ -121,7 +121,7 @@ function marcar(req, deps) {
   const t = tareas.find(x => x.id === texto(req.tarea_id));
   if (!t) falla('no_existe');
   if (t.asignado_dni !== usuario.dni) falla('prohibido');
-  if (seVerificaEnMove(t.tipo) || esRecordatorio(t.tipo)) falla('datos_invalidos');
+  if (esRecordatorio(t.tipo) || (seVerificaEnMove(t.tipo) && (marca.resultado !== 'CORREGIDO' || marca.canal !== 'SIN CONTACTO'))) falla('datos_invalidos');
   if (String(t.tipo).indexOf('Controlar stock') === 0 && !stockValido(req.stock)) falla('datos_invalidos');
   if (deps.repo.leer('registro').some(r => r.id_marca === idMarca)) return {};
   const ts = new Date(deps.ahora()).toISOString();
@@ -166,8 +166,10 @@ function vistaSede(req, deps) {
   const equipo = usuarios.filter(u => u.sede === sede && esVerdad(u.activo) && tieneRol(u, 'recepcion'));
   // Lo online lo atiende una persona de otra sede: se ve con quien lo tiene, no en la sede del socio
   const deOtraSede = dni => usuarios.some(u => u.dni === dni && u.sede !== sede);
-  const tareas = deps.repo.leer('tareas').filter(t => !esRecordatorio(t.tipo)
+  const todasLasTareas = deps.repo.leer('tareas').filter(t => !esRecordatorio(t.tipo)
     && (equipo.some(u => u.dni === t.asignado_dni) || (t.sede === sede && !deOtraSede(t.asignado_dni))));
+  // Lo que espera a MOVE se cuenta aparte: la persona no puede cerrarlo, así que no suma a sus pendientes ni a las alertas
+  const tareas = todasLasTareas.filter(t => !esperaAMove(t));
   const nombre = dni => (usuarios.find(u => u.dni === dni) || {}).nombre || '';
   const ve = veUso(usuario);
   const filasUso = ve ? deps.repo.leer('uso').filter(f => f.fecha === hoy) : [];
@@ -193,6 +195,7 @@ function vistaSede(req, deps) {
       atrasadas: suyas.filter(t => t.estado === 'pendiente' && String(t.fecha) < hoy).length,
       proximos_dias: suyas.filter(t => t.estado === 'pendiente' && String(t.fecha) > hoy).length,
       hechas_semana: hechas.filter(f => f >= lunes && f <= hoy).length,
+      esperan_move: todasLasTareas.filter(t => t.asignado_dni === u.dni && esperaAMove(t)).length,
     };
   });
   const alertas = tareas.filter(t => t.estado === 'pendiente')
@@ -635,13 +638,13 @@ function delMes(iso, mes) {
 
 // Lo que se mide en la app, en vivo. Lo que viene de MOVE (cajas, renovaciones) lo carga el pipeline cada mañana.
 function valoresEnApp(dni, mes, tareas, registro, actividad, hoy) {
-  const suyas = tareas.filter(t => t.asignado_dni === dni && t.estado !== 'cerrada' && !esRecordatorio(t.tipo) && pendienteDesde(t).indexOf(mes) === 0 && (t.estado === 'hecha' ? fechaArgentina(t.hecha_en) >= INICIO_REAL : String(t.fecha) <= hoy));
+  const suyas = tareas.filter(t => t.asignado_dni === dni && t.estado !== 'cerrada' && !esRecordatorio(t.tipo) && !esperaAMove(t) && pendienteDesde(t).indexOf(mes) === 0 && (t.estado === 'hecha' ? fechaArgentina(t.hecha_en) >= INICIO_REAL : String(t.fecha) <= hoy));
   const hechas = suyas.filter(t => t.estado === 'hecha');
   const aTiempo = hechas.filter(t => diasHabiles(pendienteDesde(t), fechaArgentina(t.hecha_en)) === 0);
   const marcas = registro.filter(r => r.dni === dni && delMes(r.ts, mes));
   const contactos = marcas.filter(esContactoConSocio);
   const CON_FECHA = ['RESERVA', 'VUELVE', 'PAGA', 'PAGÓ', 'VOLVIÓ', 'VACACIONES'];
-  const reten = marcas.filter(r => !/^(Controlar stock|Encargo|Felicitar|Invitar a escanear|Cumpleaños|Encuesta de baja|Revisar profesor|Seguimiento de consulta|Profes de hoy|Apertura|Cierre|Socio antiguo|Coordinar|Cambiar profesor|Confirmar si viene|Evaluación sin cargar|Entrena en otra sede|Revisar plan)/.test(r.tipo));
+  const reten = marcas.filter(r => !/^(Controlar stock|Encargo|Felicitar|Invitar a escanear|Cumpleaños|Encuesta de baja|Asignarle profesor|Completar ficha|Corregir calendario|Revisar profesor|Seguimiento de consulta|Profes de hoy|Apertura|Cierre|Socio antiguo|Coordinar|Cambiar profesor|Confirmar si viene|Evaluación sin cargar|Entrena en otra sede|Revisar plan)/.test(r.tipo));
   const act = actividad.filter(a => a.dni === dni && delMes(a.ts, mes));
   const cuenta = t => act.filter(a => a.tipo === t).length;
   const encuestas = suyas.filter(t => String(t.tipo).indexOf('Encuesta de baja') === 0);
@@ -980,7 +983,7 @@ function respaldo(req, deps) {
   exigirClave(req, deps);
   const usuarios = deps.repo.leer('usuarios').map(u => { const c = Object.assign({}, u); delete c.pin_hash; delete c.sal; return c; });
   const out = { usuarios: usuarios };
-  ['tareas', 'registro', 'garantia', 'actividad', 'rendimiento', 'objetivos', 'cierres', 'profes', 'fichajes', 'reservas_qr', 'avisos', 'uso', 'beneficios', 'stock', 'ventas', 'ventas_largas', 'ocupacion', 'proximas', 'liquidacion', 'liq_qr'].forEach(h => { out[h] = deps.repo.leer(h); });
+  ['tareas', 'registro', 'garantia', 'actividad', 'rendimiento', 'objetivos', 'cierres', 'profes', 'fichajes', 'reservas_qr', 'avisos', 'uso', 'beneficios', 'stock', 'ventas', 'ventas_largas', 'ocupacion', 'proximas', 'liquidacion', 'liq_qr', 'coberturas', 'consulta_estado', 'pases'].forEach(h => { out[h] = deps.repo.leer(h); });
   return out;
 }
 
@@ -1036,7 +1039,7 @@ function vistaRendimiento(req, deps) {
     const puntaje = puntuar(valores, propios);
     const puntos = calcularPuntos(valores);
     if (!coordina) SOLO_COORDINACION.forEach(k => { delete valores[k]; });
-    const out = { dni: u.dni, nombre: u.nombre, turno: u.turno, sede: u.sede, valores: valores, puntaje: puntaje, puntos: puntos, serie: serieTareas(u.dni, mes, tareas), ventas_dias: ventasDePersona(u.dni, mes, coordina, filasVentas), nuevos_meses: liqNuevosPorMes(u.dni, filasLiq, filasVentas, deps.hoy().slice(0, 7)) };
+    const out = { dni: u.dni, nombre: u.nombre, turno: u.turno, sede: u.sede, valores: valores, puntaje: puntaje, puntos: puntos, serie: serieTareas(u.dni, mes, tareas), ventas_dias: ventasDePersona(u.dni, mes, coordina, filasVentas), nuevos_meses: liqNuevosPorMes(u.dni, filasLiq, filasVentas, deps.hoy().slice(0, 7)), escalon: liqEscalon(u, mes, deps.hoy(), filasLiq, liqNuevosDeCajas(filasVentas, u.dni, mes) != null ? liqNuevosDeCajas(filasVentas, u.dni, mes) : (valores.nuevos == null ? null : Number(valores.nuevos))) };
     if (veUso(usuario)) {
       out.tiempos = tiemposDe(u.dni, mes, registro, u.hora_fin);
       out.uso = usoDelMes(u, mes, filasUso, registro, deps);
@@ -1300,6 +1303,16 @@ const ACCIONES = {
   cargar_profe_liq: (r, d) => cargarProfeLiq(r, d),
   // Liquidación de recepción (Liquidacion.js)
   liquidacion_ver: (r, d) => liquidacionVer(r, d),
+  coberturas_ver: (r, d) => coberturasVer(r, d),
+  ranking_ver: (r, d) => rankVer(r, d),
+  consultas_ver: (r, d) => consultasVer(r, d),
+  consulta_actualizar: (r, d) => consultaActualizar(r, d),
+  pase_ver: (r, d) => paseVer(r, d),
+  pase_guardar: (r, d) => paseGuardar(r, d),
+  pase_leido: (r, d) => paseLeido(r, d),
+  resumen_semanal: (r, d) => resumenSemanal(r, d),
+  cobertura_guardar: (r, d) => coberturaGuardar(r, d),
+  cobertura_borrar: (r, d) => coberturaBorrar(r, d),
   liquidacion_guardar: (r, d) => liquidacionGuardar(r, d),
   liquidacion_config_guardar: (r, d) => liquidacionConfigGuardar(r, d),
   liquidacion_horas_guardar: (r, d) => liquidacionHorasGuardar(r, d),
@@ -1317,7 +1330,7 @@ const ACCIONES = {
 
 // Las pantallas que solo miran no esperan turno: un pedido trabado no las frena. Lista cerrada: lo que no esté acá espera.
 // Respaldo, bajadas y lo que usan los procesos de la PC siguen con turno porque necesitan los datos completos y sin cambios a mitad.
-const SOLO_LECTURA = ['mis_tareas', 'mi_dia', 'sede', 'tareas_de', 'rendimiento', 'cierres_ver', 'profes_ver', 'fichajes_ver', 'usuarios_listar', 'servidor_ver', 'ocupacion_ver', 'profe_tareas', 'liquidacion_ver', 'chat_personas', 'chat_listar', 'chat_ver', 'chat_novedad'];
+const SOLO_LECTURA = ['mis_tareas', 'mi_dia', 'sede', 'tareas_de', 'rendimiento', 'cierres_ver', 'profes_ver', 'fichajes_ver', 'usuarios_listar', 'servidor_ver', 'ocupacion_ver', 'profe_tareas', 'liquidacion_ver', 'coberturas_ver', 'ranking_ver', 'resumen_semanal', 'consultas_ver', 'pase_ver', 'chat_personas', 'chat_listar', 'chat_ver', 'chat_novedad'];
 const ESPERA_TURNO_MS = 20000;
 const PEDIDO_LENTO_MS = 15000;
 

@@ -177,11 +177,12 @@
     if (tiene('profe')) p.push(['planes', 'Mis planes', 'Mi día'], ['pmes', tiene('recepcion') ? 'Mis planes: el mes' : 'Mi mes', 'Mi día']);   // PulsoMOVE Profes: profes y kinesiólogos
     if (tiene('recepcion')) p.push(['hoy', 'Mis tareas', 'Mi día'], ['mes', 'Mi mes', 'Mi día']);
     if (coord) p.push(['sede', 'Sede', 'Recepción'], ['rend', 'Rendimiento', 'Recepción']);
+    if (tiene('recepcion') || coord) p.push(['consultas', 'Consultas', coord ? 'Recepción' : 'Mi día'], ['pase', 'Pase de turno', coord ? 'Recepción' : 'Mi día']);
     // La ve recepción: es la que contesta "¿a qué hora hay menos gente?" (Emanuel, 09/11/2026)
     if (tiene('recepcion') || coord) p.push(['reservas', 'Reservas', coord ? 'Recepción' : 'Mi día']);
     if (tiene('admin') || tiene('recepcion') || coord) p.push(['liq', tiene('admin') ? 'Liquidación' : 'Mis ingresos', coord ? 'Recepción' : 'Mi día']);   // cada una ve lo suyo; admin ve a todas
     if (coord) p.push(['profes', 'Planes y llegadas', 'Profes'], ['phor', 'Horarios y sábados', 'Profes'], ['pliq', tiene('admin') ? 'Comisiones y tareas' : 'Tareas del mes', 'Profes']);
-    if (tiene('admin')) p.push(['admin', 'Equipo', 'Gestión']);
+    if (tiene('admin')) p.push(['resumen', 'Resumen semanal', 'Gestión'], ['admin', 'Equipo', 'Gestión']);
     p.push(['chat', chatEtiqueta(), coord ? 'Gestión' : 'Mi día']);   // mensajes entre el equipo: todos
     return p;
   }
@@ -436,7 +437,8 @@
         <span class="socio">${esc(t.socio_nombre)}</span>${etiquetaEstado(t)}
         <span class="situacion">${esc(t.situacion)}</span>
         <span class="accion">${conLinks(t.accion)}</span>
-        ${t.estado === 'hecha' ? '' : '<span class="nota">No se marca acá: cuando esté cargado en MOVE, se cierra sola a la mañana siguiente.</span>'}
+        ${t.estado === 'hecha' ? '' : `<span class="nota">Hacelo en MOVE y tocá el botón. Mañana MOVE lo confirma: si sigue igual, la tarea vuelve a aparecer.</span>
+        <button class="boton verde" data-accion="hice-en-move" data-id="${esc(t.id)}">Ya lo hice en MOVE</button>`}
       </div></article>`;
   }
 
@@ -1392,7 +1394,7 @@ ${p.tareas_mes ? `<span class="uso-hoy">📋 Tareas del mes: ${p.tareas_mes.hech
         <div class="puntaje"><span class="puntaje-n">${nota(P.total)}</span><span class="puntaje-de">${P.total == null ? '' : 'de 100'}</span>
           <span class="sello ${cls}">${ico} ${txt}</span></div>
         <div class="grupos">${P.grupos.map(g => `<div class="grupo-mini"><strong>${nota(g.puntaje)}</strong><span>${esc(g.nombre)}</span></div>`).join('')}</div>
-      </section>${incentivo}${bloqueNuevosPersona(p, E.rend && E.rend.mes)}<div class="tablero-columnas">${graficoDias(p.serie)}${propia ? '' : bloqueUso(p) + bloqueTiempos(p)}${grupos}${bloqueVentasPersona(p)}${ventas}${actividad}</div>
+      </section>${incentivo}${bloqueEscalon(p)}${bloqueNuevosPersona(p, E.rend && E.rend.mes)}<div class="tablero-columnas">${graficoDias(p.serie)}${propia ? '' : bloqueUso(p) + bloqueTiempos(p)}${grupos}${bloqueVentasPersona(p)}${ventas}${actividad}</div>
       ${editable ? `<div class="botones"><button class="boton verde" data-accion="objetivos-guardar" data-dni="${esc(p.dni)}">Guardar objetivos</button></div>` : ''}`;
   }
 
@@ -1447,6 +1449,26 @@ ${p.tareas_mes ? `<span class="uso-hoy">📋 Tareas del mes: ${p.tareas_mes.hech
     const max = Math.max(1, ...serie.map(s => s.nuevos));
     return `<div class="liq-barras">${serie.map(s => `<div class="liq-barra${s.mes === actual ? ' elegida' : ''}" title="${esc(nombreMes(s.mes))}: ${s.nuevos} socios nuevos"><span class="liq-v">${s.nuevos}</span><div class="liq-pila" style="height:${Math.max(3, Math.round(s.nuevos / max * 100))}%"><i class="b-base" style="flex:1"></i></div><span class="mes">${esc(liqMesCorto(s.mes))}${s.fuente === 'cajas' ? '*' : ''}</span></div>`).join('')}</div>`;
   }
+  // Cuánto falta para el próximo escalón de la comisión (ver liqEscalon en el backend)
+  function bloqueEscalon(p) {
+    const e = p.escalon;
+    if (!e) return '';
+    const num = n => String(Math.round(Number(n) * 10) / 10).replace('.', ',');
+    const s = e.siguiente;
+    const previo = e.tramo > 0 ? e.metas[e.tramo] : 0;
+    const avance = s ? Math.min(100, Math.max(0, Math.round((e.nuevos - previo) / Math.max(1, s.meta - previo) * 100))) : 100;
+    const ritmo = e.tramo_proyectado == null ? '' : e.tramo_proyectado > e.tramo
+      ? `Al ritmo de este mes llegarías a ${num(e.proyeccion)} y pasarías a ${esc(e.etiqueta_proyectada)}.`
+      : e.tramo_proyectado < e.tramo ? `Al ritmo de este mes terminarías en ${num(e.proyeccion)}: ojo, bajarías a ${esc(e.etiqueta_proyectada)}.`
+        : `Al ritmo de este mes terminarías en ${num(e.proyeccion)}.`;
+    const detalle = e.maximo ? `Estás en el máximo (${esc(e.etiqueta)}): cada socio nuevo vale ${plata(e.tarifa)}.`
+      : `Te faltan <b>${s.faltan}</b> para ${esc(s.etiqueta)} (${num(s.meta)}). ${e.dias_restantes ? `Quedan ${e.dias_restantes} días${s.por_dia ? (s.por_dia < 1 ? `: alcanza con uno cada ${Math.max(1, Math.round(1 / s.por_dia))} días` : `: son ${num(s.por_dia)} por día`) : ''}.` : 'El mes terminó.'} Tu comisión pasaría de ${plata(s.comision_hoy)} a ${plata(s.comision_al_llegar)}.`;
+    return `<section class="bloque escalon"><div class="bloque-cab"><h2>🎯 Tu próximo escalón</h2><span class="sello">${esc(e.etiqueta)} · ${plata(e.tarifa)} c/u</span></div>
+      <div class="metrica-fila"><span class="metrica-nombre">Socios nuevos de ${esc(nombreMes(e.mes))}</span><span class="metrica-valor"><b>${e.nuevos}</b>${s ? ' / ' + num(s.meta) : ''}</span></div>
+      <div class="medidor"><i class="${avance >= 100 ? 'bien' : avance >= 50 ? 'cerca' : 'lejos'}" style="width:${avance}%"></i></div>
+      <p class="aclara">${detalle} ${ritmo}</p></section>`;
+  }
+
   function bloqueNuevosPersona(p, mes) {
     const S = (p.nuevos_meses || []).slice(-9);
     if (!S.length) return '';
@@ -2018,6 +2040,28 @@ ${p.tareas_mes ? `<span class="uso-hoy">📋 Tareas del mes: ${p.tareas_mes.hech
     return `<section class="grupo"><h2>🎁 Reconocimientos para autorizar <span class="cuenta">${lista.length}</span></h2>${lista.map(fila).join('')}</section>`;
   }
 
+  // Coberturas y cambios de turno: son eventuales. Lo que se carga acá ajusta solo las horas de la liquidación del mes.
+  function bloqueCoberturas() {
+    const C = E.cob;
+    if (!C) return '';
+    const nombre = dni => (C.personas.find(p => p.dni === dni) || {}).nombre || '';
+    const opciones = (vacio) => (vacio ? '<option value="">Nadie (horas extra)</option>' : '<option value="">Elegí…</option>') + C.personas.map(p => `<option value="${esc(p.dni)}">${esc(p.nombre)}${tiene('admin') ? ' · ' + esc(SEDES[p.sede] || '') : ''}</option>`).join('');
+    const lista = C.coberturas.map(c => `<div class="fila-cob"><span><b>${esc(c.cubre)}</b> ${c.titular ? 'cubrió a <b>' + esc(c.titular) + '</b>' : 'hizo horas extra'} · ${ddmm(c.fecha)} · ${String(c.horas).replace('.', ',')} h · ${esc(c.motivo || '')}${c.titular && !c.descuenta ? ' · con goce' : ''}${c.nota ? ' · ' + esc(c.nota) : ''}</span>
+      <button class="chip" data-accion="cob-borrar" data-id="${esc(c.id)}">Quitar</button></div>`).join('');
+    return `<section class="grupo"><h2>🔁 Coberturas y cambios de turno <span class="cuenta">${C.coberturas.length}</span></h2>
+      <p class="bajada">Cuando alguien cubre a otra persona o cambia el horario por un día. Se suma a quien cubre y se descuenta a quien faltó, y la liquidación del mes se ajusta sola. Es eventual: no cambia el horario fijo de nadie.</p>
+      <form data-form="cob-guardar" class="liq-fila">
+        <label class="campo">Día<input name="fecha" type="date" value="${esc(C.hoy)}" required></label>
+        <label class="campo">Quién cubrió<select name="cubre" required>${opciones(false)}</select></label>
+        <label class="campo">A quién cubrió<select name="titular">${opciones(true)}</select></label>
+        <label class="campo">Horas<input name="horas" type="number" step="0.5" min="0.5" max="16" value="6" inputmode="decimal" required></label>
+        <label class="campo">Motivo<select name="motivo">${C.motivos.map(m => `<option>${esc(m)}</option>`).join('')}</select></label>
+        <label class="campo">Nota<input name="nota" maxlength="200" placeholder="Opcional"></label>
+        <label class="campo"><span><input name="goce" type="checkbox"> Se le paga igual a quien faltó</span></label>
+        <div class="botones"><button class="boton verde">Guardar cobertura</button></div></form>
+      ${lista ? `<div class="lista-cob">${lista}</div>` : '<div class="vacio">No hay coberturas cargadas este mes.</div>'}</section>`;
+  }
+
   function vistaSede() {
     if (E.personaDni) return vistaPersona();
     const selector = tiene('admin') ? `<div class="filtros">${Object.keys(SEDES).map(k => `<button class="chip" data-accion="sede-elegir" data-s="${k}" aria-pressed="${E.sedeElegida === k}">${SEDES[k]}</button>`).join('')}</div>` : '';
@@ -2027,6 +2071,7 @@ ${p.tareas_mes ? `<span class="uso-hoy">📋 Tareas del mes: ${p.tareas_mes.hech
     const aclaracion = '<p class="bajada">“Le quedan hoy” son las de hoy y las que arrastra de días anteriores. “Próximos días” son las del resto de la semana, que todavía no le tocan.</p>';
     const personas = S.personas.length ? aclaracion + `<div class="personas">${S.personas.map(p => `<div class="persona ${p.en_vivo ? 'vivo-' + esc(p.en_vivo.color) : ''}"><b>${esc(p.nombre)}</b><span class="turno">${esc(TURNOS[p.turno] || '')}</span>${p.en_vivo ? `<span class="en-vivo">${p.en_vivo.color === 'rojo' ? '🔴' : p.en_vivo.color === 'verde' ? '🟢' : '⚪'} ${esc(p.en_vivo.texto)}</span>` : ''}${p.uso_hoy && p.uso_hoy.con_senal ? `<span class="uso-hoy">Hoy: ${horas(p.uso_hoy.activo)} usando la app · ${horas(p.uso_hoy.completando)} completando</span>` : ''}
         <div class="cifras"><div class="${p.meta && p.hechas_hoy >= p.meta ? 'bien' : ''}"><strong>${p.hechas_hoy}${p.meta ? '/' + p.meta : ''}</strong><span>Hechas hoy${p.meta ? ' · meta' : ''}</span></div><div class="${p.pendientes_hoy > 15 ? 'mal' : ''}"><strong>${p.pendientes_hoy}</strong><span>Le quedan hoy</span></div><div><strong>${p.hechas_semana}</strong><span>Hechas esta semana</span></div><div><strong>${p.proximos_dias}</strong><span>Próximos días</span></div></div>
+        ${p.esperan_move ? `<span class="aclara">Además tiene ${p.esperan_move} ${p.esperan_move === 1 ? 'tarea que espera' : 'tareas que esperan'} a MOVE: no le cuentan como pendientes.</span>` : ''}
         ${p.atrasadas ? `<span class="aclara">De lo que le queda hoy, ${p.atrasadas === 1 ? '1 viene atrasada de días anteriores' : p.atrasadas + ' vienen atrasadas de días anteriores'}.</span>` : ''}
         <button class="chip ver-lista" data-accion="ver-persona" data-dni="${esc(p.dni)}">Ver su lista</button></div>`).join('')}</div>`
       : '<div class="vacio">No hay recepcionistas cargados en esta sede.</div>';
@@ -2051,6 +2096,7 @@ ${p.tareas_mes ? `<span class="uso-hoy">📋 Tareas del mes: ${p.tareas_mes.hech
       ${S.personas.some(p => p.en_vivo && p.en_vivo.color === 'rojo') ? `<div class="alerta-roja">🔴 Para mirar: ${S.personas.filter(p => p.en_vivo && p.en_vivo.color === 'rojo').map(p => esc(p.nombre.split(' ')[0])).join(', ')}</div>` : ''}
       ${bloqueBeneficios(S)}
       ${personas}
+      ${bloqueCoberturas()}
       ${bloqueVentasLargasSede(S)}
       ${bloqueVentas(S)}
       ${bloqueStock(S)}
@@ -2202,6 +2248,7 @@ ${p.tareas_mes ? `<span class="uso-hoy">📋 Tareas del mes: ${p.tareas_mes.hech
         if (!E.ultimaMarca) E.ultimaMarca = Date.now();
         saludarUnaVez();
         revisarAvisos();
+        cargarPaseSinLeer();
         const locales = {};
         (E.tareas || []).forEach(t => { if (t.resultado_local) locales[t.id] = t.resultado_local; });
         E.hoy = r.hoy;
@@ -2210,6 +2257,7 @@ ${p.tareas_mes ? `<span class="uso-hoy">📋 Tareas del mes: ${p.tareas_mes.hech
         E.persona = await cliente.llamar('tareas_de', { dni: E.personaDni });
       } else if (E.vista === 'sede') {
         E.sede = await cliente.llamar('sede', tiene('admin') ? { sede: E.sedeElegida } : {});
+        cliente.llamar('coberturas_ver', {}).then(c => { E.cob = c; if (E.vista === 'sede' && !E.personaDni) render(); }).catch(() => {});
       } else if (E.vista === 'mes') {
         E.rend = await cliente.llamar('rendimiento', Object.assign(E.rendMes ? { mes: E.rendMes } : {}, tiene('admin') ? { sede: cliente.sesion().sede } : {}));
         recordar(claveRend('mes'), E.rend);
@@ -2217,6 +2265,13 @@ ${p.tareas_mes ? `<span class="uso-hoy">📋 Tareas del mes: ${p.tareas_mes.hech
         cliente.llamar('cierres_ver').then(c => { E.cierres = c.cierres; E.cierresResumen = c.resumen; if (E.vista === 'rend' && !E.rendDni) render(); }).catch(() => {});
         E.rend = await cliente.llamar('rendimiento', Object.assign(E.rendMes ? { mes: E.rendMes } : {}, tiene('admin') ? { sede: E.sedeElegida } : {}));
         recordar(claveRend('rend'), E.rend);
+      } else if (E.vista === 'consultas') {
+        E.cons = await cliente.llamar('consultas_ver', tiene('admin') && E.sedeElegida ? { sede: E.sedeElegida } : {});
+      } else if (E.vista === 'pase') {
+        E.pase = await cliente.llamar('pase_ver', tiene('admin') && E.sedeElegida ? { sede: E.sedeElegida } : {});
+        E.paseSinLeer = E.pase.sin_leer;
+      } else if (E.vista === 'resumen') {
+        E.resumen = await cliente.llamar('resumen_semanal', E.resumenActual ? { actual: true } : {});
       } else if (E.vista === 'liq') {
         E.liq = await cliente.llamar('liquidacion_ver', E.liqMes ? { mes: E.liqMes } : {});
         E.liqMes = E.liq.mes;
@@ -2328,6 +2383,146 @@ ${p.tareas_mes ? `<span class="uso-hoy">📋 Tareas del mes: ${p.tareas_mes.hech
     try { mostrarFichajes(await cliente.llamar('fichajes_ver')); } catch (e) { /* sin conexión: se reintenta al minuto */ }
   }
 
+  // ---------- Consultas con seguimiento (embudo) ----------
+  const ESTADOS_CONSULTA = { abierta: 'Abierta', visita: 'Quedó en venir', prueba: 'Hizo la prueba', vendida: 'Se anotó', perdida: 'No siguió' };
+  const INTERES_TXT = { alto: 'interés alto', medio: 'interés medio', exploratorio: 'explorando' };
+
+  function vistaConsultas() {
+    const C = E.cons;
+    const selector = tiene('admin') ? `<div class="filtros">${Object.keys(SEDES).map(k => `<button class="chip" data-accion="cons-sede" data-s="${k}" aria-pressed="${(E.sedeElegida || C && C.sede) === k}">${SEDES[k]}</button>`).join('')}</div>` : '';
+    if (!C) return selector + '<div class="cargando">Cargando las consultas…</div>';
+    const em = C.embudo;
+    const pct = em.consultas ? Math.round(em.vendida / em.consultas * 100) : 0;
+    const dato = (n, v, sub) => `<div class="dato"><strong>${v}</strong><span>${esc(n)}</span>${sub ? `<em>${esc(sub)}</em>` : ''}</div>`;
+    const tarjeta = c => {
+      const abierta = ['abierta', 'visita', 'prueba'].indexOf(c.estado) >= 0;
+      return `<article class="tarjeta cons ${c.vencida ? 'vencida' : ''}"><div class="cabeza" style="display:grid;gap:2px;padding:12px 14px">
+          <span class="socio">${esc(c.nombre)} <span class="sello">${esc(ESTADOS_CONSULTA[c.estado] || c.estado)}</span></span>
+          <span class="profe">${esc(c.canal || '')} · ${esc(INTERES_TXT[c.interes] || c.interes || '')} · ${ddmm(c.fecha)}${c.quien ? ' · ' + esc(c.quien) : ''}${c.detalle ? ' · ' + esc(c.detalle) : ''}</span>
+          ${c.proximo_fecha ? `<span class="situacion">${c.vencida ? '⏰ Para hoy o atrasado' : 'Próximo paso'} · ${ddmm(c.proximo_fecha)}${c.proximo_paso ? ': ' + esc(c.proximo_paso) : ''}</span>` : ''}
+          ${c.nota ? `<span class="aclara">${esc(c.nota)}</span>` : ''}</div>
+        <details class="liq-dias"><summary>${abierta ? 'Actualizar' : 'Reabrir o corregir'}</summary>
+          <form data-form="cons-guardar" data-id="${esc(c.id)}" class="liq-fila">
+            <label class="campo">Cómo está<select name="estado">${Object.keys(ESTADOS_CONSULTA).map(k => `<option value="${k}"${k === c.estado ? ' selected' : ''}>${esc(ESTADOS_CONSULTA[k])}</option>`).join('')}</select></label>
+            <label class="campo">Próximo paso el<input name="fecha" type="date" value="${esc(c.proximo_fecha)}"></label>
+            <label class="campo">Qué hacer<input name="paso" maxlength="160" value="${esc(c.proximo_paso)}" placeholder="Ej.: confirmar la visita"></label>
+            <label class="campo">Nota<input name="nota" maxlength="300" value="${esc(c.nota)}"></label>
+            <div class="botones"><button class="boton verde">Guardar</button></div></form></details></article>`;
+    };
+    return `${selector}<h1 class="titulo">Consultas <span>·</span> ${esc(SEDES[C.sede] || '')}</h1>
+      <p class="bajada">Cada consulta que registrás sigue acá hasta que se anota o no sigue. El próximo paso aparece solo en tus tareas del día.</p>
+      <section class="bloque"><div class="datos">${dato('Consultas del mes', em.consultas)}${dato('Quedaron en venir', em.visita)}${dato('Hicieron la prueba', em.prueba)}${dato('Se anotaron', em.vendida, pct + '% de las consultas')}${dato('Para hoy', em.para_hoy, em.abiertas + ' abiertas')}</div></section>
+      ${C.consultas.length ? C.consultas.map(tarjeta).join('') : '<div class="vacio">No hay consultas registradas en los últimos 60 días.</div>'}
+      <p class="aclara">Las consultas se cargan con “Registrar mensaje, consulta o venta”. Acá solo se les da seguimiento.</p>`;
+  }
+
+  // ---------- Pase de turno ----------
+  function vistaPase() {
+    const P = E.pase;
+    if (!P) return '<div class="cargando">Cargando el pase de turno…</div>';
+    const lineas = t => esc(t).split('\n').filter(x => x.trim()).map(x => `<li>${x}</li>`).join('');
+    const bloque = (titulo, t) => (t ? `<div class="pase-bloque"><b>${titulo}</b><ul>${lineas(t)}</ul></div>` : '');
+    return `<h1 class="titulo">Pase de turno <span>·</span> ${esc(SEDES[P.sede] || '')}</h1>
+      <p class="bajada">Lo que le dejás a quien sigue: qué quedó pendiente, quién espera respuesta y qué novedades hay de sala o de caja.</p>
+      <section class="bloque"><div class="bloque-cab"><h2>Dejar un pase</h2></div>
+        <form data-form="pase-guardar">
+          <label class="campo">Qué quedó pendiente<textarea name="pendientes" rows="3" maxlength="700" placeholder="Una cosa por renglón"></textarea></label>
+          <label class="campo">Quién espera respuesta<textarea name="esperando" rows="3" maxlength="700" placeholder="Nombre y qué espera"></textarea></label>
+          <label class="campo">Novedades de sala o de caja<textarea name="novedades" rows="3" maxlength="700"></textarea></label>
+          <div class="botones"><button class="boton verde">Dejar el pase</button></div></form></section>
+      <section class="grupo"><h2>Últimos pases <span class="cuenta">${P.pases.length}</span></h2>
+        ${P.pases.length ? P.pases.map(p => `<article class="tarjeta pase ${p.leido ? '' : 'sin-leer'}"><div class="cabeza" style="display:grid;gap:4px;padding:12px 14px">
+          <span class="socio">${esc(p.nombre)} · ${ddmm(p.fecha)}${p.turno ? ' · ' + esc(TURNOS[p.turno] || '') : ''}${p.mio ? ' <span class="sello">el tuyo</span>' : ''}${!p.leido ? ' <span class="sello rojo">sin leer</span>' : ''}</span>
+          ${bloque('Pendiente', p.pendientes)}${bloque('Esperan respuesta', p.esperando)}${bloque('Novedades', p.novedades)}
+          <span class="profe">${p.leyeron ? 'Lo leyeron ' + p.leyeron : 'Todavía no lo leyó nadie'}</span></div>
+          ${p.leido ? '' : `<div class="fila-accion"><button class="boton verde" data-accion="pase-leido" data-id="${esc(p.id)}">Lo leí</button></div>`}</article>`).join('') : '<div class="vacio">Todavía no hay pases de turno en esta sede.</div>'}</section>`;
+  }
+
+  function bandaPase() {
+    if (!E.paseSinLeer) return '';
+    return `<div class="banda-pase">📝 Tenés ${E.paseSinLeer === 1 ? 'un pase de turno' : E.paseSinLeer + ' pases de turno'} sin leer <button class="chip" data-accion="vista" data-v="pase">Leer</button></div>`;
+  }
+
+  async function cargarPaseSinLeer() {
+    try {
+      const p = await cliente.llamar('pase_ver', {});
+      const antes = E.paseSinLeer;
+      E.paseSinLeer = p.sin_leer;
+      if (E.vista === 'hoy' && antes !== p.sin_leer) render();
+    } catch (e) { /* el pase es un extra: si falla, la pantalla sigue */ }
+  }
+
+  // ---------- Ranking entre sedes: el panel lateral de récords ----------
+  // Solo socios nuevos, escalones y récords: sin plata. Lo ven recepción, coordinación y administración, de todas las sedes.
+  const MEDALLAS = ['🥇', '🥈', '🥉'];
+  function veRanking() { return tiene('recepcion') || tiene('coordinador') || tiene('admin'); }
+
+  function botonRanking() {
+    if (!veRanking() || !cliente.sesion()) return '';
+    return `<button class="boton-ranking${DEMO ? ' con-cinta' : ''}" data-accion="rank-abrir" aria-label="Abrir el ranking de socios nuevos">🏆 <span>Ranking</span></button>`;
+  }
+
+  function panelRanking() {
+    if (!E.rankAbierto) return '';
+    const R = E.rank;
+    let cuerpo = '<div class="cargando">Armando el ranking…</div>';
+    if (R) {
+      const max = Math.max(1, ...R.personas.map(p => p.nuevos));
+      const num = n => String(Math.round(Number(n) * 10) / 10).replace('.', ',');
+      const fila = p => {
+        const dif = p.vs_mes_pasado;
+        const flecha = dif > 0 ? `<span class="rk-sube">▲ ${dif}</span>` : dif < 0 ? `<span class="rk-baja">▼ ${Math.abs(dif)}</span>` : '<span class="rk-igual">＝</span>';
+        const rec = p.bate_record ? `<span class="rk-record">🔥 ¡Récord nuevo! Su mejor mes era ${p.record.nuevos}</span>`
+          : p.record ? `<span class="rk-pie">Su récord: ${p.record.nuevos} (${esc(nombreMes(p.record.mes))}) · le faltan ${p.falta_record} para superarlo</span>` : '';
+        const esc2 = p.escalon && p.escalon.etiqueta ? `<span class="rk-escalon">${esc(p.escalon.etiqueta)}${p.escalon.siguiente ? ` · a ${p.escalon.siguiente.faltan} de ${esc(p.escalon.siguiente.etiqueta)}` : p.escalon.maximo ? ' · ¡máximo!' : ''}</span>` : '';
+        return `<li class="rk-fila${p.dni === R.mi_dni ? ' yo' : ''}"><div class="rk-cab"><span class="rk-puesto">${MEDALLAS[p.puesto - 1] || p.puesto}</span><b>${esc(p.nombre)}</b><span class="rk-sede">${esc(SEDES[p.sede] || '')}</span><span class="rk-n">${p.nuevos}</span></div>
+          <div class="medidor"><i class="${p.puesto === 1 ? 'bien' : 'cerca'}" style="width:${Math.round(p.nuevos / max * 100)}%"></i></div>
+          <div class="rk-datos">${flecha}<span class="rk-pie">vs. el mismo día del mes pasado (${p.mes_pasado_a_la_fecha})</span></div>
+          ${esc2}${rec}${p.mejor_dia ? `<span class="rk-pie">Mejor día: ${p.mejor_dia.n} el ${ddmm(p.mejor_dia.fecha)}</span>` : ''}</li>`;
+      };
+      const eq = R.equipo;
+      cuerpo = `<div class="rk-equipo"><b>${eq.nuevos}</b> socios nuevos entre todas las sedes${eq.record ? ` · mejor mes: ${eq.record.nuevos} (${esc(nombreMes(eq.record.mes))})` : ''}
+          <div class="rk-sedes">${Object.keys(eq.por_sede).map(k => `<span>${esc(SEDES[k] || k)}: <b>${eq.por_sede[k]}</b></span>`).join('')}</div></div>
+        ${R.personas.length ? `<ol class="rk-lista">${R.personas.map(fila).join('')}</ol>` : '<div class="vacio">Todavía no hay socios nuevos este mes.</div>'}
+        <p class="aclara">Cuenta los socios nuevos de cada caja de MOVE desde el día 1. No hay que vencer a nadie: la flecha compara con vos misma el mes pasado.</p>`;
+    }
+    return `<div class="rk-fondo" data-accion="rank-cerrar"></div><aside class="rk-panel" role="dialog" aria-label="Ranking de socios nuevos">
+      <div class="rk-tope"><h2>🏆 Socios nuevos · ${R ? esc(nombreMes(R.mes)) : ''}</h2><button class="chip" data-accion="rank-cerrar">Cerrar</button></div>${cuerpo}</aside>`;
+  }
+
+  async function abrirRanking() {
+    E.rankAbierto = true;
+    render();
+    try { E.rank = await cliente.llamar('ranking_ver', {}); } catch (e) { E.rankAbierto = false; falla(e); }
+    render();
+  }
+
+  // ---------- Resumen semanal para gerencia (administración) ----------
+  function vistaResumen() {
+    const R = E.resumen;
+    const chips = `<div class="filtros"><button class="chip" data-accion="resumen-semana" data-a="" aria-pressed="${!E.resumenActual}">Semana pasada</button><button class="chip" data-accion="resumen-semana" data-a="1" aria-pressed="${!!E.resumenActual}">Esta semana (en curso)</button></div>`;
+    if (!R) return chips + '<div class="cargando">Armando el resumen…</div>';
+    const dif = (a, b) => { const d = a - b; return d === 0 ? '＝' : (d > 0 ? '▲ ' : '▼ ') + Math.abs(d); };
+    const difP = (a, b) => (b ? (a >= b ? '▲ ' : '▼ ') + Math.abs(Math.round((a - b) / b * 100)) + '%' : '—');
+    const T = R.total;
+    const filas = R.sedes.map(s => `<tr><td><b>${esc(SEDES[s.sede] || s.sede)}</b></td><td class="num"><b>${s.nuevos}</b> <span class="profe">${dif(s.nuevos, s.nuevos_ant)}</span></td><td class="num">${s.renovaciones} <span class="profe">${dif(s.renovaciones, s.renovaciones_ant)}</span></td><td class="num">${s.largos}</td><td class="num">${plata(s.entro)} <span class="profe">${difP(s.entro, s.entro_ant)}</span></td><td class="num">${s.tareas_pct == null ? '—' : s.tareas_pct + '%'}</td><td class="num">${s.animo == null ? '—' : String(s.animo).replace('.', ',') + '/5'}</td><td class="num">${s.coberturas ? s.coberturas + ' (' + s.horas_cobertura + ' h)' : '—'}</td></tr>`).join('');
+    return `${chips}<h1 class="titulo">Resumen semanal</h1><p class="bajada">Del ${ddmm(R.desde)} al ${ddmm(R.hasta)}${R.en_curso ? ' · la semana todavía no terminó' : ''}. Las flechas comparan con la semana anterior.</p>
+      <section class="bloque"><div class="datos"><div class="dato"><strong>${T.nuevos}</strong><span>Socios nuevos</span><em>${dif(T.nuevos, T.nuevos_ant)} vs. semana anterior</em></div><div class="dato"><strong>${T.renovaciones}</strong><span>Renovaciones</span><em>${dif(T.renovaciones, T.renovaciones_ant)}</em></div><div class="dato"><strong>${T.largos}</strong><span>Planes de 3 meses o más</span></div><div class="dato"><strong>${plata(T.entro)}</strong><span>Entró en total</span><em>${difP(T.entro, T.entro_ant)}</em></div><div class="dato"><strong>${T.nuevos_mes}</strong><span>Nuevos en lo que va del mes</span></div></div></section>
+      <section class="bloque"><div class="bloque-cab"><h2>Por sede</h2></div><div class="envoltura-tabla"><table class="tabla compacta"><thead><tr><th>Sede</th><th>Nuevos</th><th>Renov.</th><th>3 meses+</th><th>Entró</th><th>Tareas</th><th>Ánimo</th><th>Coberturas</th></tr></thead><tbody>${filas}</tbody></table></div></section>
+      ${R.destacados.length ? `<section class="bloque"><div class="bloque-cab"><h2>🏅 Más socios nuevos de la semana</h2></div>${R.destacados.map((d, i) => `<div class="fila-cob"><span>${MEDALLAS[i]} <b>${esc(d.nombre)}</b> · ${esc(SEDES[d.sede] || '')}</span><b>${d.nuevos}</b></div>`).join('')}</section>` : ''}
+      <div class="botones"><button class="boton verde" data-accion="resumen-copiar">Copiar el resumen para mandarlo</button></div>
+      <p class="aclara">Sale de las cajas de MOVE, de las tareas hechas y de los cierres de turno. Las tareas son las del equipo de recepción de cada sede.</p>`;
+  }
+
+  function textoResumen(R) {
+    const mil = n => '$' + Math.round(n).toLocaleString('es-AR');
+    const l = [`Resumen semanal The Move Club · ${ddmm(R.desde)} al ${ddmm(R.hasta)}`, '',
+      `Socios nuevos: ${R.total.nuevos} (semana anterior ${R.total.nuevos_ant})`, `Renovaciones: ${R.total.renovaciones}`, `Planes de 3 meses o más: ${R.total.largos}`, `Entró: ${mil(R.total.entro)}`, '', 'Por sede:'];
+    R.sedes.forEach(s => l.push(`• ${SEDES[s.sede] || s.sede}: ${s.nuevos} nuevos, ${s.renovaciones} renovaciones, ${mil(s.entro)}${s.tareas_pct == null ? '' : ', tareas ' + s.tareas_pct + '%'}${s.animo == null ? '' : ', ánimo ' + String(s.animo).replace('.', ',') + '/5'}${s.coberturas ? ', ' + s.coberturas + ' coberturas' : ''}`));
+    if (R.destacados.length) { l.push('', 'Más socios nuevos:'); R.destacados.forEach((d, i) => l.push(`${i + 1}. ${d.nombre} (${SEDES[d.sede] || ''}): ${d.nuevos}`)); }
+    return l.join('\n');
+  }
+
   function render() {
     const s = cliente.sesion();
     if (!s) { app.innerHTML = vistaLogin(); return; }
@@ -2337,15 +2532,18 @@ ${p.tareas_mes ? `<span class="uso-hoy">📋 Tareas del mes: ${p.tareas_mes.hech
     const cuerpo = E.vista === 'hoy' ? vistaHoy() : E.vista === 'sede' ? vistaSede() : E.vista === 'admin' ? vistaAdmin() : E.vista === 'mes' ? vistaMes() : E.vista === 'rend' ? vistaRendimiento()
       : E.vista === 'reservas' ? vistaReservas()
       : E.vista === 'liq' ? vistaLiquidacion()
+      : E.vista === 'resumen' ? vistaResumen()
+      : E.vista === 'consultas' ? vistaConsultas()
+      : E.vista === 'pase' ? vistaPase()
       : E.vista === 'chat' ? vistaChat()
       : E.vista === 'planes' ? vistaPlanes() : E.vista === 'profes' ? vistaProfes() : E.vista === 'pmes' ? vistaMesProfe()
       : E.vista === 'phor' ? (E.planes ? vistaAgendaEquipo(true) : '<div class="cargando">Cargando…</div>')
       : E.vista === 'pliq' ? (E.planes ? `<h1 class="titulo">${tiene('admin') ? 'Comisiones y tareas del mes' : 'Tareas del mes'} <span>·</span> profes</h1>${vistaTareasMesCoord()}${tablaComisiones()}` : '<div class="cargando">Cargando…</div>')
       : '<div class="vacio">Tu usuario no tiene ninguna vista asignada. Avisale a Emanuel.</div>';
-    const sinDatos = { hoy: !E.tareas, sede: E.personaDni ? !E.persona : !E.sede, mes: !E.rend, rend: !E.rend, admin: !E.usuarios, reservas: !E.ocupacion, liq: !E.liq, chat: !E.chat, planes: !E.planes, profes: !E.planes, pmes: !E.planes, phor: !E.planes, pliq: !E.planes }[E.vista];
+    const sinDatos = { hoy: !E.tareas, sede: E.personaDni ? !E.persona : !E.sede, mes: !E.rend, rend: !E.rend, admin: !E.usuarios, reservas: !E.ocupacion, liq: !E.liq, resumen: !E.resumen, consultas: !E.cons, pase: !E.pase, chat: !E.chat, planes: !E.planes, profes: !E.planes, pmes: !E.planes, phor: !E.planes, pliq: !E.planes }[E.vista];
     const mostrar = E.errorCarga && sinDatos ? `<div class="vacio" style="margin-top:18px"><p>${esc(E.errorCarga)}</p><p>La pantalla vuelve a intentarlo sola. Tus marcas no se pierden.</p><button class="boton" data-accion="reintentar">Reintentar ahora</button></div>` : cuerpo;
-    const bandas = E.vista === 'hoy' ? bandaFichajes() + bandaReservas() : '';
-    app.innerHTML = encabezado() + `<main class="contenedor">${bandas}${mostrar}</main>` + (E.vista === 'hoy' && turnoTerminando() ? `<button class="cerrar-app-fijo${DEMO ? ' con-cinta' : ''}" data-accion="cerrar-app">🚪 ${E.dia && E.dia.cierre_hecho ? 'Listo por hoy' : 'Se termina tu turno'}: cerrá la app antes de irte</button>` : '') + (DEMO ? '<div class="cinta-practica">Modo práctica · datos inventados</div>' : '');
+    const bandas = E.vista === 'hoy' ? bandaPase() + bandaFichajes() + bandaReservas() : '';
+    app.innerHTML = encabezado() + `<main class="contenedor">${bandas}${mostrar}</main>` + (E.vista === 'hoy' && turnoTerminando() ? `<button class="cerrar-app-fijo${DEMO ? ' con-cinta' : ''}" data-accion="cerrar-app">🚪 ${E.dia && E.dia.cierre_hecho ? 'Listo por hoy' : 'Se termina tu turno'}: cerrá la app antes de irte</button>` : '') + (DEMO ? '<div class="cinta-practica">Modo práctica · datos inventados</div>' : '') + botonRanking() + panelRanking();
     const abierto = app.querySelector('.marca-form select');
     if (abierto && !E.errorForm) abierto.focus({ preventScroll: true });
     chatDespuesDeRender();
@@ -2681,6 +2879,8 @@ ${p.tareas_mes ? `<span class="uso-hoy">📋 Tareas del mes: ${p.tareas_mes.hech
       <section class="bloque"><div class="bloque-cab"><h2>${admin ? 'Liquidación del mes' : 'Mis ingresos del mes'}</h2><span class="sello bien">${liqPlata(l.total)}</span></div>
         <table class="tabla compacta liq-resumen"><tbody>
           ${filaC(`Horas: ${liqNum(l.horas)} h × ${liqPlata(l.valor_hora)}`, liqPlata(l.base))}
+          ${l.ajuste_horas ? filaC(`<span class="profe">Incluye ${l.ajuste_horas > 0 ? '+' : ''}${liqNum(l.ajuste_horas)} h por coberturas (planilla: ${liqNum(l.horas_planilla)} h)</span>`, '', 'liq-aparte') : ''}
+          ${(p.coberturas || []).map(c => filaC(`<span class="profe">${ddmm(c.fecha)} · ${c.rol === 'cubrio' ? 'Cubriste a ' + esc(c.con || 'otra persona') + ' · +' : (c.con ? esc(c.con) + ' te cubrió · ' + (c.descuenta ? '−' : 'con goce, ') : 'Cambio · ' + (c.descuenta ? '−' : ''))}${liqNum(c.horas)} h</span>`, '', 'liq-aparte')).join('')}
           ${filaC(`Comisión por ingresos nuevos${l.comision_manual ? ' (cargada a mano)' : l.tramo != null ? ` · ${l.nuevos} × ${liqPlata(l.tarifa)} · ${esc(l.etiqueta)}` : ''}`, liqPlata(l.comision))}
           ${dif ? filaC(`<span class="profe">Con la regla de objetivos daría ${liqPlata(l.comision_calculada)}</span>`, '', 'liq-aparte') : ''}
           ${extras}
@@ -2807,6 +3007,15 @@ ${p.tareas_mes ? `<span class="uso-hoy">📋 Tareas del mes: ${p.tareas_mes.hech
       if (tarifas.some(x => x === '')) { aviso('Completá la plata por ingreso nuevo de los 4 tramos.', true); return; }
       btn.disabled = true;
       try { await cliente.llamar('liquidacion_config_guardar', { mes: form.dataset.mes, tarifas, metas }); aviso('Objetivos y tarifas guardados.'); cargarVista(); } catch (e) { btn.disabled = false; falla(e); }
+    } else if (tipo === 'cons-guardar') {
+      btn.disabled = true;
+      try { await cliente.llamar('consulta_actualizar', { id: form.dataset.id, estado: f.get('estado'), proximo_fecha: f.get('fecha') || '', proximo_paso: f.get('paso') || '', nota: f.get('nota') || '' }); aviso('Consulta actualizada.'); cargarVista(); } catch (e) { btn.disabled = false; falla(e); }
+    } else if (tipo === 'pase-guardar') {
+      btn.disabled = true;
+      try { await cliente.llamar('pase_guardar', { pendientes: f.get('pendientes') || '', esperando: f.get('esperando') || '', novedades: f.get('novedades') || '' }); aviso('Pase de turno guardado.'); form.reset(); cargarVista(); } catch (e) { btn.disabled = false; falla(e); }
+    } else if (tipo === 'cob-guardar') {
+      btn.disabled = true;
+      try { await cliente.llamar('cobertura_guardar', { fecha: f.get('fecha'), cubre_dni: f.get('cubre'), titular_dni: f.get('titular') || '', horas: Number(f.get('horas')), motivo: f.get('motivo'), nota: f.get('nota') || '', descuenta: !f.get('goce') }); aviso('Cobertura guardada: la liquidación del mes ya se ajustó.'); cargarVista(); } catch (e) { btn.disabled = false; falla(e); }
     } else if (tipo === 'liq-horas') {
       btn.disabled = true;
       try { await cliente.llamar('liquidacion_horas_guardar', { dni: form.dataset.dni, dias: [0, 1, 2, 3, 4, 5, 6].map(i => f.get('d' + i) || 0) }); aviso('Horas por día guardadas.'); cargarVista(); } catch (e) { btn.disabled = false; falla(e); }
@@ -3118,6 +3327,23 @@ ${p.tareas_mes ? `<span class="uso-hoy">📋 Tareas del mes: ${p.tareas_mes.hech
     else if (a === 'rend-volver') { E.rendDni = null; render(); }
     else if (a === 'liq-mes') { E.liqMes = el.dataset.m; E.liq = null; E.liqBorrador = null; render(); cargarVista(); }
     else if (a === 'liq-persona') { E.liqDni = el.dataset.dni; E.liqBorrador = null; render(); window.scrollTo(0, 0); }
+    else if (a === 'cons-sede') { E.sedeElegida = el.dataset.s; E.cons = null; render(); cargarVista(); }
+    else if (a === 'pase-leido') { cliente.llamar('pase_leido', { id: el.dataset.id }).then(() => { cargarVista(); }).catch(falla); }
+    else if (a === 'hice-en-move') {
+      const t = (E.tareas || []).find(x => x.id === el.dataset.id);
+      if (!t) return;
+      el.disabled = true;
+      cliente.marcar({ tarea_id: t.id, abierta_en: new Date().toISOString(), canal: 'SIN CONTACTO', resultado: 'CORREGIDO', fecha: '', detalle: '' }).then(r => {
+        if (r.descartadas && r.descartadas.length) { aviso(PulsoApi.mensaje(r.descartadas[0].error), true); el.disabled = false; return; }
+        t.estado = 'hecha'; t.resultado_local = 'CORREGIDO'; render(); aviso('Listo: MOVE lo confirma mañana.'); E.ultimaMarca = Date.now(); revisarLogros();
+        cliente.llamar('mi_dia').then(d => { E.dia = d; if (!E.abierta) render(); }).catch(() => {});
+      }).catch(e => { el.disabled = false; falla(e); });
+    }
+    else if (a === 'rank-abrir') { abrirRanking(); }
+    else if (a === 'rank-cerrar') { E.rankAbierto = false; render(); }
+    else if (a === 'resumen-semana') { E.resumenActual = !!el.dataset.a; E.resumen = null; render(); cargarVista(); }
+    else if (a === 'resumen-copiar') { try { navigator.clipboard.writeText(textoResumen(E.resumen)).then(() => aviso('Resumen copiado: pegalo donde lo quieras mandar.')); } catch (e) { aviso('No se pudo copiar.', true); } }
+    else if (a === 'cob-borrar') { cliente.llamar('cobertura_borrar', { id: el.dataset.id }).then(() => { aviso('Cobertura quitada.'); cargarVista(); }).catch(falla); }
     else if (a === 'liq-volver') { E.liqDni = null; E.liqBorrador = null; render(); }
     else if (a === 'liq-extra-mas' || a === 'liq-extra-menos') {
       const form = el.closest('form');
