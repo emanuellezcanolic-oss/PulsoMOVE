@@ -74,36 +74,47 @@ function planilla() {
 }
 
 // Repositorio sobre la planilla: filas como objetos, todo como texto.
+// Velocidad (13/11/2026): dentro de un mismo pedido cada hoja se lee de Google una sola vez. Antes, la pestaña Profes
+// de coordinación leía 91 veces (la misma hoja por cada profe) y tardaba 5 a 10 segundos. Lo leído se guarda como
+// valores y cada leer() arma objetos nuevos, así nadie modifica sin querer lo que lee otro; escribir y agregar lo olvidan.
 function repoHojas() {
   const libro = planilla();
+  const hojas = {};
+  const valores = {};
+  const buscarHoja = nombre => (nombre in hojas ? hojas[nombre] : (hojas[nombre] = libro.getSheetByName(nombre)));
   const hoja = nombre => {
     if (!COLUMNAS[nombre]) throw new Error('Hoja desconocida: ' + nombre);
-    let h = libro.getSheetByName(nombre);
+    let h = buscarHoja(nombre);
     if (!h) {   // hojas agregadas después de la instalación
       h = libro.insertSheet(nombre);
       h.getRange(1, 1, 1, COLUMNAS[nombre].length).setValues([COLUMNAS[nombre]]).setFontWeight('bold');
       h.getRange(1, 1, h.getMaxRows(), COLUMNAS[nombre].length).setNumberFormat('@');
       h.setFrozenRows(1);
+      hojas[nombre] = h;
     }
     return h;
+  };
+  const leerValores = nombre => {
+    if (nombre in valores) return valores[nombre];
+    const h = buscarHoja(nombre);
+    const n = h ? h.getLastRow() - 1 : 0;
+    valores[nombre] = n < 1 ? [] : h.getRange(2, 1, n, COLUMNAS[nombre].length).getDisplayValues();
+    return valores[nombre];
   };
   const aFilas = (nombre, objetos) => objetos.map(o => COLUMNAS[nombre].map(c => (o[c] == null ? '' : String(o[c]))));
   return {
     // Las lecturas no esperan turno: no crean hojas, y lo que falta todavía se lee como vacío.
     leer: function (nombre) {
       if (!COLUMNAS[nombre]) throw new Error('Hoja desconocida: ' + nombre);
-      const h = libro.getSheetByName(nombre);
-      if (!h) return [];
-      const n = h.getLastRow() - 1;
-      if (n < 1) return [];
       const cols = COLUMNAS[nombre];
-      return h.getRange(2, 1, n, cols.length).getDisplayValues().map(fila => {
+      return leerValores(nombre).map(fila => {
         const o = {};
         cols.forEach((c, i) => { o[c] = fila[i]; });
         return o;
       });
     },
     escribir: function (nombre, objetos) {
+      delete valores[nombre];
       const h = hoja(nombre);
       const cols = COLUMNAS[nombre].length;
       const habia = h.getLastRow() - 1;
@@ -113,11 +124,13 @@ function repoHojas() {
       if (habia > objetos.length) h.getRange(2 + objetos.length, 1, habia - objetos.length, cols).clearContent();
     },
     agregar: function (nombre, objeto) {
+      delete valores[nombre];
       const h = hoja(nombre);
       h.getRange(h.getLastRow() + 1, 1, 1, COLUMNAS[nombre].length).setNumberFormat('@').setValues(aFilas(nombre, [objeto]));
     },
     // Agrega sin turno: no pisa aunque haya otro escribiendo.
     anexar: function (nombre, objeto) {
+      delete valores[nombre];
       hoja(nombre).appendRow(aFilas(nombre, [objeto])[0]);
     },
   };

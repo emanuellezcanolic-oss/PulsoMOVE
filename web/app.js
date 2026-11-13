@@ -2157,9 +2157,10 @@ ${p.tareas_mes ? `<span class="uso-hoy">📋 Tareas del mes: ${p.tareas_mes.hech
     E.errorCarga = '';
     try {
       if (E.vista === 'hoy') {
-        const r = await cliente.llamar('mis_tareas', E.adelantar ? { adelantar: true } : {});
+        // los dos pedidos a la vez: antes uno esperaba al otro
+        const [r, dia] = await Promise.all([cliente.llamar('mis_tareas', E.adelantar ? { adelantar: true } : {}), cliente.llamar('mi_dia')]);
         E.paraAdelantar = r.para_adelantar || 0;
-        E.dia = await cliente.llamar('mi_dia');
+        E.dia = dia;
         actualizarRoles(E.dia.roles);
         if (E.dia.cartel && !E.dia.cartel.visto) cartelInicio(E.dia.cartel.clave);
         if (!E.ultimaMarca) E.ultimaMarca = Date.now();
@@ -2175,9 +2176,11 @@ ${p.tareas_mes ? `<span class="uso-hoy">📋 Tareas del mes: ${p.tareas_mes.hech
         E.sede = await cliente.llamar('sede', tiene('admin') ? { sede: E.sedeElegida } : {});
       } else if (E.vista === 'mes') {
         E.rend = await cliente.llamar('rendimiento', Object.assign(E.rendMes ? { mes: E.rendMes } : {}, tiene('admin') ? { sede: cliente.sesion().sede } : {}));
+        recordar(claveRend('mes'), E.rend);
       } else if (E.vista === 'rend') {
         cliente.llamar('cierres_ver').then(c => { E.cierres = c.cierres; E.cierresResumen = c.resumen; if (E.vista === 'rend' && !E.rendDni) render(); }).catch(() => {});
         E.rend = await cliente.llamar('rendimiento', Object.assign(E.rendMes ? { mes: E.rendMes } : {}, tiene('admin') ? { sede: E.sedeElegida } : {}));
+        recordar(claveRend('rend'), E.rend);
       } else if (E.vista === 'liq') {
         E.liq = await cliente.llamar('liquidacion_ver', E.liqMes ? { mes: E.liqMes } : {});
         E.liqMes = E.liq.mes;
@@ -2188,7 +2191,9 @@ ${p.tareas_mes ? `<span class="uso-hoy">📋 Tareas del mes: ${p.tareas_mes.hech
         E.ocupacion = await cliente.llamar('ocupacion_ver', tiene('admin') || tiene('coordinador') ? { sede: E.sedeElegida } : {});
       } else if (E.vista === 'planes' || E.vista === 'profes' || E.vista === 'pmes' || E.vista === 'phor' || E.vista === 'pliq') {
         if (E.vista === 'profes') cliente.llamar('profes_ver', tiene('admin') ? { sede: E.sedeElegida } : {}).then(c => { E.profes = c.filas; if (E.vista === 'profes' && !E.profeVer && !E.agendaVer) render(); }).catch(() => {});
-        E.planes = await cliente.llamar('profe_tareas', ['profes', 'phor', 'pliq'].indexOf(E.vista) >= 0 && tiene('admin') ? { sede: E.sedeElegida } : {});
+        const vistaPlanes = E.vista;
+        E.planes = await cliente.llamar('profe_tareas', ['profes', 'phor', 'pliq'].indexOf(vistaPlanes) >= 0 && tiene('admin') ? { sede: E.sedeElegida } : {});
+        recordar(clavePlanes(vistaPlanes), E.planes);
         if (E.vista === 'planes') programarConsejos();
       } else if (E.vista === 'admin') {
         E.usuarios = await cliente.llamar('usuarios_listar');
@@ -2212,16 +2217,22 @@ ${p.tareas_mes ? `<span class="uso-hoy">📋 Tareas del mes: ${p.tareas_mes.hech
     push(E.dia.saludo, primero ? primero.texto : '');
   }
 
+  // Velocidad (13/11/2026): al volver a una pestaña se muestra al instante lo último que se cargó y se actualiza por detrás.
+  const MEMORIA = {};
+  const clavePlanes = v => (['profes', 'phor', 'pliq'].indexOf(v) >= 0 ? 'equipo|' + (tiene('admin') ? E.sedeElegida : '') : 'mio');
+  const claveRend = v => v + '|' + (E.rendMes || '') + '|' + (tiene('admin') ? E.sedeElegida : '');
+  function recordar(clave, dato) { if (dato) MEMORIA[clave] = dato; }
+
   function irA(vista) {
     E.vista = vista;
     E.chatAbierta = null; E.chatConv = null; E.chatNuevo = false; E.chatSumar = false; E.chatBorrador = '';
     E.abierta = null;
     E.personaDni = null;
     E.persona = null;
-    E.rend = null;
+    E.rend = MEMORIA[claveRend(vista)] || null;
     E.rendDni = null;
     E.liqDni = null; E.liqBorrador = null;
-    E.planes = null;
+    E.planes = MEMORIA[clavePlanes(vista)] || null;
     E.profeVer = null; E.agendaVer = false; E.tmesVer = false;
     render();
     cargarVista();
