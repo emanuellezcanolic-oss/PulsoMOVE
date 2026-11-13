@@ -990,6 +990,19 @@
       <button class="boton claro" data-accion="feriado-resp" data-f="${f.fecha}" data-r="no">No: cerrar sin reordenar</button></div></div></div>`).join('');
   }
 
+  // Quiénes trabajan los sábados: coordinación los tilda por sede
+  function bloqueRotacion(A, sedes) {
+    return `<div class="rotacion-sedes">${sedes.map(k => {
+      const rot = (A.rotaciones || {})[k] || [];
+      const edita = A.editables.indexOf(k) >= 0;
+      const todos = profesDeSede(A, k);
+      rot.forEach(n => { if (!todos.some(x => mismoN(x, n))) todos.push(n); });
+      return `<div class="rotacion-sede" data-sede="${k}"><b>${esc(SEDES[k])}</b><span class="aclara">${(A.rotacion_elegida || {})[k] ? 'Elegido por coordinación' : 'Automático: los que están de lunes a viernes'}</span>
+        <div class="tildes">${todos.map(n => `<label class="tilde"><input type="checkbox" data-rot="${esc(n)}" ${rot.some(x => mismoN(x, n)) ? 'checked' : ''} ${edita ? '' : 'disabled'}> ${esc(n)}</label>`).join('')}</div>
+        ${edita ? `<button class="boton claro" data-accion="rotacion-guardar" data-s="${k}">Guardar quiénes trabajan en ${esc(SEDES[k])}</button>` : ''}</div>`;
+    }).join('')}</div>`;
+  }
+
   // Sábados por mes de cada uno (lo cerrado por feriado no cuenta): después se usa para las horas
   function tablaSabadosMes(A, sedes) {
     const hoy = E.planes.hoy;
@@ -1065,6 +1078,9 @@
       <section class="grupo"><h2>🗓️ Quién trabaja cada sábado</h2>
         <p class="intro-grupo">Se arma solo: en cada sede rotan los profes de turno (mañana, tarde y noche; en Lago Puelo, los dos), y cada sábado le toca a quien hace más tiempo que no va. Se completa todas las mañanas para los próximos 4 meses. Podés cambiar cualquier sábado: se guarda al elegir. Si un sábado es feriado, te preguntamos si se trabaja.</p>
         ${preguntaFeriado(A)}
+        <h3 class="sub-coord">¿Quiénes trabajan los sábados?</h3>
+        <p class="intro-grupo">Solo los profes que rotan los sábados (las kinesiólogas no). Tildá y guardá: los sábados que había armado la rotación desde la semana que viene se rearman con los tildados. Lo que cargaste a mano no se toca.</p>
+        ${bloqueRotacion(A, sedes)}
         ${tabla}
         ${tablaSabadosMes(A, sedes)}</section>
       <section class="grupo"><h2>🕒 Horario de cada uno</h2>
@@ -2763,6 +2779,19 @@
         E.planes = await cliente.llamar('profe_tareas', E.sedeElegida ? { sede: E.sedeElegida } : {});
         render();
         aviso(`✅ Guardado el horario de ${profe}${r ? ': ' + r.horas_semana + ' h por semana' : ''}.`);
+      } catch (e) { el.disabled = false; aviso(PulsoApi.mensaje(e.codigo || e.message), true); }
+    }
+    else if (a === 'rotacion-guardar') {
+      const sede = el.dataset.s;
+      const caja = el.closest('.rotacion-sede');
+      const profes = [...caja.querySelectorAll('[data-rot]:checked')].map(x => x.dataset.rot);
+      if (profes.length < 2 && !confirm(`Con ${profes.length ? 'una sola persona' : 'nadie'} no hay rotación en ${SEDES[sede]}: los sábados vacíos quedan para cargar a mano. ¿Guardar igual?`)) return;
+      el.disabled = true;
+      try {
+        const r = await cliente.llamar('profe_rotacion_guardar', { sede, profes });
+        E.planes = await cliente.llamar('profe_tareas', E.sedeElegida ? { sede: E.sedeElegida } : {});
+        render();
+        aviso(`✅ En ${SEDES[sede]} trabajan los sábados: ${r.rotacion.map(n => n.split(' ')[0]).join(', ') || 'nadie'}.${r.rearmados ? ` Rearmamos ${r.rearmados} sábados.` : ''}`);
       } catch (e) { el.disabled = false; aviso(PulsoApi.mensaje(e.codigo || e.message), true); }
     }
     else if (a === 'sabado-rotar') {

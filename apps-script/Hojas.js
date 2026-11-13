@@ -45,6 +45,8 @@ const COLUMNAS = {
   profe_sabados: ['fecha', 'sede', 'profe', 'profe_dni', 'nota', 'por_dni', 'en'],
   // Sábados feriados: si se trabaja o no (lo contesta coordinación)
   profe_feriados: ['fecha', 'nombre', 'se_trabaja', 'borrado', 'por_dni', 'en'],
+  // Quiénes trabajan los sábados en cada sede (tildados por coordinación; profes separados por |)
+  profe_rotacion: ['sede', 'profes', 'por_dni', 'en'],
   profe_coord: ['fecha', 'profe', 'profe_dni', 'sede', 'datos'],
   profe_puntajes: ['fecha', 'profe', 'profe_dni', 'socios', 'puntaje', 'gestion', 'diagnostico', 'metodologia', 'custom', 'rpe'],
   // Días en que el profe terminó todo lo del día, y cuánto tardó desde la primera marca

@@ -698,3 +698,9 @@ th.mes-actual, td.mes-actual { background: #eef6f2; }
 .liq-dias summary { cursor: pointer; font-weight: 700; font-size: 13px; padding: 6px 0; }
 .tabla tfoot td { border-top: 2px solid var(--tinta); border-bottom: 0; }
 .tabla td.actual { background: var(--verde-claro); }
+
+.rotacion-sedes { display: grid; grid-template-columns: repeat(auto-fit, minmax(230px, 1fr)); gap: 10px; margin: 8px 0 14px; }
+.rotacion-sede { border: 1px solid #dde4ea; border-radius: 12px; padding: 10px 12px; background: #fff; display: flex; flex-direction: column; gap: 6px; }
+.tildes { display: flex; flex-direction: column; gap: 4px; }
+.tilde { display: flex; gap: 8px; align-items: center; cursor: pointer; }
+.tilde input { width: 18px; height: 18px; }

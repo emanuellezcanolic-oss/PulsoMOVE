@@ -954,7 +954,8 @@ function agendaEquipo(usuario, usuarios, deps, hoy, sede) {
     sabados: sabadosVista(deps.repo.leer('profe_sabados'), sumarDiasProfe(hoy, -SABADOS_ATRAS), sumarDiasProfe(hoy, SABADOS_ADELANTE), ''),
     profes: profesDelEquipo(usuarios), editables: editables, sede: sede || '',
     feriados: feriadosVista(deps, sumarDiasProfe(hoy, -SABADOS_ATRAS), sumarDiasProfe(hoy, SABADOS_ADELANTE)),
-    rotaciones: SEDES.reduce((o, k) => { o[k] = rotacionDeSede(deps.repo.leer('profe_horarios').map(filaHorario), k); return o; }, {}),
+    rotaciones: SEDES.reduce((o, k) => { o[k] = rotacionActual(deps, k); return o; }, {}),
+    rotacion_elegida: SEDES.reduce((o, k) => { o[k] = !!rotacionElegida(deps, k); return o; }, {}),
     por_mes: sabadosPorMes(deps.repo.leer('profe_sabados')),
     pregunta_feriado: feriadosVista(deps, hoy, sumarDiasProfe(hoy, DIAS_PREGUNTA_FERIADO)).filter(f => !f.se_trabaja),
   };
@@ -1022,7 +1023,13 @@ const FERIADOS_SABADO = [   // nacionales que caen sábado; coordinación puede 
 ];
 const DIAS_PREGUNTA_FERIADO = 45;   // desde cuándo se le pregunta a coordinación
 
-function rotacionDeSede(horarios, sede) {
+// Quiénes trabajan los sábados: los que coordinación tildó en el panel; si nunca tildó, los que están en la sede de lunes a viernes.
+// Siempre en orden de turno (mañana, tarde, noche) según el horario.
+function rotacionDeSede(horarios, sede, elegidos) {
+  if (elegidos) {
+    const inicio = n => horarios.filter(h => h.sede === sede && mismoProfe(h.profe, n)).map(h => h.desde).sort()[0] || '99:99';
+    return elegidos.slice().sort((a, b) => (inicio(a) < inicio(b) ? -1 : inicio(a) > inicio(b) ? 1 : elegidos.indexOf(a) - elegidos.indexOf(b)));
+  }
   const porProfe = {};
   horarios.filter(h => h.sede === sede).forEach(h => {
     const k = normNombre(h.profe);
@@ -1034,6 +1041,35 @@ function rotacionDeSede(horarios, sede) {
     .sort((a, b) => (a.desde < b.desde ? -1 : 1)).map(p => p.profe);
 }
 
+function rotacionElegida(deps, sede) {
+  const f = deps.repo.leer('profe_rotacion').find(r => r.sede === sede);
+  return f ? String(f.profes || '').split('|').map(x => x.trim()).filter(Boolean) : null;
+}
+function rotacionActual(deps, sede) {
+  return rotacionDeSede(deps.repo.leer('profe_horarios').map(filaHorario), sede, rotacionElegida(deps, sede));
+}
+
+// Coordinación tilda quiénes trabajan los sábados en su sede
+function profeRotacionGuardar(req, deps) {
+  const { usuario } = sesion(req, deps);
+  const sede = texto(req.sede);
+  sedeEditable(usuario, sede);
+  if (!Array.isArray(req.profes) || req.profes.length > 12) falla('datos_invalidos');
+  const profes = [];
+  req.profes.map(x => texto(x).slice(0, 80)).filter(Boolean).forEach(n => { if (!profes.some(p => mismoProfe(p, n))) profes.push(n); });
+  const filas = deps.repo.leer('profe_rotacion').filter(r => r.sede !== sede);
+  filas.push({ sede, profes: profes.join('|'), por_dni: usuario.dni, en: new Date(deps.ahora()).toISOString() });
+  deps.repo.escribir('profe_rotacion', filas);
+  // lo que armó la rotación desde la semana que viene se vuelve a armar con los nuevos (lo cargado a mano no se toca)
+  const hoy = deps.hoy();
+  const desde = sumarDiasProfe(hoy, 7);
+  const sab = deps.repo.leer('profe_sabados');
+  const quedan = sab.filter(x => !(x.sede === sede && x.fecha >= desde && x.por_dni === 'rotacion'));
+  if (quedan.length !== sab.length) deps.repo.escribir('profe_sabados', quedan);
+  const r = profeSabadosGenerar({ token: req.token, sede: sede }, deps);
+  return { sede, rotacion: rotacionActual(deps, sede), rearmados: r.nuevos[sede] || 0 };
+}
+
 function feriadosVista(deps, desde, hasta) {
   const cargados = deps.repo.leer('profe_feriados');
   const out = {};
@@ -1043,8 +1079,7 @@ function feriadosVista(deps, desde, hasta) {
 }
 
 // Completa los sábados vacíos de la sede hasta "hasta" (no toca lo que ya está cargado)
-function generarSabados(filas, horarios, feriados, sede, hoy, hasta) {
-  const rot = rotacionDeSede(horarios, sede);
+function generarSabados(filas, rot, feriados, sede, hoy, hasta) {
   if (rot.length < 2) return [];
   const cerrado = {};
   feriados.forEach(f => { if (f.se_trabaja === 'no') cerrado[f.fecha] = true; });
@@ -1075,14 +1110,13 @@ function profeSabadosGenerar(req, deps) {
   const sedes = texto(req.sede) ? [texto(req.sede)] : SEDES.slice();
   sedes.forEach(s => { if (usuario) sedeEditable(usuario, s); else if (SEDES.indexOf(s) < 0) falla('datos_invalidos'); });
   const hasta = sumarDiasProfe(hoy, SABADOS_ADELANTE);
-  const horarios = deps.repo.leer('profe_horarios').map(filaHorario);
   const feriados = feriadosVista(deps, hoy, hasta);
   const filas = deps.repo.leer('profe_sabados');
   const profes = profesDelEquipo(usuarios);
   const out = {};
   let todas = [];
   sedes.forEach(s => {
-    const n = generarSabados(filas, horarios, feriados, s, hoy, hasta);
+    const n = generarSabados(filas, rotacionActual(deps, s), feriados, s, hoy, hasta);
     n.forEach(x => { const u = profes.find(p => mismoProfe(p.nombre, x.profe)); if (u) x.profe_dni = u.dni; });
     out[s] = n.length;
     todas = todas.concat(n);

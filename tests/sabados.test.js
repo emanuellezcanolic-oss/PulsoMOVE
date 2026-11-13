@@ -138,3 +138,25 @@ test('feriado: se le pregunta a coordinación y, si no se trabaja, se reordena',
   assert.ok(A.por_mes.length >= 3);
   assert.equal(pedir(d, { accion: 'profe_feriado', token: entrar(d, '20111222'), fecha: '2026-11-21', se_trabaja: 'si' }).error, 'prohibido');
 });
+
+test('coordinación tilda quiénes trabajan los sábados', () => {
+  const d = entorno();
+  conHorarios(d);
+  conTareas(d);
+  const tk = entrar(d, '20555666');
+  let A = pedir(d, { accion: 'profe_tareas', token: tk }).data.agenda;
+  assert.deepEqual(A.rotaciones.bolson, ['Belén Juárez', 'Enzo Legammari', 'Emanuel Lezcano']);   // las kines no
+  assert.equal(A.rotacion_elegida.bolson, false);
+  pedir(d, { accion: 'profe_sabados_generar', token: tk, sede: 'bolson' });
+  assert.ok(d.repo.hojas.profe_sabados.some(s => s.profe === 'Emanuel Lezcano'));
+  // saca a Emanuel: rotan Belén y Enzo, en orden de turno aunque se tilden al revés; lo de la rotación se rearma
+  const r = pedir(d, { accion: 'profe_rotacion_guardar', token: tk, sede: 'bolson', profes: ['Enzo Legammari', 'Belén Juárez'] }).data;
+  assert.deepEqual(r.rotacion, ['Belén Juárez', 'Enzo Legammari']);
+  assert.ok(r.rearmados > 10);
+  const sab = d.repo.hojas.profe_sabados.filter(s => s.sede === 'bolson').sort((a, b) => (a.fecha < b.fecha ? -1 : 1));
+  assert.ok(sab.slice(1).every(s => s.profe !== 'Emanuel Lezcano'));   // esta semana queda como estaba
+  assert.deepEqual(sab.slice(1, 5).map(s => s.profe.split(' ')[0]).sort(), ['Belén', 'Belén', 'Enzo', 'Enzo']);
+  A = pedir(d, { accion: 'profe_tareas', token: tk }).data.agenda;
+  assert.equal(A.rotacion_elegida.bolson, true);
+  assert.equal(pedir(d, { accion: 'profe_rotacion_guardar', token: tk, sede: 'puelo', profes: ['X'] }).error, 'prohibido');
+});
