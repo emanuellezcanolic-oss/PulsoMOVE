@@ -284,3 +284,21 @@ test('lo que se confirma en MOVE no cuenta como pendiente, y la recepcionista pu
   assert.equal(rend().tareas_hechas, 2, 'la que dejó hecha ya suma');
   assert.equal(sede().esperan_move, 1);
 });
+
+test('el ranking premia los procesos y los planes de 3 meses, no solo los socios nuevos', () => {
+  const tarea = (id, dni, estado) => ({ id, fecha: '2026-11-12', sede: 'bolson', socio_id: id, socio_nombre: 'S' + id, profe: '', tipo: 'Seguimiento de consulta', prioridad: '2', situacion: 's', accion: 'a', ultima_anotacion: '', asignado_dni: dni, pendiente_desde: '2026-11-12', estado, hecha_en: estado === 'hecha' ? '2026-11-12T15:00:00.000Z' : '', intro: '' });
+  const d = entorno({
+    tareas: [tarea('1', TANI.dni, 'hecha'), tarea('2', TANI.dni, 'hecha'), tarea('3', TANI.dni, 'pendiente'), tarea('4', AZUL.dni, 'hecha'), tarea('5', AZUL.dni, 'hecha')],
+    rendimiento: [{ mes: '2026-11', dni: TANI.dni, datos: JSON.stringify({ planes_largos: 6 }), actualizado: '' }, { mes: '2026-10', dni: TANI.dni, datos: JSON.stringify({ planes_largos: 4 }), actualizado: '' }],
+  });
+  const r = pedir(d, { accion: 'ranking_ver', token: entrar(d, TANI.dni) });
+  assert.equal(r.ok, true, JSON.stringify(r));
+  const por = n => r.data.personas.find(p => p.nombre === n);
+  assert.equal(por('Azul').procesos.pct, 100);
+  assert.equal(por('Tani').procesos.pct, 67);
+  assert.equal(por('Tani').largos, 6);
+  assert.equal(por('Tani').largos_mes_pasado, 4);
+  assert.equal(r.data.equipo.largos, 6);
+  assert.deepEqual(por('Tani').largos_meses.map(m => [m.mes, m.n]), [['2026-09', 0], ['2026-10', 4], ['2026-11', 6]], 'mes, 2 y 3 meses salen de esta serie');
+  assert.equal(r.data.equipo.procesos_pct, 80);
+});

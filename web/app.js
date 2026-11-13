@@ -2452,42 +2452,73 @@ ${p.tareas_mes ? `<span class="uso-hoy">📋 Tareas del mes: ${p.tareas_mes.hech
     } catch (e) { /* el pase es un extra: si falla, la pantalla sigue */ }
   }
 
-  // ---------- Ranking entre sedes: el panel lateral de récords ----------
-  // Solo socios nuevos, escalones y récords: sin plata. Lo ven recepción, coordinación y administración, de todas las sedes.
+  // ---------- Ranking entre sedes: el panel lateral ----------
+  // Se premian los procesos (quién cumple las tareas), después los planes de 3 meses; los socios nuevos van al final porque no se
+  // pueden comparar entre sedes (Bariloche tiene lista de espera). Sin plata. Lo ven recepción, coordinación y administración.
   const MEDALLAS = ['🥇', '🥈', '🥉'];
+  const RANKINGS = [['procesos', '✅ Procesos'], ['largos', '🏅 Planes de 3 meses'], ['nuevos', '👥 Socios nuevos']];
+  const PERIODOS_LARGOS = [[1, 'Este mes'], [2, 'Últimos 2 meses'], [3, 'Últimos 3 meses']];
+  const largosEn = (p, k) => (p.largos_meses || []).slice(-k).reduce((a, m) => a + m.n, 0);
   function veRanking() { return tiene('recepcion') || tiene('coordinador') || tiene('admin'); }
 
   function botonRanking() {
     if (!veRanking() || !cliente.sesion()) return '';
-    return `<button class="boton-ranking${DEMO ? ' con-cinta' : ''}" data-accion="rank-abrir" aria-label="Abrir el ranking de socios nuevos">🏆 <span>Ranking</span></button>`;
+    return `<button class="boton-ranking${DEMO ? ' con-cinta' : ''}" data-accion="rank-abrir" aria-label="Abrir el ranking">🏆 <span>Ranking</span></button>`;
   }
 
   function panelRanking() {
     if (!E.rankAbierto) return '';
     const R = E.rank;
+    const tab = E.rankTab || 'procesos';
     let cuerpo = '<div class="cargando">Armando el ranking…</div>';
     if (R) {
-      const max = Math.max(1, ...R.personas.map(p => p.nuevos));
       const num = n => String(Math.round(Number(n) * 10) / 10).replace('.', ',');
-      const fila = p => {
-        const dif = p.vs_mes_pasado;
-        const flecha = dif > 0 ? `<span class="rk-sube">▲ ${dif}</span>` : dif < 0 ? `<span class="rk-baja">▼ ${Math.abs(dif)}</span>` : '<span class="rk-igual">＝</span>';
-        const rec = p.bate_record ? `<span class="rk-record">🔥 ¡Récord nuevo! Su mejor mes era ${p.record.nuevos}</span>`
-          : p.record ? `<span class="rk-pie">Su récord: ${p.record.nuevos} (${esc(nombreMes(p.record.mes))}) · le faltan ${p.falta_record} para superarlo</span>` : '';
-        const esc2 = p.escalon && p.escalon.etiqueta ? `<span class="rk-escalon">${esc(p.escalon.etiqueta)}${p.escalon.siguiente ? ` · a ${p.escalon.siguiente.faltan} de ${esc(p.escalon.siguiente.etiqueta)}` : p.escalon.maximo ? ' · ¡máximo!' : ''}</span>` : '';
-        return `<li class="rk-fila${p.dni === R.mi_dni ? ' yo' : ''}"><div class="rk-cab"><span class="rk-puesto">${MEDALLAS[p.puesto - 1] || p.puesto}</span><b>${esc(p.nombre)}</b><span class="rk-sede">${esc(SEDES[p.sede] || '')}</span><span class="rk-n">${p.nuevos}</span></div>
-          <div class="medidor"><i class="${p.puesto === 1 ? 'bien' : 'cerca'}" style="width:${Math.round(p.nuevos / max * 100)}%"></i></div>
-          <div class="rk-datos">${flecha}<span class="rk-pie">vs. el mismo día del mes pasado (${p.mes_pasado_a_la_fecha})</span></div>
-          ${esc2}${rec}${p.mejor_dia ? `<span class="rk-pie">Mejor día: ${p.mejor_dia.n} el ${ddmm(p.mejor_dia.fecha)}</span>` : ''}</li>`;
+      const valor = {
+        procesos: p => (p.procesos.pct == null ? -1 : p.procesos.pct),
+        largos: p => largosEn(p, E.rankPeriodo || 1),
+        nuevos: p => p.nuevos,
+      }[tab];
+      let lista = R.personas.slice();
+      if (tab === 'procesos') lista = lista.filter(p => p.procesos.total > 0);
+      lista.sort((x, y) => valor(y) - valor(x) || (tab === 'procesos' ? (y.procesos.a_tiempo_pct || 0) - (x.procesos.a_tiempo_pct || 0) || y.procesos.hechas - x.procesos.hechas : y.nuevos - x.nuevos) || String(x.nombre).localeCompare(String(y.nombre)));
+      const max = Math.max(1, ...lista.map(p => (tab === 'procesos' ? 100 : valor(p))));
+      const fila = (p, i) => {
+        const puesto = i + 1;
+        const grande = tab === 'procesos' ? (p.procesos.pct == null ? '—' : p.procesos.pct + '%') : valor(p);
+        const detalle = tab === 'procesos'
+          ? `<span class="rk-pie">${p.procesos.hechas} de ${p.procesos.total} tareas del mes${p.procesos.a_tiempo_pct == null ? '' : ' · ' + p.procesos.a_tiempo_pct + '% en el día'}</span>`
+          : tab === 'largos'
+            ? `<span class="rk-pie">${(p.largos_meses || []).map(m => esc(nombreMes(m.mes).slice(0, 3)) + ' ' + m.n).join(' · ')}</span>`
+            : (() => {
+              const dif = p.vs_mes_pasado;
+              const flecha = dif > 0 ? `<span class="rk-sube">▲ ${dif}</span>` : dif < 0 ? `<span class="rk-baja">▼ ${Math.abs(dif)}</span>` : '<span class="rk-igual">＝</span>';
+              const rec = p.bate_record ? `<span class="rk-record">🔥 ¡Récord nuevo! Su mejor mes era ${p.record.nuevos}</span>`
+                : p.record ? `<span class="rk-pie">Su récord: ${p.record.nuevos} (${esc(nombreMes(p.record.mes))}) · le faltan ${p.falta_record} para superarlo</span>` : '';
+              const esc2 = p.escalon && p.escalon.etiqueta ? `<span class="rk-escalon">${esc(p.escalon.etiqueta)}${p.escalon.siguiente ? ` · a ${p.escalon.siguiente.faltan} de ${esc(p.escalon.siguiente.etiqueta)}` : p.escalon.maximo ? ' · ¡máximo!' : ''}</span>` : '';
+              return `<div class="rk-datos">${flecha}<span class="rk-pie">vs. el mismo día del mes pasado (${p.mes_pasado_a_la_fecha})</span></div>${esc2}${rec}${p.mejor_dia ? `<span class="rk-pie">Mejor día: ${p.mejor_dia.n} el ${ddmm(p.mejor_dia.fecha)}</span>` : ''}`;
+            })();
+        return `<li class="rk-fila${p.dni === R.mi_dni ? ' yo' : ''}"><div class="rk-cab"><span class="rk-puesto">${MEDALLAS[i] || puesto}</span><b>${esc(p.nombre)}</b><span class="rk-sede">${esc(SEDES[p.sede] || '')}</span><span class="rk-n">${grande}</span></div>
+          <div class="medidor"><i class="${puesto === 1 ? 'bien' : 'cerca'}" style="width:${Math.round((tab === 'procesos' ? (p.procesos.pct || 0) : valor(p)) / max * 100)}%"></i></div>${detalle}</li>`;
       };
       const eq = R.equipo;
-      cuerpo = `<div class="rk-equipo"><b>${eq.nuevos}</b> socios nuevos entre todas las sedes${eq.record ? ` · mejor mes: ${eq.record.nuevos} (${esc(nombreMes(eq.record.mes))})` : ''}
-          <div class="rk-sedes">${Object.keys(eq.por_sede).map(k => `<span>${esc(SEDES[k] || k)}: <b>${eq.por_sede[k]}</b></span>`).join('')}</div></div>
-        ${R.personas.length ? `<ol class="rk-lista">${R.personas.map(fila).join('')}</ol>` : '<div class="vacio">Todavía no hay socios nuevos este mes.</div>'}
-        <p class="aclara">Cuenta los socios nuevos de cada caja de MOVE desde el día 1. No hay que vencer a nadie: la flecha compara con vos misma el mes pasado.</p>`;
+      const resumen = tab === 'procesos'
+        ? `<b>${eq.procesos_pct == null ? '—' : eq.procesos_pct + '%'}</b> de las tareas del mes cumplidas entre todas las sedes`
+        : tab === 'largos'
+          ? `<b>${R.personas.reduce((a, p) => a + largosEn(p, E.rankPeriodo || 1), 0)}</b> planes de 3 meses o más entre todas las sedes ${(E.rankPeriodo || 1) === 1 ? 'este mes' : 'en los últimos ' + E.rankPeriodo + ' meses'}`
+          : `<b>${eq.nuevos}</b> socios nuevos entre todas las sedes${eq.record ? ` · mejor mes: ${eq.record.nuevos} (${esc(nombreMes(eq.record.mes))})` : ''}`;
+      const aclara = tab === 'procesos'
+        ? 'Es lo que más importa: cumplir los procesos. Cuenta las tareas del mes que cada una ya resolvió sobre las que le tocaron, sin las que esperan a MOVE. Es un porcentaje, así que se compara bien entre sedes.'
+        : tab === 'largos'
+          ? 'Planes de 3 meses o más vendidos, con el reparto de quién vendió cada uno. Es la venta que más pesa, y la idea es que se sostenga en el tiempo: por eso se puede mirar el mes, los últimos 2 y los últimos 3 meses. Abajo de cada nombre está el detalle mes por mes.'
+          : 'Cuenta los socios nuevos de cada caja de MOVE desde el día 1. No se compara entre sedes: en Bariloche hay lista de espera y ahí no se busca que entren muchos. La flecha te compara con vos misma el mes pasado.';
+      const periodos = tab === 'largos' ? `<div class="filtros">${PERIODOS_LARGOS.map(([k, n]) => `<button class="chip" data-accion="rank-periodo" data-k="${k}" aria-pressed="${(E.rankPeriodo || 1) === k}">${n}</button>`).join('')}</div>` : '';
+      cuerpo = `${periodos}<div class="rk-equipo">${resumen}${tab === 'nuevos' ? `<div class="rk-sedes">${Object.keys(eq.por_sede).map(k => `<span>${esc(SEDES[k] || k)}: <b>${eq.por_sede[k]}</b></span>`).join('')}</div>` : ''}</div>
+        ${lista.length ? `<ol class="rk-lista">${lista.map(fila).join('')}</ol>` : '<div class="vacio">Todavía no hay datos este mes.</div>'}
+        <p class="aclara">${aclara}</p>`;
     }
-    return `<div class="rk-fondo" data-accion="rank-cerrar"></div><aside class="rk-panel" role="dialog" aria-label="Ranking de socios nuevos">
-      <div class="rk-tope"><h2>🏆 Socios nuevos · ${R ? esc(nombreMes(R.mes)) : ''}</h2><button class="chip" data-accion="rank-cerrar">Cerrar</button></div>${cuerpo}</aside>`;
+    return `<div class="rk-fondo" data-accion="rank-cerrar"></div><aside class="rk-panel" role="dialog" aria-label="Ranking">
+      <div class="rk-tope"><h2>🏆 Ranking · ${R ? esc(nombreMes(R.mes)) : ''}</h2><button class="chip" data-accion="rank-cerrar">Cerrar</button></div>
+      <div class="filtros">${RANKINGS.map(([k, n]) => `<button class="chip" data-accion="rank-tab" data-t="${k}" aria-pressed="${tab === k}">${n}</button>`).join('')}</div>${cuerpo}</aside>`;
   }
 
   async function abrirRanking() {
@@ -3339,6 +3370,8 @@ ${p.tareas_mes ? `<span class="uso-hoy">📋 Tareas del mes: ${p.tareas_mes.hech
         cliente.llamar('mi_dia').then(d => { E.dia = d; if (!E.abierta) render(); }).catch(() => {});
       }).catch(e => { el.disabled = false; falla(e); });
     }
+    else if (a === 'rank-periodo') { E.rankPeriodo = Number(el.dataset.k) || 1; render(); }
+    else if (a === 'rank-tab') { E.rankTab = el.dataset.t; render(); }
     else if (a === 'rank-abrir') { abrirRanking(); }
     else if (a === 'rank-cerrar') { E.rankAbierto = false; render(); }
     else if (a === 'resumen-semana') { E.resumenActual = !!el.dataset.a; E.resumen = null; render(); cargarVista(); }

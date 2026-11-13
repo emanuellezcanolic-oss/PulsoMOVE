@@ -23,8 +23,23 @@ function rankVer(req, deps) {
   const mes = hoy.slice(0, 7), anterior = rankMesAnterior(mes), diaHoy = hoy.slice(8, 10);
   const ventas = deps.repo.leer('ventas');
   const liq = deps.repo.leer('liquidacion');
+  const tareas = deps.repo.leer('tareas'), registro = deps.repo.leer('registro'), actividad = deps.repo.leer('actividad');
+  const calculado = deps.repo.leer('rendimiento'), largas = deps.repo.leer('ventas_largas');
   const equipo = liqRecepcionistas(usuarios);
   const personas = equipo.map(u => {
+    // Procesos y planes de 3 meses, con las mismas cuentas que Rendimiento
+    const fila = calculado.find(x => x.mes === mes && x.dni === u.dni);
+    const valores = ajustarVentasLargas(Object.assign({}, fila ? JSON.parse(fila.datos) : {}, valoresEnApp(u.dni, mes, tareas, registro, actividad, hoy)), u.dni, mes, largas);
+    // Planes de 3 meses de los últimos tres meses: el actual, con el reparto de quién vendió; los anteriores, de lo calculado en cada cierre (o de las cajas)
+    const largosDe = m => {
+      if (m === mes) return Number(valores.planes_largos) || 0;
+      const f = calculado.find(x => x.mes === m && x.dni === u.dni);
+      if (f) return Number(JSON.parse(f.datos).planes_largos) || 0;
+      return ventas.filter(v => v.dni === u.dni && String(v.fecha).indexOf(m) === 0).reduce((a, v) => a + (Number(v.largos) || 0), 0);
+    };
+    const largosMeses = [rankMesAnterior(anterior), anterior, mes].map(m => ({ mes: m, n: largosDe(m) }));
+    const largosAnt = largosMeses[1].n;
+
     const propias = ventas.filter(f => f.dni === u.dni);
     const nuevos = propias.filter(f => String(f.fecha).indexOf(mes) === 0).reduce((a, f) => a + (Number(f.nuevos) || 0), 0);
     const aLaFecha = propias.filter(f => String(f.fecha).indexOf(anterior) === 0 && String(f.fecha).slice(8, 10) <= diaHoy).reduce((a, f) => a + (Number(f.nuevos) || 0), 0);
@@ -35,13 +50,16 @@ function rankVer(req, deps) {
     const corridos = Number(diaHoy) || 1, dias = liqDiasDelMes(mes).length;
     const esc = liqEscalon(u, mes, hoy, liq, nuevos);
     return {
-      dni: u.dni, nombre: u.nombre, sede: u.sede, nuevos: nuevos, mes_pasado_a_la_fecha: aLaFecha, vs_mes_pasado: nuevos - aLaFecha,
+      dni: u.dni, nombre: u.nombre, sede: u.sede,
+      procesos: { total: Number(valores.tareas_total) || 0, hechas: Number(valores.tareas_hechas) || 0, pct: valores.tareas_pct == null ? null : Math.round(valores.tareas_pct * 100), a_tiempo_pct: valores.a_tiempo_pct == null ? null : Math.round(valores.a_tiempo_pct * 100) },
+      largos: Number(valores.planes_largos) || 0, largos_mes_pasado: largosAnt, largos_meses: largosMeses,
+      nuevos: nuevos, mes_pasado_a_la_fecha: aLaFecha, vs_mes_pasado: nuevos - aLaFecha,
       proyeccion: liqRedondeo(nuevos / corridos * dias, 1),
       record: record ? { mes: record.mes, nuevos: record.nuevos } : null,
       bate_record: !!record && nuevos > record.nuevos, falta_record: record && nuevos <= record.nuevos ? record.nuevos - nuevos + 1 : 0,
       mejor_dia: mejorDia, escalon: esc ? { tramo: esc.tramo, etiqueta: esc.etiqueta, siguiente: esc.siguiente ? { etiqueta: esc.siguiente.etiqueta, faltan: esc.siguiente.faltan } : null, maximo: esc.maximo } : null,
     };
-  }).filter(p => p.nuevos > 0 || p.record || p.mejor_dia)
+  }).filter(p => p.nuevos > 0 || p.record || p.mejor_dia || p.procesos.total > 0 || p.largos > 0)
     .sort((a, b) => b.nuevos - a.nuevos || b.vs_mes_pasado - a.vs_mes_pasado || String(a.nombre).localeCompare(String(b.nombre)));
   personas.forEach((p, i) => { p.puesto = i + 1; });
   // Equipo: lo de todas las sedes juntas y el mejor mes que se registró
@@ -53,7 +71,8 @@ function rankVer(req, deps) {
   personas.forEach(p => { sedes[p.sede] = (sedes[p.sede] || 0) + p.nuevos; });
   return {
     mes: mes, hoy: hoy, mi_dni: usuario.dni, personas: personas,
-    equipo: { nuevos: personas.reduce((a, p) => a + p.nuevos, 0), por_sede: sedes, record: mejor ? { mes: mejor, nuevos: porMes[mejor] } : null },
+    equipo: { nuevos: personas.reduce((a, p) => a + p.nuevos, 0), largos: personas.reduce((a, p) => a + p.largos, 0), por_sede: sedes,
+      procesos_pct: (() => { const t = personas.reduce((a, p) => a + p.procesos.total, 0); return t ? Math.round(personas.reduce((a, p) => a + p.procesos.hechas, 0) / t * 100) : null; })(), record: mejor ? { mes: mejor, nuevos: porMes[mejor] } : null },
   };
 }
 
