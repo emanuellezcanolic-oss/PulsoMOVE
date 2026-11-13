@@ -65,11 +65,37 @@ test('la comisión la sube la PC y la ve solo coordinación con rol admin', () =
   const d = entorno();
   const datos = { renovaciones: 70, nivel: 2, comision: 55440 };
   assert.equal(pedir(d, { accion: 'cargar_profe_liq', clave: 'mal', filas: [] }).error, 'clave');
-  assert.deepEqual(pedir(d, { accion: 'cargar_profe_liq', clave: PROPS.CLAVE_CARGA, filas: [{ mes: '2026-10', profe: 'Belen Juarez', profe_dni: '20111222', sede: 'bolson', datos }] }).data, { filas: 1, meses: ['2026-10'] });
+  assert.deepEqual(pedir(d, { accion: 'cargar_profe_liq', clave: PROPS.CLAVE_CARGA, filas: [{ mes: '2026-10', profe: 'Belen Juarez', profe_dni: '20111222', sede: 'bolson', datos }] }).data, { filas: 1, meses: ['2026-10'], preguntas_recepcion: 0 });
   const A = pedir(d, { accion: 'profe_tareas', token: entrar(d, '20777888') }).data;
   assert.equal(A.ve_liq, true);
   assert.equal(A.equipo[0].liq[0].comision, 55440);
   const C = pedir(d, { accion: 'profe_tareas', token: entrar(d, '20555666') }).data;
   assert.equal(C.equipo[0].liq, null);
   assert.equal(pedir(d, { accion: 'profe_tareas', token: entrar(d, '20111222') }).data.mio.liq, undefined);
+});
+
+const RECE = usuario({ dni: '20999000', nombre: 'Rocío', roles: 'recepcion', sede: 'bolson' });
+
+test('los que pagaron y no vinieron: recepción confirma y, si viene, se liquida', () => {
+  const d = depsFalsas({ repo: repoFalso({ usuarios: [PROFE, COORD, ADMIN, RECE] }), hoy: '2026-11-03', ahora: Date.parse('2026-11-03T15:00:00Z') });
+  pedir(d, { accion: 'cargar_profe_tareas', clave: PROPS.CLAVE_CARGA, hoy: '2026-11-03', tareas: [{ id: 'pp-1', fecha: '2026-11-03', sede: 'bolson', profe: 'Belen Juarez', profe_dni: '20111222',
+    socio_id: '1', socio_nombre: 'Socio', tipo: 'Renovar plan', accion: 'Renovarlo', vence: '2026-11-03', alta: '' }] });
+  const datos = { renovaciones: 34, liberados: 1, nuevos: 1, socios_comision: 35, activos_mes: 36, metas: [36, 37, 45, 55], valores: [500, 600, 700, 800], nivel: 0, valor_socio: 500, comision: 17500,
+    sin_venir_lista: [{ socio_id: '77', nombre: 'Ana Paz', sede: 'bolson' }, { socio_id: '78', nombre: 'Juan Gil', sede: 'bolson' }] };
+  const filas = [{ mes: '2026-10', profe: 'Belen Juarez', profe_dni: '20111222', sede: 'bolson', datos }, { mes: '2026-11', profe: 'Belen Juarez', profe_dni: '20111222', sede: 'bolson', datos }];
+  const r = pedir(d, { accion: 'cargar_profe_liq', clave: PROPS.CLAVE_CARGA, filas }).data;
+  assert.equal(r.preguntas_recepcion, 2);          // solo octubre (noviembre se pregunta desde el día 20)
+  assert.equal(pedir(d, { accion: 'cargar_profe_liq', clave: PROPS.CLAVE_CARGA, filas }).data.preguntas_recepcion, 0);   // no se repite
+  const t = d.repo.hojas.tareas.find(x => x.socio_id === 'viene-77-2026-10');
+  assert.equal(t.tipo, 'Confirmar si viene · comisión del profe');
+  assert.equal(t.asignado_dni, '20999000');
+  assert.match(t.situacion, /pagó octubre.*no se le liquida la comisión/);
+  // recepción contesta: Ana viene
+  const tr = entrar(d, '20999000');
+  assert.deepEqual(pedir(d, { accion: 'marcar', token: tr, id_marca: 'm1', tarea_id: t.id, canal: 'PR', resultado: 'VIENE', detalle: '' }).data, {});
+  const l = pedir(d, { accion: 'profe_tareas', token: entrar(d, '20777888') }).data.equipo[0].liq.find(x => x.mes === '2026-10');
+  assert.equal(l.confirmados, 1);
+  assert.deepEqual(l.sin_venir_lista.map(s => s.respuesta), ['viene', 'preguntado']);
+  assert.equal(l.nivel_txt, 'Objetivo 1');          // con Ana, 37 activos: sube de nivel
+  assert.equal(l.comision, 600 * 36);
 });

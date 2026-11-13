@@ -1328,10 +1328,96 @@ function cargarProfeLiq(req, deps) {
   filas.forEach(x => { meses[x.mes] = true; });
   // reemplaza los meses que vienen; los otros quedan como estaban (historia)
   deps.repo.escribir('profe_liq', deps.repo.leer('profe_liq').filter(x => !meses[x.mes]).concat(filas));
-  return { filas: filas.length, meses: Object.keys(meses).sort() };
+  return { filas: filas.length, meses: Object.keys(meses).sort(), preguntas_recepcion: crearPreguntasViene(filas, deps) };
 }
 
 function liqDeProfe(deps, profe, dni) {
   const filas = deps.repo.leer('profe_liq').filter(x => (dni && x.profe_dni === dni) || (!x.profe_dni && mismoProfe(x.profe, profe))).sort((a, b) => (a.mes < b.mes ? 1 : -1));
-  return filas.slice(0, 3).map(x => Object.assign({ mes: x.mes, cargada: x.cargada }, leerJson(x.datos, {})));
+  const resp = respuestasViene(deps);
+  return filas.slice(0, 3).map(x => Object.assign({ mes: x.mes, cargada: x.cargada }, liqConRespuestas(leerJson(x.datos, {}), x.mes, resp)));
+}
+
+// ---------- ¿Está viniendo? Recepción confirma a los socios que pagaron y no figuran como que vinieron (Emanuel, 13/11/2026) ----------
+// La comisión del profe solo se liquida si el socio vino ese mes. Si pagó y MOVE no registra ninguna asistencia (ni QR ni
+// lista de la clase), se le pregunta a recepción de su sede. "Sí, viene": le pide que escanee el QR y ese mes se liquida.
+// "No viene": le manda un mensaje y ese mes no se liquida.
+const TIPO_CONFIRMAR_VIENE = 'Confirmar si viene · comisión del profe';
+const VIENE_POR_DIA_SEDE = 6;       // para no tapar a recepción: de a pocos por día
+const DIA_PREGUNTA_MES_EN_CURSO = 20;
+
+function idViene(socio, mes) { return 'viene-' + socio + '-' + mes; }
+
+// Los meses que se preguntan: el anterior (ya cerrado) y el actual desde el día 20
+function mesesAPreguntar(hoy) {
+  const out = [mesDe(sumarDiasProfe(mesDe(hoy) + '-01', -1))];
+  if (Number(hoy.slice(8, 10)) >= DIA_PREGUNTA_MES_EN_CURSO) out.push(mesDe(hoy));
+  return out;
+}
+
+function crearPreguntasViene(filasLiq, deps) {
+  const hoy = deps.hoy();
+  const meses = mesesAPreguntar(hoy);
+  const tareas = deps.repo.leer('tareas');
+  const ya = {};
+  tareas.forEach(t => { ya[t.socio_id] = true; });
+  const usuarios = deps.repo.leer('usuarios').filter(u => esVerdad(u.activo) && tieneRol(u, 'recepcion'));
+  const habiles = habilesDespues(sumarDiasProfe(hoy, -1), 30);
+  const porDia = {};
+  const turno = {};
+  let nuevas = 0;
+  filasLiq.filter(f => meses.indexOf(f.mes) >= 0).forEach(f => {
+    const d = leerJson(f.datos, {});
+    (d.sin_venir_lista || []).forEach(s => {
+      const sid = idViene(s.socio_id, f.mes);
+      if (ya[sid] || SEDES.indexOf(s.sede) < 0) return;
+      const equipo = usuarios.filter(u => u.sede === s.sede);
+      if (!equipo.length) return;
+      // de a pocos por día y por sede, repartido entre las recepcionistas de la sede
+      let i = 0;
+      while ((porDia[s.sede + habiles[i]] || 0) >= VIENE_POR_DIA_SEDE && i < habiles.length - 1) i++;
+      const fecha = habiles[i];
+      porDia[s.sede + fecha] = (porDia[s.sede + fecha] || 0) + 1;
+      turno[s.sede] = ((turno[s.sede] || 0) + 1) % equipo.length;
+      const quien = equipo[turno[s.sede]];
+      const nombreMes = ['enero', 'febrero', 'marzo', 'abril', 'mayo', 'junio', 'julio', 'agosto', 'septiembre', 'octubre', 'noviembre', 'diciembre'][Number(f.mes.slice(5, 7)) - 1];
+      const profe = String(f.profe).split(' ')[0];
+      deps.repo.agregar('tareas', {
+        id: fecha + '-' + s.sede + '-' + sid, fecha: fecha, sede: s.sede, socio_id: sid, socio_nombre: s.nombre, profe: f.profe,
+        tipo: TIPO_CONFIRMAR_VIENE, prioridad: '2',
+        situacion: `${s.nombre} pagó ${nombreMes}, pero en MOVE no figura ninguna asistencia ese mes (ni QR ni lista de la clase). Te preguntamos porque, si no vino, a ${profe} no se le liquida la comisión de ese socio`,
+        accion: '¿Está viniendo? Si viene, pedile que escanee el QR cada vez que entra. Si no viene, mandale un mensaje para saber cómo está',
+        ultima_anotacion: '', asignado_dni: quien.dni, pendiente_desde: fecha, estado: 'pendiente', hecha_en: '', intro: '',
+      });
+      ya[sid] = true;
+      nuevas++;
+    });
+  });
+  return nuevas;
+}
+
+// Lo que contestó recepción, por socio y mes: 'VIENE' | 'NO VIENE' | '' (todavía no contestó) | null (no se preguntó)
+function respuestasViene(deps) {
+  const tareas = {};
+  deps.repo.leer('tareas').forEach(t => { if (t.tipo === TIPO_CONFIRMAR_VIENE) tareas[t.id] = t; });
+  const resp = {};
+  Object.keys(tareas).forEach(id => { resp[tareas[id].socio_id] = ''; });
+  deps.repo.leer('registro').forEach(r => { if (tareas[r.tarea_id]) resp[tareas[r.tarea_id].socio_id] = r.resultado === 'VIENE' ? 'VIENE' : 'NO VIENE'; });
+  return resp;
+}
+
+// La comisión con lo que confirmó recepción: los que "sí vienen" se liquidan
+function liqConRespuestas(d, mes, resp) {
+  const lista = (d.sin_venir_lista || []).map(s => {
+    const r = resp[idViene(s.socio_id, mes)];
+    return Object.assign({}, s, { respuesta: r == null ? 'sin_preguntar' : r === '' ? 'preguntado' : r === 'VIENE' ? 'viene' : 'no_viene' });
+  });
+  const confirmados = lista.filter(s => s.respuesta === 'viene').length;
+  const base = d.socios_comision != null ? d.socios_comision : (d.renovaciones || 0) + (d.liberados || 0);
+  const out = Object.assign({}, d, { sin_venir_lista: lista, confirmados: confirmados, socios_liquidados: base + confirmados });
+  if (!confirmados || !d.metas || !d.valores) return out;
+  // los confirmados también cuentan como activos del mes: el nivel puede subir
+  const activos = (d.activos_mes || 0) + confirmados;
+  const nivel = activos < d.metas[1] ? 0 : activos < d.metas[2] ? 1 : activos < d.metas[3] ? 2 : 3;
+  return Object.assign(out, { activos_mes: activos, nivel: nivel, nivel_txt: ['No alcanzado', 'Objetivo 1', 'Objetivo 2', 'Máximo'][nivel], valor_socio: d.valores[nivel],
+    comision: Math.round(d.valores[nivel] * (base + confirmados)), faltan_siguiente: nivel < 3 ? d.metas[nivel + 1] - activos : 0 });
 }

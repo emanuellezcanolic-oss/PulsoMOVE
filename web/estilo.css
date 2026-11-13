@@ -729,3 +729,10 @@ th.mes-actual, td.mes-actual { background: #eef6f2; }
 .grupos-nav { max-width: 1280px; margin: 0 auto; padding: 6px 16px 2px; display: flex; gap: 6px; overflow-x: auto; }
 .grupo-boton { flex: none; border: 1px solid var(--linea, #d6dde3); background: transparent; border-radius: 999px; padding: 6px 14px; font: 700 12px/1 var(--display); letter-spacing: .06em; text-transform: uppercase; color: var(--tinta); cursor: pointer; }
 .grupo-boton[aria-pressed="true"] { background: var(--tinta); color: #fff; border-color: var(--tinta); }
+
+.no-liq { border: 1px solid #e1e7ec; border-radius: 10px; padding: 8px 12px; margin: 6px 0; background: #fff; }
+.no-liq summary { cursor: pointer; }
+.no-liq ul { margin: 8px 0 2px; padding-left: 18px; columns: 2; column-gap: 24px; }
+.no-liq li { break-inside: avoid; margin: 3px 0; }
+.no-liq .verde { color: #1f6f5c; } .no-liq .rojo { color: #b3261e; } .no-liq .amarillo { color: #a06000; } .no-liq .gris { color: #7a8691; }
+@media (max-width: 640px) { .no-liq ul { columns: 1; } }

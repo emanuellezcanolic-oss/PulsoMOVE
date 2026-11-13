@@ -46,6 +46,8 @@
     if (t.indexOf('Evaluación sin cargar') === 0) return { conCanal: false, etiqueta: 'Qué pasó', opciones: [['REPROGRAMADA', 'Faltó o no se hizo: la reprogramé'], ['SE HIZO', 'Se hizo: falta que el profe la cargue'], ['NO SE HACE', 'No se va a hacer']], detalle: 'Contá qué pasó', boton: 'Guardar' };
     if (t.indexOf('Entrena en otra sede') === 0) return { conCanal: false, etiqueta: '¿Sigue entrenando en la sede donde está registrado?', opciones: [['CORREGIDO', 'No, entrena acá: corregí la sede en MOVE'], ['MULTISEDE', 'Sí, hace doble turno o es multisede: queda como está'], ['DE PASO', 'Sí, acá vino de paso: queda como está']], consejo: 'Preguntale cuando venga. Si no entrena allá, primero corregí la sede en MOVE: recién cuenta cuando MOVE muestra el cambio, y lo miramos cada mañana. Si todavía no pudiste preguntarle, dejala pendiente.', detalle: 'Qué te dijo', boton: 'Guardar' };
     if (t.indexOf('Revisar plan') === 0) return { conCanal: false, etiqueta: 'Qué dijo el profe', opciones: [['LO CAMBIA EL PROFE', 'Se lo va a cambiar'], ['NOTIFICADO', 'Lo ve bien: ya le escribí al socio para ver si le gustaría un cambio'], ['NO HACE FALTA', 'No hace falta cambiarlo por ahora']], consejo: 'Primero hablalo con el profe. Si lo ve bien, escribile vos al socio, con tus palabras, para ver si le gustaría una modificación.', detalle: 'Qué te dijo', boton: 'Guardar' };
+    // Pagó y no figura que vino: se confirma antes de liquidarle la comisión al profe (Emanuel, 13/11/2026)
+    if (t.indexOf('Confirmar si viene') === 0) return { conCanal: true, etiqueta: '¿Está viniendo?', opciones: [['VIENE', 'Sí, viene: le pedí que escanee el QR cada vez'], ['NO VIENE', 'No viene: le mandé un mensaje']], consejo: 'Te preguntamos porque pagó pero en MOVE no figura ninguna asistencia ese mes. La comisión del profe se liquida solo si el socio viene: si viene y no escanea, el profe pierde esa comisión. Si no viene, escribile para saber cómo está.', detalle: 'Qué te dijo (opcional)', boton: 'Guardar' };
     // Lo pide un profe: no es su entrenado (Emanuel, 10/11/2026)
     if (t.indexOf('Cambiar profesor') === 0) return { conCanal: false, etiqueta: 'Qué hiciste', opciones: [['CORREGIDO', 'Listo: le cambié el profesor en MOVE'], ['SIN CAMBIO', 'Lo dejé como está']], consejo: 'Si el profe no sabe de quién es, fijate en qué horario viene y qué profe está a esa hora, o preguntale al socio cuando venga. Cuando MOVE muestra el profesor nuevo, la renovación del plan le pasa sola a ese profe.', detalle: 'A quién se lo pasaste, o por qué lo dejaste como está', boton: 'Guardar' };
     if (t.indexOf('Revisar profesor') === 0) return { resultado: 'SIN CAMBIO', conCanal: false, detalle: 'Por qué se deja como está', obligatorio: true, boton: 'Dejarlo como está' };
@@ -1152,6 +1154,18 @@
       ${E.tmesCual === 'siguiente' ? '' : `<h3 class="sub-coord">Cómo van</h3>${tabla}`}</section>`;
   }
 
+  // Los que pagaron y no figura que vinieron: por qué no se liquidan y qué contestó recepción
+  const ESTADO_VIENE = { sin_preguntar: ['gris', 'Todavía no se le preguntó a recepción'], preguntado: ['amarillo', 'Preguntado a recepción: falta que conteste'], viene: ['verde', 'Recepción confirmó que viene: se liquida'], no_viene: ['rojo', 'No viene: no se liquida (recepción le escribió)'] };
+  function noLiquidados(filas) {
+    const con = filas.filter(x => (x.l.sin_venir_lista || []).length);
+    if (!con.length) return '';
+    return `<h3 class="sub-coord">❓ Por qué no se liquidaron</h3>
+      <p class="intro-grupo">Pagaron pero en MOVE no figura ninguna asistencia ese mes (ni QR ni lista de la clase). A recepción de la sede del profe le llega la tarea "¿Está viniendo?" con el motivo: si confirma que viene, le pide que escanee el QR y ese mes se liquida; si no viene, le escribe y no se liquida. Del mes anterior se pregunta enseguida; del mes en curso, desde el día 20.</p>
+      ${con.map(({ p, l }) => { const c = {}; l.sin_venir_lista.forEach(s => { c[s.respuesta] = (c[s.respuesta] || 0) + 1; });
+        return `<details class="no-liq"><summary><b>${esc(p.profe)}</b>: ${l.sin_venir_lista.length} sin asistencia · ${Object.keys(ESTADO_VIENE).filter(k => c[k]).map(k => `<span class="${ESTADO_VIENE[k][0]}">${c[k]} ${{ sin_preguntar: 'sin preguntar', preguntado: 'esperando', viene: 'vienen', no_viene: 'no vienen' }[k]}</span>`).join(' · ')}</summary>
+          <ul>${l.sin_venir_lista.map(s => `<li><span>${esc(s.nombre)}</span> <small class="${ESTADO_VIENE[s.respuesta][0]}">${esc(ESTADO_VIENE[s.respuesta][1])}</small></li>`).join('')}</ul></details>`; }).join('')}`;
+  }
+
   function tablaComisiones() {
     const D = E.planes;
     if (!D.ve_liq) return '';
@@ -1167,10 +1181,11 @@
       <p class="intro-grupo">Suman los socios que renuevan la membresía y los liberados, <b>solo en los meses en que vinieron a entrenar</b>: si pagó y ese mes no vino, ese mes no suma. Un plan de 3 meses suma uno en cada mes. Los nuevos y los online no suman a la comisión. El nivel sale de los "activos del mes" (nuevos + los que suman) contra las metas de la planilla, según las horas por semana de cada uno. Lo ve solo coordinación con rol admin.</p>
       <div class="filtros">${meses.map(m => `<button class="chip" data-accion="liq-mes" data-m="${m}" aria-pressed="${m === mes}">${esc(nombreMes(m + '-01'))}</button>`).join('')}</div>
       <div class="envoltura-tabla"><table class="tabla compacta"><thead><tr><th>Profe</th><th title="Renovaron y vinieron ese mes">Renovaciones</th><th title="Liberados que vinieron ese mes">Liberados</th><th title="Pagaron pero ese mes no vinieron: no suman">No vinieron</th><th>Nuevos</th><th>Activos del mes</th><th>Metas</th><th>Nivel</th><th>Por socio</th><th>Comisión</th><th title="Lo que calculó la planilla, para comparar">Planilla</th></tr></thead><tbody>
-      ${filas.map(({ p, l }) => `<tr><td>${esc(p.profe)}</td><td class="num"><b>${l.renovaciones}</b></td><td class="num">${l.liberados}</td><td class="num ${l.sin_venir >= 10 ? 'amarillo' : ''}">${l.sin_venir || 0}</td><td class="num">${l.nuevos}</td><td class="num">${l.activos_mes}</td>
+      ${filas.map(({ p, l }) => `<tr><td>${esc(p.profe)}</td><td class="num"><b>${l.renovaciones}</b></td><td class="num">${l.liberados}</td><td class="num ${l.sin_venir >= 10 ? 'amarillo' : ''}">${l.sin_venir || 0}${l.confirmados ? `<small> (${l.confirmados} sí vienen)</small>` : ''}</td><td class="num">${l.nuevos}</td><td class="num">${l.activos_mes}</td>
         <td class="num"><small>${l.metas ? l.metas.slice(1).join(' / ') : '—'}</small></td><td>${esc(l.nivel_txt || '—')}${l.parcial && l.faltan_siguiente ? `<small> · le faltan ${l.faltan_siguiente}</small>` : ''}</td>
         <td class="num">${plata0(l.valor_socio)}</td><td class="num"><b>${plata0(l.comision)}</b></td><td class="num ${l.comision_planilla != null && l.comision != null && Math.abs(l.comision_planilla - l.comision) > 1000 ? 'amarillo' : ''}">${plata0(l.comision_planilla)}</td></tr>`).join('')}
       </tbody><tfoot><tr><td><b>Total</b></td><td colspan="8"></td><td class="num"><b>${plata0(total)}</b></td><td></td></tr></tfoot></table></div>
+      ${noLiquidados(filas)}
       <p class="aclara">${filas[0].l.parcial ? `Mes en curso: datos de MOVE hasta el ${esc(ddmm(filas[0].l.datos_hasta))}; el nivel todavía puede subir. ` : ''}"No vinieron" en amarillo cuando son 10 o más: conviene revisar si esos socios entrenan sin que quede registrado (sin QR ni lista de la clase). La planilla en amarillo cuando da distinto: algunas planillas multiplican por otras filas (en noviembre, por las bajas). Las kinesiólogas no tienen planilla: se cuentan sus renovaciones pero no hay metas.</p></section>`;
   }
 
