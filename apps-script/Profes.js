@@ -123,6 +123,7 @@ function profeTareas(req, deps) {
     filas.forEach(t => { if (t.profe_dni === usuario.dni && t.estado === 'pendiente' && t.fecha <= pronto) renueva[t.socio_id] = true; });
     out.mio.auditoria = auditoriaDeProfe(usuario.dni, deps, hoy, { planesHoy: out.mio.resumen.pendientes_hoy + out.mio.resumen.hechas_hoy, renueva: renueva });
     out.mio.sabados = sabadosDeProfe(usuario, deps, hoy);
+    out.mio.tareas_mes = tareasMesDeDni(deps, usuario.dni, mesDe(hoy), hoy);
   }
   if (coordina) {
     const sede = tieneRol(usuario, 'admin') ? texto(req.sede) : usuario.sede;
@@ -135,6 +136,10 @@ function profeTareas(req, deps) {
     const coord = coordinacionPorProfe(deps, sede);
     const diasMes = deps.repo.leer('profe_dias').filter(d => String(d.fecha).slice(0, 7) === hoy.slice(0, 7));
     out.agenda = agendaEquipo(usuario, usuarios, deps, hoy, sede);
+    const tmHoy = tareasDelMes(deps, mesDe(hoy));
+    const mesQueViene = mesDe(sumarDiasProfe(mesDe(hoy) + '-01', 32));
+    out.tareas_mes = { mes: mesDe(hoy), lista: tmHoy.lista, origen: tmHoy.origen, siguiente: Object.assign({ mes: mesQueViene }, tareasDelMes(deps, mesQueViene)) };
+    out.ve_liq = tieneRol(usuario, 'admin');
     // el horario que se muestra es el de la app (lo edita coordinación), no el que calculó la PC a la mañana
     const horarioDe = n => out.agenda.horarios.filter(x => mismoProfe(x.profe, n));
     out.equipo = nombres.sort().map(n => {
@@ -145,6 +150,8 @@ function profeTareas(req, deps) {
       const h = horarioDe(n);
       const co = coord[n] ? Object.assign({}, coord[n], h.length ? { horas_semana: horasSemanaDe(h), horario: textoHorario(h) } : {}) : null;
       return { profe: n, con_usuario: !!dni, resumen: a.resumen, hoy: a.hoy, revisiones: rev[n] || null, coord: co,
+        tareas_mes: dni ? (x => ({ hechas: x.hechas, total: x.total, pct: x.pct, puntos: x.puntos, lista: x.lista }))(tareasMesDeDni(deps, dni, mesDe(hoy), hoy)) : null,
+        liq: tieneRol(usuario, 'admin') ? liqDeProfe(deps, n, dni) : null,
         auditoria: aud ? { puntaje: aud.puntaje, nivel: aud.nivel, cambio_semana: aud.cambio_semana, secciones: aud.secciones, cuantos: aud.cuantos, repetido: aud.repetido, pendientes: aud.pendientes.slice(0, 40), dejadas: aud.dejadas.slice(0, 40) } : null,
         dias: { completos: dias.length, en_una_hora: dias.filter(d => Number(d.minutos) <= META_HORA_MIN).length } };
     });
@@ -1190,4 +1197,141 @@ function cargarProfeSabados(req, deps) {
   const nuevas = lista.filter(s => !hay[s.fecha + '|' + s.sede]);
   deps.repo.escribir('profe_sabados', filas.concat(nuevas));
   return { nuevos: nuevas.length, ya_estaban: lista.length - nuevas.length };
+}
+
+// ---------- Tareas del mes y comisión por renovaciones (Emanuel, 13/11/2026) ----------
+// Antes estaban en las pestañas "Tareas Mensuales" y "Objetivos" de cada planilla. Coordinación arma las tareas del mes;
+// cada profe marca las suyas (es decisión del profe si la hizo) con una nota, por ejemplo los nombres de los socios.
+// La comisión la calcula la PC con las suscripciones de MOVE: solo cuentan los socios que renuevan la membresía.
+// Este repositorio no trae cifras: los valores salen de las planillas y viven en la planilla privada.
+const TAREAS_MES_MAX = 12;
+const TAREAS_MES_BASE = [   // las de octubre de 2026 en las planillas, para arrancar
+  { texto: 'Coordinar una reunión con Emanuel', pide_nota: 'Fecha de la reunión' },
+  { texto: 'Agregar un objetivo concreto y medible en la app a 10 socios', pide_nota: 'Nombres de los socios' },
+  { texto: 'Tener alguna evaluación cargada en la app de 10 socios', pide_nota: 'Nombres de los socios' },
+  { texto: 'Agendar como mínimo 10 evaluaciones con socios a futuro', pide_nota: 'Nombres de los socios' },
+  { texto: 'Que 10 socios como mínimo tengan rutinas fuera del gimnasio cargadas', pide_nota: 'Nombres de los socios' },
+];
+// Objetivo "Tarea mensual" de la planilla: % de tareas hechas → puntos
+const TAREAS_MES_TRAMOS = [[1, 20], [0.8, 15], [0.6, 10], [0, 0]];
+
+function mesDe(fecha) { return String(fecha).slice(0, 7); }
+
+// Las tareas de un mes: las que cargó coordinación; si ese mes todavía no tiene, las del último mes con tareas (o las de base)
+function tareasDelMes(deps, mes) {
+  const todas = deps.repo.leer('profe_tmes');
+  let lista = todas.filter(t => t.mes === mes);
+  let origen = 'cargadas';
+  if (!lista.length) {
+    const previos = todas.map(t => t.mes).filter(m => m < mes).sort();
+    const ult = previos[previos.length - 1];
+    lista = ult ? todas.filter(t => t.mes === ult).map(t => Object.assign({}, t, { mes: mes }))
+      : TAREAS_MES_BASE.map((t, i) => ({ mes: mes, id: 'base-' + (i + 1), texto: t.texto, pide_nota: t.pide_nota, orden: String(i + 1) }));
+    origen = ult ? 'copiadas' : 'base';
+  }
+  return { origen: origen, lista: lista.sort((a, b) => Number(a.orden) - Number(b.orden)).map(t => ({ id: t.id, texto: t.texto, pide_nota: t.pide_nota || '' })) };
+}
+
+function puntosTareasMes(pct) {
+  for (let i = 0; i < TAREAS_MES_TRAMOS.length; i++) if (pct >= TAREAS_MES_TRAMOS[i][0]) return TAREAS_MES_TRAMOS[i][1];
+  return 0;
+}
+
+function diasDelMesProfe(mes) {
+  return new Date(Date.UTC(Number(mes.slice(0, 4)), Number(mes.slice(5, 7)), 0)).getUTCDate();
+}
+
+// Un consejo según el día del mes: la idea es hacerlas al principio y no el último día
+function consejoTareasMes(hechas, total, dia, diasMes) {
+  const faltan = total - hechas;
+  if (!total) return '';
+  if (!faltan) return '🎉 Completaste las tareas del mes. ¡Bien ahí!';
+  const quedan = diasMes - dia;
+  const txtFaltan = faltan === 1 ? 'falta 1 tarea' : 'faltan ' + faltan + ' tareas';
+  if (dia <= 10) return hechas ? `Vas ${hechas} de ${total}: seguí ahora que es principio de mes y el resto del mes te queda libre para tus planes.`
+    : 'Aprovechá los primeros días del mes: si las hacés ahora, el resto del mes te queda libre para tus planes.';
+  if (dia <= 20) return `Ya van ${dia} días del mes y te ${txtFaltan}. Elegí una y hacela esta semana.`;
+  return `Quedan ${quedan} ${quedan === 1 ? 'día' : 'días'} para cerrar el mes y te ${txtFaltan}. Que no te agarre el último día.`;
+}
+
+function tareasMesDeDni(deps, dni, mes, hoy) {
+  const T = tareasDelMes(deps, mes);
+  const marcas = deps.repo.leer('profe_tmes_hechas').filter(h => h.mes === mes && h.dni === dni);
+  const lista = T.lista.map(t => {
+    const m = marcas.find(h => h.tarea_id === t.id);
+    return Object.assign({}, t, { hecha: !!(m && m.hecha === '1'), nota: (m && m.nota) || '', en: (m && m.en) || '' });
+  });
+  const hechas = lista.filter(t => t.hecha).length;
+  const pct = lista.length ? hechas / lista.length : 0;
+  const dia = mes === mesDe(hoy) ? Number(hoy.slice(8, 10)) : diasDelMesProfe(mes);
+  return { mes: mes, lista: lista, hechas: hechas, total: lista.length, pct: Math.round(pct * 100), puntos: puntosTareasMes(pct),
+    consejo: consejoTareasMes(hechas, lista.length, dia, diasDelMesProfe(mes)), dia: dia, dias_mes: diasDelMesProfe(mes) };
+}
+
+// El profe marca (o desmarca) una tarea del mes, con una nota. Solo el mes en curso (y el anterior hasta el día 5).
+function profeTareaMesMarcar(req, deps) {
+  const { usuario } = sesion(req, deps);
+  if (!esProfe(usuario)) falla('prohibido');
+  const hoy = deps.hoy();
+  const mes = texto(req.mes) || mesDe(hoy);
+  const anterior = mesDe(sumarDiasProfe(mesDe(hoy) + '-01', -1));
+  if (mes !== mesDe(hoy) && !(mes === anterior && Number(hoy.slice(8, 10)) <= 5)) falla('datos_invalidos');
+  const tarea = tareasDelMes(deps, mes).lista.find(t => t.id === texto(req.tarea_id));
+  if (!tarea) falla('no_existe');
+  const filas = deps.repo.leer('profe_tmes_hechas').filter(h => !(h.mes === mes && h.dni === usuario.dni && h.tarea_id === tarea.id));
+  const hecha = req.hecha !== false;
+  filas.push({ mes: mes, tarea_id: tarea.id, dni: usuario.dni, hecha: hecha ? '1' : '', nota: texto(req.nota).slice(0, 600), en: new Date(deps.ahora()).toISOString() });
+  deps.repo.escribir('profe_tmes_hechas', filas);
+  return tareasMesDeDni(deps, usuario.dni, mes, hoy);
+}
+
+// Coordinación carga las tareas de un mes (para todos los profes)
+function profeTareasMesGuardar(req, deps) {
+  const { usuario } = sesion(req, deps);
+  if (!tieneRol(usuario, 'admin') && !tieneRol(usuario, 'coordinador')) falla('prohibido');
+  const mes = texto(req.mes);
+  if (!/^\d{4}-(0[1-9]|1[0-2])$/.test(mes) || mes < mesDe(deps.hoy())) falla('datos_invalidos');
+  if (!Array.isArray(req.tareas) || !req.tareas.length || req.tareas.length > TAREAS_MES_MAX) falla('datos_invalidos');
+  const ts = new Date(deps.ahora()).toISOString();
+  const usadas = {};
+  const nuevas = req.tareas.map((t, i) => {
+    let id = texto(t && t.id);
+    if (!id || usadas[id] || id.indexOf('base-') === 0) id = 'tm-' + mes + '-' + (i + 1) + '-' + String(deps.ahora()).slice(-5);
+    usadas[id] = true;
+    const x = { mes: mes, id: id, texto: texto(t && t.texto).slice(0, 300), pide_nota: texto(t && t.pide_nota).slice(0, 80), orden: String(i + 1), por_dni: usuario.dni, en: ts };
+    if (!x.texto) falla('datos_invalidos');
+    return x;
+  });
+  // si había tareas "base" ya marcadas este mes, las marcas pasan a la tarea nueva en la misma posición
+  const base = tareasDelMes(deps, mes);
+  if (base.origen !== 'cargadas') {
+    const hechas = deps.repo.leer('profe_tmes_hechas');
+    let cambio = false;
+    hechas.forEach(h => {
+      const i = base.lista.findIndex(t => t.id === h.tarea_id);
+      if (h.mes === mes && i >= 0 && nuevas[i] && nuevas[i].texto === base.lista[i].texto) { h.tarea_id = nuevas[i].id; cambio = true; }
+    });
+    if (cambio) deps.repo.escribir('profe_tmes_hechas', hechas);
+  }
+  deps.repo.escribir('profe_tmes', deps.repo.leer('profe_tmes').filter(t => t.mes !== mes).concat(nuevas));
+  return { mes: mes, tareas: nuevas.length };
+}
+
+// ---------- Comisión por renovaciones (la sube la PC: pulso_profes_liq.py) ----------
+function cargarProfeLiq(req, deps) {
+  exigirClave(req, deps);
+  if (!Array.isArray(req.filas)) falla('datos_invalidos');
+  const filas = req.filas.map(x => ({ mes: texto(x && x.mes), profe: texto(x && x.profe), profe_dni: normalizarDni(x && x.profe_dni), sede: texto(x && x.sede),
+    datos: typeof (x && x.datos) === 'string' ? x.datos : JSON.stringify((x && x.datos) || {}), cargada: deps.hoy() }));
+  if (!filas.every(x => /^\d{4}-\d{2}$/.test(x.mes) && x.profe && x.datos.length < 20000 && leerJson(x.datos, null))) falla('datos_invalidos');
+  const meses = {};
+  filas.forEach(x => { meses[x.mes] = true; });
+  // reemplaza los meses que vienen; los otros quedan como estaban (historia)
+  deps.repo.escribir('profe_liq', deps.repo.leer('profe_liq').filter(x => !meses[x.mes]).concat(filas));
+  return { filas: filas.length, meses: Object.keys(meses).sort() };
+}
+
+function liqDeProfe(deps, profe, dni) {
+  const filas = deps.repo.leer('profe_liq').filter(x => (dni && x.profe_dni === dni) || (!x.profe_dni && mismoProfe(x.profe, profe))).sort((a, b) => (a.mes < b.mes ? 1 : -1));
+  return filas.slice(0, 3).map(x => Object.assign({ mes: x.mes, cargada: x.cargada }, leerJson(x.datos, {})));
 }

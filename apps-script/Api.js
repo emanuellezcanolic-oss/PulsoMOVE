@@ -1295,6 +1295,9 @@ const ACCIONES = {
   profe_sabados_generar: (r, d) => profeSabadosGenerar(r, d),
   profe_feriado: (r, d) => profeFeriado(r, d),
   profe_rotacion_guardar: (r, d) => profeRotacionGuardar(r, d),
+  profe_tarea_mes_marcar: (r, d) => profeTareaMesMarcar(r, d),
+  profe_tareas_mes_guardar: (r, d) => profeTareasMesGuardar(r, d),
+  cargar_profe_liq: (r, d) => cargarProfeLiq(r, d),
   // Liquidación de recepción (Liquidacion.js)
   liquidacion_ver: (r, d) => liquidacionVer(r, d),
   liquidacion_guardar: (r, d) => liquidacionGuardar(r, d),

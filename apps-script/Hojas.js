@@ -47,6 +47,11 @@ const COLUMNAS = {
   profe_feriados: ['fecha', 'nombre', 'se_trabaja', 'borrado', 'por_dni', 'en'],
   // Quiénes trabajan los sábados en cada sede (tildados por coordinación; profes separados por |)
   profe_rotacion: ['sede', 'profes', 'por_dni', 'en'],
+  // Tareas del mes de los profes (las arma coordinación) y lo que marcó cada profe
+  profe_tmes: ['mes', 'id', 'texto', 'pide_nota', 'orden', 'por_dni', 'en'],
+  profe_tmes_hechas: ['mes', 'tarea_id', 'dni', 'hecha', 'nota', 'en'],
+  // Comisión por renovaciones de cada profe por mes (la calcula la PC; solo la ve coordinación con rol admin)
+  profe_liq: ['mes', 'profe', 'profe_dni', 'sede', 'datos', 'cargada'],
   profe_coord: ['fecha', 'profe', 'profe_dni', 'sede', 'datos'],
   profe_puntajes: ['fecha', 'profe', 'profe_dni', 'socios', 'puntaje', 'gestion', 'diagnostico', 'metodologia', 'custom', 'rpe'],
   // Días en que el profe terminó todo lo del día, y cuánto tardó desde la primera marca

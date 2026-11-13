@@ -704,3 +704,21 @@ th.mes-actual, td.mes-actual { background: #eef6f2; }
 .tildes { display: flex; flex-direction: column; gap: 4px; }
 .tilde { display: flex; gap: 8px; align-items: center; cursor: pointer; }
 .tilde input { width: 18px; height: 18px; }
+
+/* Tareas del mes y comisión (13/11/2026) */
+.tareas-mes .avance { display: block; height: 8px; border-radius: 6px; background: #e8edf1; overflow: hidden; margin: 6px 0; }
+.tareas-mes .avance i { display: block; height: 100%; }
+.tareas-mes .avance i.verde { background: #1f6f5c; } .tareas-mes .avance i.amarillo { background: #e0a526; } .tareas-mes .avance i.rojo { background: #c8462f; }
+.consejo-mes { margin: 4px 0 8px; font-size: .88rem; color: #5a3d00; background: #fff4d6; border-radius: 8px; padding: 6px 8px; }
+.lista-tmes { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 8px; }
+.tmes-tilde { display: flex; gap: 8px; align-items: flex-start; cursor: pointer; font-size: .9rem; }
+.tmes-tilde input { width: 18px; height: 18px; margin-top: 2px; flex: none; }
+.tmes.hecha .tmes-tilde span { text-decoration: line-through; color: #6b7a86; }
+.tmes-nota { display: flex; gap: 6px; margin: 4px 0 0 26px; }
+.tmes-nota input { flex: 1; min-width: 0; font: inherit; font-size: .82rem; padding: 4px 6px; border-radius: 8px; border: 1px solid #c9d3dc; }
+.aviso-mes { margin: 8px 0 14px; padding: 10px 14px; border-radius: 12px; background: #eef6f2; border: 1px solid #b9dccd; }
+.aviso-mes.urgente { background: #fdecea; border-color: #e0a59b; }
+.tmes-editor { display: flex; flex-direction: column; gap: 6px; margin: 8px 0; }
+.tmes-fila { display: grid; grid-template-columns: 1fr 220px auto; gap: 6px; }
+.tmes-fila input { font: inherit; padding: 6px 8px; border-radius: 8px; border: 1px solid #c9d3dc; min-width: 0; }
+@media (max-width: 640px) { .tmes-fila { grid-template-columns: 1fr auto; } .tmes-fila [data-c=pide_nota] { grid-column: 1; } }

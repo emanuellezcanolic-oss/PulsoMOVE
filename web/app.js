@@ -843,10 +843,11 @@
     M.proximas.forEach(t => { (porDia[t.fecha] = porDia[t.fecha] || []).push(t); });
     return `<div class="dos-columnas"><aside class="lado"><div class="persona"><b>Tu mes</b>${cifrasPlanes(M.resumen)}</div>
         <p class="aclara">Cada día tenés una cantidad pareja de planes: así, a fin de mes, todos tus socios quedan con el plan al día. Lo que no llegás a hacer pasa al día siguiente.</p>
-        ${bloquePlanExtra(M)}${proximosSabados(M)}</aside>
+        ${bloqueTareasMes(M)}${bloquePlanExtra(M)}${proximosSabados(M)}</aside>
       <div class="principal">
       <h1 class="titulo">${esc(tituloDia(E.planes.hoy))} <span>·</span> tus planes</h1>
       ${avisoSabado(M)}
+      ${avisoTareasMes(M)}
       <p class="bajada">Primero el socio nuevo, después los vencidos y después los que están por vencer.</p>
       ${bandaConcentrado(M)}
       ${nuevos.length ? `<section class="grupo"><h2>🆕 Plan nuevo, hoy <span class="cuenta">${nuevos.length}</span></h2>${nuevos.map(t => tarjetaPlan(t, i++, true)).join('')}</section>` : ''}
@@ -1089,9 +1090,95 @@
       <template id="tpl-franja">${filaFranja(null, editables.length ? editables : ['bolson'])}</template>`;
   }
 
+  // ---------- Tareas del mes del profe y comisión (Emanuel, 13/11/2026) ----------
+  const plata0 = n => (n == null ? '—' : '$' + Math.round(n).toLocaleString('es-AR'));
+
+  function filaTareaMes(t, puede) {
+    const id = esc(t.id);
+    return `<li class="tmes ${t.hecha ? 'hecha' : ''}"><label class="tmes-tilde"><input type="checkbox" data-tmes="${id}" ${t.hecha ? 'checked' : ''} ${puede ? '' : 'disabled'}><span>${esc(t.texto)}</span></label>
+      ${t.pide_nota || t.nota ? `<div class="tmes-nota">${puede ? `<input type="text" data-tmes-nota="${id}" value="${esc(t.nota)}" placeholder="${esc(t.pide_nota || 'Nota')}" aria-label="${esc(t.pide_nota || 'Nota')}"><button class="chip" data-accion="tmes-nota" data-id="${id}">Guardar</button>` : `<small>${esc(t.nota)}</small>`}</div>` : ''}</li>`;
+  }
+
+  function bloqueTareasMes(M) {
+    const T = M.tareas_mes;
+    if (!T || !T.total) return '';
+    return `<div class="persona tareas-mes"><b>📋 Tareas del mes <span class="cuenta">${T.hechas}/${T.total}</span></b>
+      <span class="avance"><i class="${T.hechas === T.total ? 'verde' : T.dia > 20 ? 'rojo' : 'amarillo'}" style="width:${T.pct}%"></i></span>
+      <p class="consejo-mes">${esc(T.consejo)}</p>
+      <ul class="lista-tmes">${T.lista.map(t => filaTareaMes(t, true)).join('')}</ul>
+      <span class="aclara">Las marcás vos cuando las hiciste. Suman al objetivo "Tarea mensual" (todas: 20 puntos).</span></div>`;
+  }
+
+  // Comunicado arriba: al principio del mes, para que no queden para el final
+  function avisoTareasMes(M) {
+    const T = M.tareas_mes;
+    if (!T || !T.total || T.hechas === T.total) return '';
+    if (T.dia > 10 && T.dia <= 20) return '';
+    const urgente = T.dia > 20;
+    return `<div class="aviso-mes ${urgente ? 'urgente' : ''}">📋 <b>${urgente ? 'Se termina el mes' : 'Arranca el mes'}:</b> ${esc(T.consejo)} <span class="aclara">(${T.hechas} de ${T.total} hechas · están en el costado)</span></div>`;
+  }
+
+  function vistaTareasMesCoord() {
+    const D = E.planes;
+    const tm = D.tareas_mes;
+    if (!tm) return '';
+    const cual = E.tmesCual === 'siguiente' ? tm.siguiente : tm;
+    const mesTxt = m => nombreMes(m + '-01') + ' ' + m.slice(0, 4);
+    const editor = `<div class="tmes-editor" data-mes="${esc(cual.mes)}">${cual.lista.map(t => `<div class="tmes-fila" data-tmes-fila data-id="${esc(t.id)}"><input type="text" data-c="texto" value="${esc(t.texto)}" aria-label="Tarea"><input type="text" data-c="pide_nota" value="${esc(t.pide_nota)}" placeholder="Qué anotar (opcional)" aria-label="Qué anotar"><button class="chip" data-accion="tmes-quitar" title="Quitar">✕</button></div>`).join('')}</div>
+      <div class="fila-accion"><button class="boton claro" data-accion="tmes-agregar">+ Agregar tarea</button><button class="boton verde" data-accion="tmes-guardar">Guardar las tareas de ${esc(mesTxt(cual.mes))}</button></div>
+      <template id="tpl-tmes"><div class="tmes-fila" data-tmes-fila data-id=""><input type="text" data-c="texto" value="" placeholder="Nueva tarea" aria-label="Tarea"><input type="text" data-c="pide_nota" value="" placeholder="Qué anotar (opcional)" aria-label="Qué anotar"><button class="chip" data-accion="tmes-quitar" title="Quitar">✕</button></div></template>`;
+    const eq = (D.equipo || []).filter(p => p.tareas_mes);
+    const tabla = eq.length ? `<div class="envoltura-tabla"><table class="tabla compacta"><thead><tr><th>Profe</th>${tm.lista.map((t, i) => `<th title="${esc(t.texto)}">${i + 1}</th>`).join('')}<th>Hechas</th><th>Puntos</th></tr></thead><tbody>
+      ${eq.map(p => `<tr><td>${esc(p.profe)}</td>${tm.lista.map(t => { const x = p.tareas_mes.lista.find(y => y.id === t.id); return `<td class="num ${x && x.hecha ? 'verde' : ''}" title="${esc(x && x.nota || '')}">${x && x.hecha ? '✔' : '·'}</td>`; }).join('')}<td class="num"><b>${p.tareas_mes.hechas}/${p.tareas_mes.total}</b></td><td class="num">${p.tareas_mes.puntos}</td></tr>`).join('')}
+      </tbody></table></div><p class="aclara">Pasá el mouse sobre una ✔ para ver lo que anotó. ${tm.lista.map((t, i) => `${i + 1}: ${esc(t.texto)}`).join(' · ')}</p>` : '';
+    return `<section class="grupo"><h2>📋 Tareas del mes</h2>
+      <p class="intro-grupo">Las ve cada profe en el costado de "Mis planes" y las marca cuando las hizo. Si un mes no tiene tareas cargadas, arranca con las del mes anterior.${tm.origen !== 'cargadas' ? ' <b>Este mes todavía no las cargaste: se están usando ' + (tm.origen === 'base' ? 'las de octubre de las planillas' : 'las del mes anterior') + '.</b>' : ''}</p>
+      <div class="filtros"><button class="chip" data-accion="tmes-cual" data-c="actual" aria-pressed="${E.tmesCual !== 'siguiente'}">${esc(mesTxt(tm.mes))}</button><button class="chip" data-accion="tmes-cual" data-c="siguiente" aria-pressed="${E.tmesCual === 'siguiente'}">${esc(mesTxt(tm.siguiente.mes))}</button></div>
+      ${editor}
+      ${E.tmesCual === 'siguiente' ? '' : `<h3 class="sub-coord">Cómo van</h3>${tabla}`}</section>`;
+  }
+
+  function tablaComisiones() {
+    const D = E.planes;
+    if (!D.ve_liq) return '';
+    const eq = (D.equipo || []).filter(p => (p.liq || []).length);
+    if (!eq.length) return '<section class="grupo"><h2>💰 Comisión por renovaciones</h2><div class="vacio">Todavía no hay datos: la PC los calcula todas las mañanas.</div></section>';
+    const meses = [];
+    eq.forEach(p => p.liq.forEach(l => { if (meses.indexOf(l.mes) < 0) meses.push(l.mes); }));
+    meses.sort().reverse();
+    const mes = E.liqMes && meses.indexOf(E.liqMes) >= 0 ? E.liqMes : meses[0];
+    const filas = eq.map(p => ({ p, l: p.liq.find(x => x.mes === mes) })).filter(x => x.l);
+    const total = filas.reduce((t, x) => t + (x.l.comision || 0), 0);
+    return `<section class="grupo"><h2>💰 Comisión por renovaciones</h2>
+      <p class="intro-grupo">Solo cuentan los socios que renuevan la membresía (las de 2 o 3 meses cuentan 2 o 3 veces); los nuevos, liberados y online no suman a la comisión. El nivel sale de los "activos del mes" (nuevos + renovaciones + liberados) contra las metas de la planilla, según las horas por semana de cada uno. Lo ve solo coordinación con rol admin.</p>
+      <div class="filtros">${meses.map(m => `<button class="chip" data-accion="liq-mes" data-m="${m}" aria-pressed="${m === mes}">${esc(nombreMes(m + '-01'))}</button>`).join('')}</div>
+      <div class="envoltura-tabla"><table class="tabla compacta"><thead><tr><th>Profe</th><th>Renovaciones</th><th>Nuevos</th><th>Liberados</th><th>Activos del mes</th><th>Metas</th><th>Nivel</th><th>Por socio</th><th>Comisión</th><th title="Lo que calculó la planilla, para comparar">Planilla</th></tr></thead><tbody>
+      ${filas.map(({ p, l }) => `<tr><td>${esc(p.profe)}</td><td class="num"><b>${l.renovaciones}</b></td><td class="num">${l.nuevos}</td><td class="num">${l.liberados}</td><td class="num">${l.activos_mes}</td>
+        <td class="num"><small>${l.metas ? l.metas.slice(1).join(' / ') : '—'}</small></td><td>${esc(l.nivel_txt || '—')}${l.parcial && l.faltan_siguiente ? `<small> · le faltan ${l.faltan_siguiente}</small>` : ''}</td>
+        <td class="num">${plata0(l.valor_socio)}</td><td class="num"><b>${plata0(l.comision)}</b></td><td class="num ${l.comision_planilla != null && l.comision != null && Math.abs(l.comision_planilla - l.comision) > 1000 ? 'amarillo' : ''}">${plata0(l.comision_planilla)}</td></tr>`).join('')}
+      </tbody><tfoot><tr><td><b>Total</b></td><td colspan="7"></td><td class="num"><b>${plata0(total)}</b></td><td></td></tr></tfoot></table></div>
+      <p class="aclara">${filas[0].l.parcial ? `Mes en curso: datos de MOVE hasta el ${esc(ddmm(filas[0].l.datos_hasta))}; el nivel todavía puede subir. ` : ''}En amarillo, cuando la planilla da distinto: algunas planillas multiplican por otras filas (en noviembre, por las bajas). Las kinesiólogas no tienen planilla: se cuentan sus renovaciones pero no hay metas.</p></section>`;
+  }
+
+  async function marcarTareaMes(id, hecha) {
+    const M = E.planes && E.planes.mio;
+    if (!M || !M.tareas_mes) return;
+    const t = M.tareas_mes.lista.find(x => x.id === id);
+    const campo = [...app.querySelectorAll('[data-tmes-nota]')].find(x => x.dataset.tmesNota === id);
+    const nota = campo ? campo.value.trim() : (t ? t.nota : '');
+    const marcar = hecha == null ? !!(t && t.hecha) : hecha;
+    try {
+      M.tareas_mes = await cliente.llamar('profe_tarea_mes_marcar', { tarea_id: id, hecha: marcar, nota });
+      render();
+      const T = M.tareas_mes;
+      aviso(hecha == null ? '📝 Nota guardada.' : marcar ? (T.hechas === T.total ? '🎉 ¡Completaste las tareas del mes!' : `✅ Bien: llevás ${T.hechas} de ${T.total}.`) : '↩️ Desmarcada.');
+    } catch (e) { aviso(PulsoApi.mensaje(e.codigo || e.message), true); render(); }
+  }
+
   function vistaProfes() {
     if (!E.planes) return '<div class="cargando">Cargando los profes…</div>';
     if (E.agendaVer && E.planes.agenda) return vistaAgendaEquipo();
+    if (E.tmesVer && E.planes.tareas_mes) return `<button class="chip" data-accion="tmes-cerrar">← Volver a los profes</button><h1 class="titulo">Tareas del mes${E.planes.ve_liq ? ' y comisiones' : ''}</h1>${vistaTareasMesCoord()}${tablaComisiones()}`;
     const eq = E.planes.equipo || [];
     const selector = tiene('admin') ? `<div class="filtros">${Object.keys(SEDES).map(k => `<button class="chip" data-accion="planes-sede" data-s="${k}" aria-pressed="${E.sedeElegida === k}">${SEDES[k]}</button>`).join('')}</div>` : '';
     if (E.profeVer) {
@@ -1110,9 +1197,10 @@
     return `<h1 class="titulo">Profes <span>·</span> planes al día</h1>
       <p class="bajada">Lo que cada profe y cada kinesiólogo tiene que renovar hoy, lo atrasado y lo que lleva hecho en el mes.</p>
       ${selector}
-      ${E.planes.agenda ? preguntaFeriado(E.planes.agenda) + '<div class="fila-accion"><button class="boton claro" data-accion="agenda-abrir">🗓️ Horarios y sábados</button></div>' : ''}
+      ${E.planes.agenda ? preguntaFeriado(E.planes.agenda) + '<div class="fila-accion"><button class="boton claro" data-accion="agenda-abrir">🗓️ Horarios y sábados</button>' + (E.planes.tareas_mes ? '<button class="boton claro" data-accion="tmes-abrir">📋 Tareas del mes' + (E.planes.ve_liq ? ' y comisiones' : '') + '</button>' : '') + '</div>' : ''}
       ${tablaEquipo(eq)}
       ${eq.length ? `<div class="personas">${eq.map(p => `<div class="persona"><b>${esc(p.profe)}</b><span class="turno">${p.con_usuario ? 'Con usuario' : 'Todavía sin usuario en PulsoMOVE'}</span>${cifrasPlanes(p.resumen)}${p.auditoria && p.auditoria.puntaje != null ? `<span class="uso-hoy aud-linea ${(NIVEL_AUD[p.auditoria.nivel] || [''])[0]}">🧾 Auditoría: <b>${p.auditoria.puntaje}</b> ${esc((NIVEL_AUD[p.auditoria.nivel] || ['', ''])[1])}${p.auditoria.cambio_semana ? ` (${p.auditoria.cambio_semana > 0 ? '▲' : '▼'} ${Math.abs(p.auditoria.cambio_semana)})` : ''} · ${p.auditoria.cuantos.pendientes} para corregir${p.auditoria.cuantos.no_corregidos ? ` · ${p.auditoria.cuantos.no_corregidos} dijo que corrigió y sigue` : ''}${p.auditoria.cuantos.dejadas ? ` · ${p.auditoria.cuantos.dejadas} dejó así` : ''}</span>` : ''}${p.dias ? `<span class="uso-hoy">Días completos este mes: ${p.dias.completos} (en menos de 1 hora: ${p.dias.en_una_hora})${p.revisiones && p.revisiones.resumen.minutos_mediana != null ? ` · arma un plan en ~${p.revisiones.resumen.minutos_mediana} min` : ''}${p.resumen.en_papel ? ` · en papel: ${p.resumen.en_papel}` : ''}</span>` : ''}${p.revisiones ? `<span class="uso-hoy">Planes renovados (30 días): ${p.revisiones.resumen.revisados} · en 30-80%: ${p.revisiones.resumen.en_rango} · casi todo cambiado: ${p.revisiones.resumen.casi_todo}${p.revisiones.resumen.con_saltos ? ` · con saltos: ${p.revisiones.resumen.con_saltos} (${p.revisiones.resumen.saltos_sin_responder} sin responder, ${p.revisiones.resumen.corregir} a corregir)` : ''}</span>` : ''}
+${p.tareas_mes ? `<span class="uso-hoy">📋 Tareas del mes: ${p.tareas_mes.hechas}/${p.tareas_mes.total}</span>` : ''}
         <button class="chip ver-lista" data-accion="profe-ver" data-p="${esc(p.profe)}">Ver lo de hoy</button></div>`).join('')}</div>`
         : '<div class="vacio">Todavía no hay planes cargados para esta sede.</div>'}`;
   }
@@ -2683,6 +2771,7 @@
   app.addEventListener('change', ev => {
     const el = ev.target;
     if (el.dataset.accion === 'tipo') { E.tipo = el.value; render(); }
+    if (el.dataset.tmes) { marcarTareaMes(el.dataset.tmes, el.checked); }
     if (el.dataset.accion === 'sabado-elegir') {
       const A = E.planes && E.planes.agenda;
       const s = { fecha: el.dataset.f, sede: el.dataset.s, profe: el.value };
@@ -2750,6 +2839,25 @@
     else if (a === 'planes-sede') { E.sedeElegida = el.dataset.s; E.planes = null; E.profeVer = null; render(); cargarVista(); }
     else if (a === 'profe-ver') { E.profeVer = el.dataset.p; render(); window.scrollTo(0, 0); }
     else if (a === 'profe-volver') { E.profeVer = null; render(); }
+    else if (a === 'tmes-abrir') { E.tmesVer = true; render(); window.scrollTo(0, 0); }
+    else if (a === 'tmes-cerrar') { E.tmesVer = false; render(); }
+    else if (a === 'tmes-cual') { E.tmesCual = el.dataset.c; render(); }
+    else if (a === 'liq-mes') { E.liqMes = el.dataset.m; render(); }
+    else if (a === 'tmes-quitar') { el.closest('[data-tmes-fila]').remove(); }
+    else if (a === 'tmes-agregar') { app.querySelector('.tmes-editor').insertAdjacentHTML('beforeend', app.querySelector('#tpl-tmes').innerHTML); }
+    else if (a === 'tmes-guardar') {
+      const caja = app.querySelector('.tmes-editor');
+      const tareas = [...caja.querySelectorAll('[data-tmes-fila]')].map(f => ({ id: f.dataset.id, texto: f.querySelector('[data-c=texto]').value.trim(), pide_nota: f.querySelector('[data-c=pide_nota]').value.trim() })).filter(t => t.texto);
+      if (!tareas.length) { aviso('Cargá al menos una tarea.', true); return; }
+      el.disabled = true;
+      try {
+        await cliente.llamar('profe_tareas_mes_guardar', { mes: caja.dataset.mes, tareas });
+        E.planes = await cliente.llamar('profe_tareas', E.sedeElegida ? { sede: E.sedeElegida } : {});
+        render();
+        aviso(`✅ Guardadas las ${tareas.length} tareas de ${nombreMes(caja.dataset.mes + '-01')}.`);
+      } catch (e) { el.disabled = false; aviso(PulsoApi.mensaje(e.codigo || e.message), true); }
+    }
+    else if (a === 'tmes-nota') { await marcarTareaMes(el.dataset.id, null); }
     else if (a === 'agenda-abrir') { E.agendaVer = true; render(); window.scrollTo(0, 0); }
     else if (a === 'agenda-cerrar') { E.agendaVer = false; render(); }
     else if (a === 'horario-quitar') { el.closest('[data-franja]').remove(); }
