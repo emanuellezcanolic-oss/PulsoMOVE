@@ -168,19 +168,33 @@
 
   // ---------- Estructura ----------
 
+  // Con coordinación, las pestañas se ordenan en grupos: lo mío, lo de recepción, lo de profes y lo del equipo (Emanuel, 13/11/2026)
   function pestanasDisponibles() {
     const p = [];
-    if (tiene('profe')) p.push(['planes', 'Mis planes'], ['pmes', tiene('recepcion') ? 'Mis planes: el mes' : 'Mi mes']);   // PulsoMOVE Profes: profes y kinesiólogos
-    if (tiene('recepcion')) p.push(['hoy', 'Mis tareas'], ['mes', 'Mi mes']);
+    const coord = tiene('coordinador') || tiene('admin');
+    if (tiene('profe')) p.push(['planes', 'Mis planes', 'Mi día'], ['pmes', tiene('recepcion') ? 'Mis planes: el mes' : 'Mi mes', 'Mi día']);   // PulsoMOVE Profes: profes y kinesiólogos
+    if (tiene('recepcion')) p.push(['hoy', 'Mis tareas', 'Mi día'], ['mes', 'Mi mes', 'Mi día']);
+    if (coord) p.push(['sede', 'Sede', 'Recepción'], ['rend', 'Rendimiento', 'Recepción']);
     // La ve recepción: es la que contesta "¿a qué hora hay menos gente?" (Emanuel, 09/11/2026)
-    if (tiene('recepcion') || tiene('coordinador') || tiene('admin')) p.push(['reservas', 'Reservas']);
-    if (tiene('coordinador') || tiene('admin')) p.push(['sede', 'Sede']);
-    if (tiene('coordinador') || tiene('admin')) p.push(['rend', 'Rendimiento']);
-    if (tiene('coordinador') || tiene('admin')) p.push(['profes', 'Profes']);
-    if (tiene('admin') || tiene('recepcion') || tiene('coordinador')) p.push(['liq', tiene('admin') ? 'Liquidación' : 'Mis ingresos']);   // cada una ve lo suyo; admin ve a todas
-    if (tiene('admin')) p.push(['admin', 'Equipo']);
-    p.push(['chat', chatEtiqueta()]);   // mensajes entre el equipo: todos
+    if (tiene('recepcion') || coord) p.push(['reservas', 'Reservas', coord ? 'Recepción' : 'Mi día']);
+    if (tiene('admin') || tiene('recepcion') || coord) p.push(['liq', tiene('admin') ? 'Liquidación' : 'Mis ingresos', coord ? 'Recepción' : 'Mi día']);   // cada una ve lo suyo; admin ve a todas
+    if (coord) p.push(['profes', 'Planes y llegadas', 'Profes'], ['phor', 'Horarios y sábados', 'Profes'], ['pliq', tiene('admin') ? 'Comisiones y tareas' : 'Tareas del mes', 'Profes']);
+    if (tiene('admin')) p.push(['admin', 'Equipo', 'Gestión']);
+    p.push(['chat', chatEtiqueta(), coord ? 'Gestión' : 'Mi día']);   // mensajes entre el equipo: todos
     return p;
+  }
+
+  // Coordinación: arriba los grupos (Mi día, Recepción, Profes, Gestión) y abajo las pestañas del grupo (Emanuel, 13/11/2026)
+  const ICONO_GRUPO = { 'Mi día': '🙋', 'Recepción': '🛎️', 'Profes': '🏋️', 'Gestión': '⚙️' };
+  function navegacion(p) {
+    if (p.length <= 1) return '';
+    const tab = ([k, t]) => `<button role="tab" data-accion="vista" data-v="${k}" aria-selected="${E.vista === k}">${t}</button>`;
+    if (!(tiene('coordinador') || tiene('admin'))) return `<nav class="pestanas" role="tablist">${p.map(tab).join('')}</nav>`;
+    const grupos = [];
+    p.forEach(x => { if (grupos.indexOf(x[2]) < 0) grupos.push(x[2]); });
+    const actual = (p.find(x => x[0] === E.vista) || p[0])[2];
+    return `<nav class="grupos-nav" aria-label="Secciones">${grupos.map(g => `<button class="grupo-boton" data-accion="grupo" data-g="${esc(g)}" aria-pressed="${g === actual}">${ICONO_GRUPO[g] || ''} ${esc(g)}</button>`).join('')}</nav>
+      <nav class="pestanas" role="tablist">${p.filter(x => x[2] === actual).map(tab).join('')}</nav>`;
   }
 
   function encabezado() {
@@ -192,7 +206,7 @@
         <div class="quien"><b>${esc(s.nombre)}</b>${esc(SEDES[s.sede] || '')}${s.turno ? ' · ' + esc(TURNOS[s.turno] || '') : ''}</div>
         <button class="boton-salir" data-accion="salir">Salir</button>
       </div>
-      ${p.length > 1 ? `<nav class="pestanas" role="tablist">${p.map(([k, t]) => `<button role="tab" data-accion="vista" data-v="${k}" aria-selected="${E.vista === k}">${t}</button>`).join('')}</nav>` : ''}
+      ${navegacion(p)}
     </header>`;
   }
 
@@ -1031,7 +1045,7 @@
       <button type="button" class="chip" data-accion="horario-quitar" title="Quitar esta franja">✕</button></div>`;
   }
 
-  function vistaAgendaEquipo() {
+  function vistaAgendaEquipo(propia) {
     const A = E.planes.agenda;
     if (!A) return '<div class="vacio">No tenés acceso a los horarios del equipo.</div>';
     const hoy = E.planes.hoy;
@@ -1073,7 +1087,7 @@
         <div class="franjas">${suyos.map(h => filaFranja(h, editables)).join('')}</div>
         ${editables.length ? `<div class="fila-accion"><button type="button" class="boton claro" data-accion="horario-agregar">+ Agregar franja</button><button type="button" class="boton verde" data-accion="horario-guardar">Guardar el horario de ${esc(n.split(' ')[0])}</button></div>` : ''}</div>`;
     };
-    return `<button class="chip" data-accion="agenda-cerrar">← Volver a los profes</button>
+    return `${propia ? '' : '<button class="chip" data-accion="agenda-cerrar">← Volver a los profes</button>'}
       <h1 class="titulo">Horarios y sábados <span>·</span> profes y kinesiólogos</h1>
       <p class="bajada">Lo carga coordinación. A cada profe le aparece un aviso grande en "Mis planes" desde el lunes de la semana en que le toca el sábado.</p>
       <section class="grupo"><h2>🗓️ Quién trabaja cada sábado</h2>
@@ -1150,14 +1164,14 @@
     const filas = eq.map(p => ({ p, l: p.liq.find(x => x.mes === mes) })).filter(x => x.l);
     const total = filas.reduce((t, x) => t + (x.l.comision || 0), 0);
     return `<section class="grupo"><h2>💰 Comisión por renovaciones</h2>
-      <p class="intro-grupo">Solo cuentan los socios que renuevan la membresía (las de 2 o 3 meses cuentan 2 o 3 veces); los nuevos, liberados y online no suman a la comisión. El nivel sale de los "activos del mes" (nuevos + renovaciones + liberados) contra las metas de la planilla, según las horas por semana de cada uno. Lo ve solo coordinación con rol admin.</p>
+      <p class="intro-grupo">Suman los socios que renuevan la membresía y los liberados, <b>solo en los meses en que vinieron a entrenar</b>: si pagó y ese mes no vino, ese mes no suma. Un plan de 3 meses suma uno en cada mes. Los nuevos y los online no suman a la comisión. El nivel sale de los "activos del mes" (nuevos + los que suman) contra las metas de la planilla, según las horas por semana de cada uno. Lo ve solo coordinación con rol admin.</p>
       <div class="filtros">${meses.map(m => `<button class="chip" data-accion="liq-mes" data-m="${m}" aria-pressed="${m === mes}">${esc(nombreMes(m + '-01'))}</button>`).join('')}</div>
-      <div class="envoltura-tabla"><table class="tabla compacta"><thead><tr><th>Profe</th><th>Renovaciones</th><th>Nuevos</th><th>Liberados</th><th>Activos del mes</th><th>Metas</th><th>Nivel</th><th>Por socio</th><th>Comisión</th><th title="Lo que calculó la planilla, para comparar">Planilla</th></tr></thead><tbody>
-      ${filas.map(({ p, l }) => `<tr><td>${esc(p.profe)}</td><td class="num"><b>${l.renovaciones}</b></td><td class="num">${l.nuevos}</td><td class="num">${l.liberados}</td><td class="num">${l.activos_mes}</td>
+      <div class="envoltura-tabla"><table class="tabla compacta"><thead><tr><th>Profe</th><th title="Renovaron y vinieron ese mes">Renovaciones</th><th title="Liberados que vinieron ese mes">Liberados</th><th title="Pagaron pero ese mes no vinieron: no suman">No vinieron</th><th>Nuevos</th><th>Activos del mes</th><th>Metas</th><th>Nivel</th><th>Por socio</th><th>Comisión</th><th title="Lo que calculó la planilla, para comparar">Planilla</th></tr></thead><tbody>
+      ${filas.map(({ p, l }) => `<tr><td>${esc(p.profe)}</td><td class="num"><b>${l.renovaciones}</b></td><td class="num">${l.liberados}</td><td class="num ${l.sin_venir >= 10 ? 'amarillo' : ''}">${l.sin_venir || 0}</td><td class="num">${l.nuevos}</td><td class="num">${l.activos_mes}</td>
         <td class="num"><small>${l.metas ? l.metas.slice(1).join(' / ') : '—'}</small></td><td>${esc(l.nivel_txt || '—')}${l.parcial && l.faltan_siguiente ? `<small> · le faltan ${l.faltan_siguiente}</small>` : ''}</td>
         <td class="num">${plata0(l.valor_socio)}</td><td class="num"><b>${plata0(l.comision)}</b></td><td class="num ${l.comision_planilla != null && l.comision != null && Math.abs(l.comision_planilla - l.comision) > 1000 ? 'amarillo' : ''}">${plata0(l.comision_planilla)}</td></tr>`).join('')}
-      </tbody><tfoot><tr><td><b>Total</b></td><td colspan="7"></td><td class="num"><b>${plata0(total)}</b></td><td></td></tr></tfoot></table></div>
-      <p class="aclara">${filas[0].l.parcial ? `Mes en curso: datos de MOVE hasta el ${esc(ddmm(filas[0].l.datos_hasta))}; el nivel todavía puede subir. ` : ''}En amarillo, cuando la planilla da distinto: algunas planillas multiplican por otras filas (en noviembre, por las bajas). Las kinesiólogas no tienen planilla: se cuentan sus renovaciones pero no hay metas.</p></section>`;
+      </tbody><tfoot><tr><td><b>Total</b></td><td colspan="8"></td><td class="num"><b>${plata0(total)}</b></td><td></td></tr></tfoot></table></div>
+      <p class="aclara">${filas[0].l.parcial ? `Mes en curso: datos de MOVE hasta el ${esc(ddmm(filas[0].l.datos_hasta))}; el nivel todavía puede subir. ` : ''}"No vinieron" en amarillo cuando son 10 o más: conviene revisar si esos socios entrenan sin que quede registrado (sin QR ni lista de la clase). La planilla en amarillo cuando da distinto: algunas planillas multiplican por otras filas (en noviembre, por las bajas). Las kinesiólogas no tienen planilla: se cuentan sus renovaciones pero no hay metas.</p></section>`;
   }
 
   async function marcarTareaMes(id, hecha) {
@@ -1197,8 +1211,9 @@
     return `<h1 class="titulo">Profes <span>·</span> planes al día</h1>
       <p class="bajada">Lo que cada profe y cada kinesiólogo tiene que renovar hoy, lo atrasado y lo que lleva hecho en el mes.</p>
       ${selector}
-      ${E.planes.agenda ? preguntaFeriado(E.planes.agenda) + '<div class="fila-accion"><button class="boton claro" data-accion="agenda-abrir">🗓️ Horarios y sábados</button>' + (E.planes.tareas_mes ? '<button class="boton claro" data-accion="tmes-abrir">📋 Tareas del mes' + (E.planes.ve_liq ? ' y comisiones' : '') + '</button>' : '') + '</div>' : ''}
+      ${E.planes.agenda ? preguntaFeriado(E.planes.agenda) : ''}
       ${tablaEquipo(eq)}
+      ${bloqueProfes()}
       ${eq.length ? `<div class="personas">${eq.map(p => `<div class="persona"><b>${esc(p.profe)}</b><span class="turno">${p.con_usuario ? 'Con usuario' : 'Todavía sin usuario en PulsoMOVE'}</span>${cifrasPlanes(p.resumen)}${p.auditoria && p.auditoria.puntaje != null ? `<span class="uso-hoy aud-linea ${(NIVEL_AUD[p.auditoria.nivel] || [''])[0]}">🧾 Auditoría: <b>${p.auditoria.puntaje}</b> ${esc((NIVEL_AUD[p.auditoria.nivel] || ['', ''])[1])}${p.auditoria.cambio_semana ? ` (${p.auditoria.cambio_semana > 0 ? '▲' : '▼'} ${Math.abs(p.auditoria.cambio_semana)})` : ''} · ${p.auditoria.cuantos.pendientes} para corregir${p.auditoria.cuantos.no_corregidos ? ` · ${p.auditoria.cuantos.no_corregidos} dijo que corrigió y sigue` : ''}${p.auditoria.cuantos.dejadas ? ` · ${p.auditoria.cuantos.dejadas} dejó así` : ''}</span>` : ''}${p.dias ? `<span class="uso-hoy">Días completos este mes: ${p.dias.completos} (en menos de 1 hora: ${p.dias.en_una_hora})${p.revisiones && p.revisiones.resumen.minutos_mediana != null ? ` · arma un plan en ~${p.revisiones.resumen.minutos_mediana} min` : ''}${p.resumen.en_papel ? ` · en papel: ${p.resumen.en_papel}` : ''}</span>` : ''}${p.revisiones ? `<span class="uso-hoy">Planes renovados (30 días): ${p.revisiones.resumen.revisados} · en 30-80%: ${p.revisiones.resumen.en_rango} · casi todo cambiado: ${p.revisiones.resumen.casi_todo}${p.revisiones.resumen.con_saltos ? ` · con saltos: ${p.revisiones.resumen.con_saltos} (${p.revisiones.resumen.saltos_sin_responder} sin responder, ${p.revisiones.resumen.corregir} a corregir)` : ''}</span>` : ''}
 ${p.tareas_mes ? `<span class="uso-hoy">📋 Tareas del mes: ${p.tareas_mes.hechas}/${p.tareas_mes.total}</span>` : ''}
         <button class="chip ver-lista" data-accion="profe-ver" data-p="${esc(p.profe)}">Ver lo de hoy</button></div>`).join('')}</div>`
@@ -1372,7 +1387,7 @@ ${p.tareas_mes ? `<span class="uso-hoy">📋 Tareas del mes: ${p.tareas_mes.hech
       <p class="bajada">Tocá una persona para ver el detalle${tiene('admin') ? ' y ajustar sus objetivos' : ''}.</p>
       ${R.personas.length ? `<div class="envoltura-tabla"><table class="tabla"><thead><tr><th>#</th><th>Persona</th><th>Puntaje</th><th>Cumpl.</th><th>Reten.</th><th>Ventas</th><th>Exper.</th><th>Nuevos</th><th>Mostrador</th><th>Tareas</th></tr></thead><tbody>${filas}</tbody></table></div>`
         : '<div class="vacio">No hay recepcionistas cargados en esta sede.</div>'}
-      ${bloqueNuevosEquipo(R)}${aclaracionDatos(R)}${bloqueEficiencia(R)}${bloqueProfes()}${bloqueCierres()}`;
+      ${bloqueNuevosEquipo(R)}${aclaracionDatos(R)}${bloqueEficiencia(R)}${bloqueCierres()}`;
   }
 
   // Socios nuevos mes a mes: es la venta que más pesa. Sale de lo cargado en Liquidación (planilla de recepción) y, si no hay, de las cajas del mes entero.
@@ -2147,7 +2162,6 @@ ${p.tareas_mes ? `<span class="uso-hoy">📋 Tareas del mes: ${p.tareas_mes.hech
         E.rend = await cliente.llamar('rendimiento', Object.assign(E.rendMes ? { mes: E.rendMes } : {}, tiene('admin') ? { sede: cliente.sesion().sede } : {}));
       } else if (E.vista === 'rend') {
         cliente.llamar('cierres_ver').then(c => { E.cierres = c.cierres; E.cierresResumen = c.resumen; if (E.vista === 'rend' && !E.rendDni) render(); }).catch(() => {});
-        cliente.llamar('profes_ver', tiene('admin') ? { sede: E.sedeElegida } : {}).then(c => { E.profes = c.filas; if (E.vista === 'rend' && !E.rendDni) render(); }).catch(() => {});
         E.rend = await cliente.llamar('rendimiento', Object.assign(E.rendMes ? { mes: E.rendMes } : {}, tiene('admin') ? { sede: E.sedeElegida } : {}));
       } else if (E.vista === 'liq') {
         E.liq = await cliente.llamar('liquidacion_ver', E.liqMes ? { mes: E.liqMes } : {});
@@ -2157,8 +2171,9 @@ ${p.tareas_mes ? `<span class="uso-hoy">📋 Tareas del mes: ${p.tareas_mes.hech
         render();
       } else if (E.vista === 'reservas') {
         E.ocupacion = await cliente.llamar('ocupacion_ver', tiene('admin') || tiene('coordinador') ? { sede: E.sedeElegida } : {});
-      } else if (E.vista === 'planes' || E.vista === 'profes' || E.vista === 'pmes') {
-        E.planes = await cliente.llamar('profe_tareas', E.vista === 'profes' && tiene('admin') ? { sede: E.sedeElegida } : {});
+      } else if (E.vista === 'planes' || E.vista === 'profes' || E.vista === 'pmes' || E.vista === 'phor' || E.vista === 'pliq') {
+        if (E.vista === 'profes') cliente.llamar('profes_ver', tiene('admin') ? { sede: E.sedeElegida } : {}).then(c => { E.profes = c.filas; if (E.vista === 'profes' && !E.profeVer && !E.agendaVer) render(); }).catch(() => {});
+        E.planes = await cliente.llamar('profe_tareas', ['profes', 'phor', 'pliq'].indexOf(E.vista) >= 0 && tiene('admin') ? { sede: E.sedeElegida } : {});
         if (E.vista === 'planes') programarConsejos();
       } else if (E.vista === 'admin') {
         E.usuarios = await cliente.llamar('usuarios_listar');
@@ -2192,7 +2207,7 @@ ${p.tareas_mes ? `<span class="uso-hoy">📋 Tareas del mes: ${p.tareas_mes.hech
     E.rendDni = null;
     E.liqDni = null; E.liqBorrador = null;
     E.planes = null;
-    E.profeVer = null;
+    E.profeVer = null; E.agendaVer = false; E.tmesVer = false;
     render();
     cargarVista();
   }
@@ -2262,8 +2277,10 @@ ${p.tareas_mes ? `<span class="uso-hoy">📋 Tareas del mes: ${p.tareas_mes.hech
       : E.vista === 'liq' ? vistaLiquidacion()
       : E.vista === 'chat' ? vistaChat()
       : E.vista === 'planes' ? vistaPlanes() : E.vista === 'profes' ? vistaProfes() : E.vista === 'pmes' ? vistaMesProfe()
+      : E.vista === 'phor' ? (E.planes ? vistaAgendaEquipo(true) : '<div class="cargando">Cargando…</div>')
+      : E.vista === 'pliq' ? (E.planes ? `<h1 class="titulo">${tiene('admin') ? 'Comisiones y tareas del mes' : 'Tareas del mes'} <span>·</span> profes</h1>${vistaTareasMesCoord()}${tablaComisiones()}` : '<div class="cargando">Cargando…</div>')
       : '<div class="vacio">Tu usuario no tiene ninguna vista asignada. Avisale a Emanuel.</div>';
-    const sinDatos = { hoy: !E.tareas, sede: E.personaDni ? !E.persona : !E.sede, mes: !E.rend, rend: !E.rend, admin: !E.usuarios, reservas: !E.ocupacion, liq: !E.liq, chat: !E.chat, planes: !E.planes, profes: !E.planes, pmes: !E.planes }[E.vista];
+    const sinDatos = { hoy: !E.tareas, sede: E.personaDni ? !E.persona : !E.sede, mes: !E.rend, rend: !E.rend, admin: !E.usuarios, reservas: !E.ocupacion, liq: !E.liq, chat: !E.chat, planes: !E.planes, profes: !E.planes, pmes: !E.planes, phor: !E.planes, pliq: !E.planes }[E.vista];
     const mostrar = E.errorCarga && sinDatos ? `<div class="vacio" style="margin-top:18px"><p>${esc(E.errorCarga)}</p><p>La pantalla vuelve a intentarlo sola. Tus marcas no se pierden.</p><button class="boton" data-accion="reintentar">Reintentar ahora</button></div>` : cuerpo;
     const bandas = E.vista === 'hoy' ? bandaFichajes() + bandaReservas() : '';
     app.innerHTML = encabezado() + `<main class="contenedor">${bandas}${mostrar}</main>` + (E.vista === 'hoy' && turnoTerminando() ? `<button class="cerrar-app-fijo${DEMO ? ' con-cinta' : ''}" data-accion="cerrar-app">🚪 ${E.dia && E.dia.cierre_hecho ? 'Listo por hoy' : 'Se termina tu turno'}: cerrá la app antes de irte</button>` : '') + (DEMO ? '<div class="cinta-practica">Modo práctica · datos inventados</div>' : '');
@@ -2822,6 +2839,7 @@ ${p.tareas_mes ? `<span class="uso-hoy">📋 Tareas del mes: ${p.tareas_mes.hech
     }
     else if (a === 'reservas-plegar') { E.reservasPlegadas = !E.reservasPlegadas; document.getElementById('banda-reservas').outerHTML = bandaReservas(); }
     else if (a === 'vista') irA(el.dataset.v);
+    else if (a === 'grupo') { const x = pestanasDisponibles().find(q => q[2] === el.dataset.g); if (x) irA(x[0]); }
     else if (a === 'plan-marcar') {
       el.disabled = true;
       try {

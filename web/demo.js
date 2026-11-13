@@ -301,7 +301,7 @@
     const liqDemo = liquidacionDemo();
     // Comisión de práctica: números inventados (los reales viven en la planilla privada)
     const mesPrev = (() => { const d = new Date(hoy.slice(0, 7) + '-01T12:00:00Z'); d.setUTCDate(0); return d.toISOString().slice(0, 7); })();
-    const liqD = (r, n, l, nivel, parcial) => JSON.stringify({ renovaciones: r, renov_socios: r - 2, nuevos: n, liberados: l, online: 0, activos_mes: r + n + l, horas_semana: 30, metas: [40, 41, 50, 60], nivel, nivel_txt: ['No alcanzado', 'Objetivo 1', 'Objetivo 2', 'Máximo'][nivel], valores: [500, 600, 700, 800], valor_socio: [500, 600, 700, 800][nivel], comision: [500, 600, 700, 800][nivel] * r, comision_planilla: null, faltan_siguiente: nivel < 3 ? [40, 41, 50, 60][nivel + 1] - (r + n + l) : 0, parcial, datos_hasta: hoy });
+    const liqD = (r, n, l, nivel, parcial) => JSON.stringify({ renovaciones: r, sin_venir: Math.round(r / 6), nuevos: n, liberados: l, online: 0, activos_mes: r + n + l, horas_semana: 30, metas: [40, 41, 50, 60], nivel, nivel_txt: ['No alcanzado', 'Objetivo 1', 'Objetivo 2', 'Máximo'][nivel], valores: [500, 600, 700, 800], valor_socio: [500, 600, 700, 800][nivel], comision: [500, 600, 700, 800][nivel] * (r + l), comision_planilla: null, faltan_siguiente: nivel < 3 ? [40, 41, 50, 60][nivel + 1] - (r + n + l) : 0, parcial, datos_hasta: hoy });
     const profe_liq = [
       { mes: mesPrev, profe: 'Profe Mañana (práctica)', profe_dni: B, sede: 'bolson', datos: liqD(58, 4, 2, 3, false), cargada: hoy },
       { mes: mesPrev, profe: 'Profe Tarde (práctica)', profe_dni: Z, sede: 'bolson', datos: liqD(44, 3, 1, 2, false), cargada: hoy },

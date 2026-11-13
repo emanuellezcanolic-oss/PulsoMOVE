@@ -698,6 +698,8 @@ th.mes-actual, td.mes-actual { background: #eef6f2; }
 .liq-dias summary { cursor: pointer; font-weight: 700; font-size: 13px; padding: 6px 0; }
 .tabla tfoot td { border-top: 2px solid var(--tinta); border-bottom: 0; }
 .tabla td.actual { background: var(--verde-claro); }
+.grupo-pest { align-self: center; flex: none; margin: 0 2px 0 10px; padding: 3px 8px; border-radius: 999px; background: var(--verde-claro); color: var(--tinta); font: 700 10.5px/1 var(--display); letter-spacing: .08em; text-transform: uppercase; white-space: nowrap; }
+.grupo-pest:first-child { margin-left: 0; }
 
 .rotacion-sedes { display: grid; grid-template-columns: repeat(auto-fit, minmax(230px, 1fr)); gap: 10px; margin: 8px 0 14px; }
 .rotacion-sede { border: 1px solid #dde4ea; border-radius: 12px; padding: 10px 12px; background: #fff; display: flex; flex-direction: column; gap: 6px; }
@@ -722,3 +724,8 @@ th.mes-actual, td.mes-actual { background: #eef6f2; }
 .tmes-fila { display: grid; grid-template-columns: 1fr 220px auto; gap: 6px; }
 .tmes-fila input { font: inherit; padding: 6px 8px; border-radius: 8px; border: 1px solid #c9d3dc; min-width: 0; }
 @media (max-width: 640px) { .tmes-fila { grid-template-columns: 1fr auto; } .tmes-fila [data-c=pide_nota] { grid-column: 1; } }
+
+/* Grupos de pestañas en dos niveles (13/11/2026) */
+.grupos-nav { max-width: 1280px; margin: 0 auto; padding: 6px 16px 2px; display: flex; gap: 6px; overflow-x: auto; }
+.grupo-boton { flex: none; border: 1px solid var(--linea, #d6dde3); background: transparent; border-radius: 999px; padding: 6px 14px; font: 700 12px/1 var(--display); letter-spacing: .06em; text-transform: uppercase; color: var(--tinta); cursor: pointer; }
+.grupo-boton[aria-pressed="true"] { background: var(--tinta); color: #fff; border-color: var(--tinta); }
