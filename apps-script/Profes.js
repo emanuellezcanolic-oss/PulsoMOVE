@@ -124,6 +124,7 @@ function profeTareas(req, deps) {
     out.mio.auditoria = auditoriaDeProfe(usuario.dni, deps, hoy, { planesHoy: out.mio.resumen.pendientes_hoy + out.mio.resumen.hechas_hoy, renueva: renueva });
     out.mio.sabados = sabadosDeProfe(usuario, deps, hoy);
     out.mio.tareas_mes = tareasMesDeDni(deps, usuario.dni, mesDe(hoy), hoy);
+    out.mio.membresias = membresiasDeProfe(deps, usuario);
   }
   if (coordina) {
     const sede = tieneRol(usuario, 'admin') ? texto(req.sede) : usuario.sede;
@@ -1420,4 +1421,16 @@ function liqConRespuestas(d, mes, resp) {
   const nivel = activos < d.metas[1] ? 0 : activos < d.metas[2] ? 1 : activos < d.metas[3] ? 2 : 3;
   return Object.assign(out, { activos_mes: activos, nivel: nivel, nivel_txt: ['No alcanzado', 'Objetivo 1', 'Objetivo 2', 'Máximo'][nivel], valor_socio: d.valores[nivel],
     comision: Math.round(d.valores[nivel] * (base + confirmados)), faltan_siguiente: nivel < 3 ? d.metas[nivel + 1] - activos : 0 });
+}
+
+// El profe ve quiénes de sus socios renovaron la membresía (sin plata): así lo coteja con su planilla (Emanuel, 13/11/2026)
+function membresiasDeProfe(deps, usuario) {
+  const resp = respuestasViene(deps);
+  return deps.repo.leer('profe_liq').filter(x => (x.profe_dni && x.profe_dni === usuario.dni) || (!x.profe_dni && mismoProfe(x.profe, usuario.nombre)))
+    .sort((a, b) => (a.mes < b.mes ? 1 : -1)).slice(0, 2).map(x => {
+      const d = liqConRespuestas(leerJson(x.datos, {}), x.mes, resp);
+      return { mes: x.mes, parcial: !!d.parcial, datos_hasta: d.datos_hasta || '', renovaciones: d.renovaciones || 0, liberados: d.liberados || 0, nuevos: d.nuevos || 0,
+        sin_venir: d.sin_venir || 0, confirmados: d.confirmados || 0, renov_lista: d.renov_lista || [],
+        sin_venir_lista: (d.sin_venir_lista || []).map(s => ({ nombre: s.nombre, respuesta: s.respuesta })) };
+    });
 }

@@ -99,3 +99,16 @@ test('los que pagaron y no vinieron: recepción confirma y, si viene, se liquida
   assert.equal(l.nivel_txt, 'Objetivo 1');          // con Ana, 37 activos: sube de nivel
   assert.equal(l.comision, 600 * 36);
 });
+
+test('el profe ve quiénes renovaron la membresía, sin la plata', () => {
+  const d = entorno();
+  const datos = { renovaciones: 2, liberados: 0, nuevos: 1, sin_venir: 1, valor_socio: 500, comision: 1000, renov_lista: [{ socio_id: '1', nombre: 'Ana', tipo: 'renueva' }, { socio_id: '2', nombre: 'Juan', tipo: 'renueva' }],
+    sin_venir_lista: [{ socio_id: '3', nombre: 'Pedro', sede: 'bolson' }] };
+  pedir(d, { accion: 'cargar_profe_liq', clave: PROPS.CLAVE_CARGA, filas: [{ mes: '2026-11', profe: 'Belen Juarez', profe_dni: '20111222', sede: 'bolson', datos }] });
+  const M = pedir(d, { accion: 'profe_tareas', token: entrar(d, '20111222') }).data.mio.membresias;
+  assert.equal(M.length, 1);
+  assert.deepEqual(M[0].renov_lista.map(x => x.nombre), ['Ana', 'Juan']);
+  assert.equal(M[0].sin_venir_lista[0].respuesta, 'sin_preguntar');
+  assert.equal(M[0].comision, undefined);
+  assert.equal(M[0].valor_socio, undefined);
+});

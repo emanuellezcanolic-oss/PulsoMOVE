@@ -736,3 +736,13 @@ th.mes-actual, td.mes-actual { background: #eef6f2; }
 .no-liq li { break-inside: avoid; margin: 3px 0; }
 .no-liq .verde { color: #1f6f5c; } .no-liq .rojo { color: #b3261e; } .no-liq .amarillo { color: #a06000; } .no-liq .gris { color: #7a8691; }
 @media (max-width: 640px) { .no-liq ul { columns: 1; } }
+
+/* Detalle de un día del almanaque y membresías (13/11/2026) */
+.alm-dia[data-accion] { cursor: pointer; }
+.alm-dia.elegido { outline: 3px solid var(--tinta, #1f3b57); outline-offset: -1px; }
+.detalle-dia { margin: 10px 0; padding: 12px 14px; border-radius: 12px; border: 1px solid #d6dde3; background: #fff; }
+.detalle-cab { display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px; }
+.detalle-profe { margin: 8px 0; }
+.detalle-profe ul { margin: 4px 0 0; padding-left: 18px; }
+.detalle-profe li { margin: 4px 0; font-size: .9rem; }
+.detalle-dia .rojo { color: #b3261e; } .detalle-dia .amarillo { color: #a06000; }

@@ -820,6 +820,40 @@
       <span class="aclara">80 o más: óptimo · 60 a 79: a mejorar · menos de 60: crítico.</span></div>`;
   }
 
+  // Detalle de un día del almanaque: qué profe armó qué plan, a quién, cuántas rutinas y cuánto cambió (Emanuel, 13/11/2026)
+  const BANDA_TXT = { sin_modificar: 'casi igual al anterior', poco: 'poco cambio', bien: 'cambio justo (30-80%)', casi_todo: 'casi todo nuevo' };
+  function detalleDia(lista, fecha) {
+    if (!fecha) return '';
+    const filas = lista.map(p => ({ profe: p.profe, items: ((p.coord && p.coord.detalle) || {})[fecha] || [] })).filter(x => x.items.length);
+    const cerrar = `<button class="chip" data-accion="alm-dia" data-f="">Cerrar</button>`;
+    if (!filas.length) return `<div class="detalle-dia"><div class="detalle-cab"><b>${esc(tituloDia(fecha))}</b>${cerrar}</div><p class="aclara">Ese día no se armó ningún plan.</p></div>`;
+    const item = x => {
+      const avisos = [];
+      if (!x.ok) avisos.push(`<span class="rojo">no cuenta: tiene ${x.r} rutina (mínimo 2)</span>`);
+      else if (x.f >= 1.5 && x.r < Math.round(x.f)) avisos.push(`<span class="amarillo">viene ${String(x.f).replace('.', ',')} veces por semana y el plan tiene ${x.r} días</span>`);
+      return `<li><b>${esc(x.s)}</b> · ${x.t === 'nuevo' ? 'plan nuevo' : 'renovación'} · ${x.r} ${x.r === 1 ? 'rutina' : 'rutinas'}${x.pct != null ? ` · cambió ${x.pct}% <small>(${esc(BANDA_TXT[x.b] || '')})</small>` : ''}${x.f ? ` · viene ${String(x.f).replace('.', ',')}/semana` : ''}${avisos.length ? '<br>' + avisos.join(' · ') : ''}</li>`;
+    };
+    return `<div class="detalle-dia"><div class="detalle-cab"><b>${esc(tituloDia(fecha))}</b>${cerrar}</div>
+      ${filas.map(f => { const ok = f.items.filter(x => x.ok).length; return `<div class="detalle-profe"><b>${esc(f.profe)}</b>: ${ok} ${ok === 1 ? 'plan' : 'planes'}${f.items.length > ok ? ` <small>(+${f.items.length - ok} que no cuentan)</small>` : ''}<ul>${f.items.map(item).join('')}</ul></div>`; }).join('')}
+      <p class="aclara">Un plan cuenta si tiene al menos 2 rutinas (día A y día B). Lo ideal es que tenga tantos días como veces por semana viene el socio. El % compara con su plan anterior.</p></div>`;
+  }
+
+  // Membresías: quiénes renovaron (para que el profe lo coteje con su planilla). Sin plata.
+  const RESP_VIENE = { sin_preguntar: 'todavía no se preguntó', preguntado: 'recepción lo está confirmando', viene: 'recepción confirmó que viene', no_viene: 'no viene' };
+  function bloqueMembresias(M) {
+    const L = M.membresias || [];
+    if (!L.length) return '';
+    const m = L.find(x => x.mes === E.membMes) || L[0];
+    return `<section class="grupo"><h2>💳 Renovaron la membresía</h2>
+      <p class="intro-grupo">Tus socios que renovaron y vinieron a entrenar en el mes (así cuentan). Si alguien pagó pero no figura que vino, le preguntamos a recepción si está viniendo.</p>
+      ${L.length > 1 ? `<div class="filtros">${L.map(x => `<button class="chip" data-accion="memb-mes" data-m="${x.mes}" aria-pressed="${x.mes === m.mes}">${esc(nombreMes(x.mes + '-01'))}</button>`).join('')}</div>` : ''}
+      <div class="persona"><div class="cifras"><div class="bien"><strong>${m.renovaciones}</strong><span>renovaron y vinieron</span></div><div><strong>${m.liberados}</strong><span>liberados que vinieron</span></div><div><strong>${m.nuevos}</strong><span>socios nuevos</span></div><div class="${m.sin_venir ? 'mal' : ''}"><strong>${m.sin_venir}</strong><span>pagaron y no figura que vinieron</span></div></div>
+      ${m.parcial ? `<span class="aclara">Mes en curso: datos de MOVE hasta el ${esc(ddmm(m.datos_hasta))}.</span>` : ''}</div>
+      ${m.renov_lista.length ? `<details class="no-liq"><summary><b>Renovaron (${m.renov_lista.length})</b></summary><ul>${m.renov_lista.map(x => `<li>${esc(x.nombre)}${x.tipo === 'liberado' ? ' <small>(liberado)</small>' : ''}</li>`).join('')}</ul></details>` : ''}
+      ${m.sin_venir_lista.length ? `<details class="no-liq"><summary><b>Pagaron y no figura que vinieron (${m.sin_venir_lista.length})</b></summary><ul>${m.sin_venir_lista.map(x => `<li>${esc(x.nombre)} <small class="${ESTADO_VIENE[x.respuesta] ? ESTADO_VIENE[x.respuesta][0] : ''}">${esc(RESP_VIENE[x.respuesta] || '')}</small></li>`).join('')}</ul></details>` : ''}
+    </section>`;
+  }
+
   function vistaMesProfe() {
     if (!E.planes) return '<div class="cargando">Cargando tu mes…</div>';
     const M = E.planes.mio;
@@ -835,6 +869,7 @@
         <div class="persona"><b>Planes</b><div class="cifras">${c(r.en_agenda, 'te quedan en los próximos 30 días')}${c(r.atrasadas, 'atrasados hoy', r.atrasadas ? 'mal' : 'bien')}${c(r.hechas_mes, 'hechos este mes', 'bien')}${c(s.dias_completos, 'días completos')}${c(s.en_una_hora, 'días en menos de 1 hora')}${c(r.en_papel || 0, 'en papel')}</div></div>
         <div class="persona"><b>Customización y progresión (30 días)</b><div class="cifras">${c(rv.revisados, 'planes renovados revisados')}${c(rv.en_rango, 'entre 30 y 80%', 'bien')}${c(rv.casi_todo, 'cambiaste casi todo', rv.casi_todo ? 'mal' : '')}${c(rv.con_saltos, 'con saltos de escalón', rv.con_saltos ? 'mal' : 'bien')}${c(rv.saltos_sin_responder, 'saltos sin responder', rv.saltos_sin_responder ? 'mal' : 'bien')}${c(rv.minutos_mediana != null ? rv.minutos_mediana + ' min' : null, 'tardás en armar un plan (aprox.)')}</div></div>
       </div>
+      ${bloqueMembresias(M)}
       <section class="grupo"><h2>🏅 Medallas del mes</h2>${medallasHtml(s.medallas || [])}</section>
       ${lista.length ? `<section class="grupo"><h2>🔎 Tus planes renovados <span class="cuenta">${lista.length}</span></h2>${lista.map(x => tarjetaRevision(x, i++, true)).join('')}</section>` : ''}`;
   }
@@ -896,7 +931,7 @@
       const n = (porDia || {})[f] || 0;
       const finde = [0, 6].indexOf(new Date(f + 'T12:00:00Z').getUTCDay()) >= 0;
       const marca = cupo && !finde && f < hoy && f >= (cupoDesde || '') ? (n >= cupo ? ' llego' : ' falto') : '';
-      return `<div class="alm-dia${finde ? ' finde' : ''}${n ? '' : ' cero'}${marca}" style="--int:${(n / max).toFixed(2)}" title="${esc(ddmm(f))}: ${n} plan${n === 1 ? '' : 'es'}${cupo ? ' de ' + cupo : ''}"><em>${esc(f.slice(8, 10))}</em><strong>${n || '·'}</strong>${cupo && !finde ? `<small>de ${cupo}</small>` : ''}</div>`;
+      return `<div class="alm-dia${finde ? ' finde' : ''}${n ? '' : ' cero'}${marca}${E.almDia === f ? ' elegido' : ''}" data-accion="alm-dia" data-f="${f}" role="button" tabindex="0" style="--int:${(n / max).toFixed(2)}" title="${esc(ddmm(f))}: ${n} plan${n === 1 ? '' : 'es'}${cupo ? ' de ' + cupo : ''}"><em>${esc(f.slice(8, 10))}</em><strong>${n || '·'}</strong>${cupo && !finde ? `<small>de ${cupo}</small>` : ''}</div>`;
     }));
     return `<div class="almanaque"><div class="alm-cab">${titulo ? `<b>${esc(titulo)}</b>` : ''}</div>
       <div class="alm-grilla">${['Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb', 'Dom'].map(x => `<div class="alm-sem">${x}</div>`).join('')}${celdas.join('')}</div></div>`;
@@ -930,7 +965,8 @@
     todos.sort((a, b) => b.vino_vencido - a.vino_vencido);
     return `<section class="bloque tablero-coord"><div class="bloque-cab"><h2>📊 Tablero del equipo</h2><span class="aclara">Datos de MOVE del ${esc(ddmm(con[0].coord.fecha))} · renovaciones de los últimos 30 días</span></div>
       <div class="envoltura-tabla"><table class="tabla compacta"><thead><tr><th>Profe</th><th>Socios</th><th title="Horas por semana según su horario">Horas/sem.</th><th>Al día</th><th>Vencidos</th><th title="Planes vencidos en los que el socio igual vino 4 veces o más desde que venció">Vencidos que igual vienen</th><th>Renovados</th><th title="Planes renovados con un cambio entre 30 y 80% respecto del anterior">Custom. 30-80%</th><th>Cambio (mediana)</th><th title="Planes con un salto de 2 escalones o más">Con saltos</th><th>Min por plan</th><th>Horas armando</th><th title="Una hora extra paga por día hábil para planificar">Horas pagadas</th><th>Planes por hora paga</th><th title="Días hábiles, desde que arrancó el reparto el 10/11, en que llegó a su cupo diario de planes">Cumplió el cupo</th><th>Auditoría</th><th>Para mirar</th></tr></thead><tbody>${filas}</tbody></table></div>
-      ${almanaque(sumarPorDia(con.map(p => p.coord.por_dia)), con[0].coord.desde, con[0].coord.fecha, 'Planes armados por día · todo el equipo')}
+      ${almanaque(sumarPorDia(con.map(p => p.coord.por_dia)), con[0].coord.desde, con[0].coord.fecha, 'Planes armados por día · todo el equipo · tocá un día para ver el detalle')}
+      ${detalleDia(con, E.almDia)}
       <p class="aclara">Protocolo: el plan se renueva todos los meses. "Vencidos que igual vienen": el socio vino 4 veces o más con el plan vencido (una semana de entrenamiento); 8 o más, dos semanas. Customización comparada con el plan anterior del mismo socio: menos de 15% no cuenta como modificado, 30 a 80% es lo recomendado, más de 80% es casi un plan nuevo (para eso, una plantilla modelo). El tiempo es aproximado: sale de cuándo se creó y se editó cada día del plan en MOVE. Horas pagadas: una hora extra por día hábil (lunes a viernes) en los últimos 30 días, sin descontar francos ni vacaciones.</p>
       ${todos.length ? `<h3 class="sub-coord">🔴 Planes vencidos que más se usaron <span class="cuenta">${todos.length}</span></h3>
         <div class="envoltura-tabla"><table class="tabla compacta"><thead><tr><th>Socio</th><th>Profe</th><th>Venció</th><th>Vino desde que venció</th><th>Con este plan</th><th>Por semana</th></tr></thead><tbody>
@@ -954,7 +990,7 @@
       ${c.horas_pagadas != null ? `<div class="persona"><b>Hora extra paga</b><div class="pts-grande"><strong>${c.planes_por_hora_pagada}</strong><span>planes por hora paga</span></div>
         <span class="aclara">${c.planes_30} planes en 30 días (${c.dias_con_planes} días con planes) · ${c.horas_pagadas} h pagadas (1 h por día hábil)${t.horas_estimadas != null ? ` · usó ~${t.horas_estimadas} h armando planes, el ${Math.round(100 * t.horas_estimadas / c.horas_pagadas)}% de lo pago` : ''}.</span></div>` : ''}
     </div>
-    ${c.por_dia ? `<section class="grupo"><h2>🗓️ Planes por día</h2>${c.cupo ? `<p class="intro-grupo">Su cupo es de ${c.cupo} planes por día hábil, para dejar todo al día en un mes. Desde que arrancó el reparto (${esc(ddmm(c.cupo_desde || c.desde))}) llegó en ${c.dias_cupo} de ${c.dias_habiles} días hábiles.</p>` : ''}${almanaque(c.por_dia, c.desde, c.fecha, '', c.cupo, c.cupo_desde)}</section>` : ''}
+    ${c.por_dia ? `<section class="grupo"><h2>🗓️ Planes por día</h2>${c.cupo ? `<p class="intro-grupo">Su cupo es de ${c.cupo} planes por día hábil, para dejar todo al día en un mes. Desde que arrancó el reparto (${esc(ddmm(c.cupo_desde || c.desde))}) llegó en ${c.dias_cupo} de ${c.dias_habiles} días hábiles.</p>` : ''}${almanaque(c.por_dia, c.desde, c.fecha, 'Tocá un día para ver a quién le armó el plan', c.cupo, c.cupo_desde)}${detalleDia([{ profe: E.profeVer || '', coord: c }], E.almDia)}</section>` : ''}
     ${(c.lista || []).length ? `<section class="grupo"><h2>📅 Vencidos y cuántas veces vino <span class="cuenta">${c.vencidos}</span></h2>
       <div class="envoltura-tabla"><table class="tabla compacta"><thead><tr><th>Socio</th><th>Venció</th><th>Vino desde que venció</th><th>Con este plan</th><th>Por semana</th></tr></thead><tbody>
       ${c.lista.map(v => `<tr><td>${esc(v.nombre)}</td><td>${esc(ddmm(v.vence))} · hace ${v.dias} días</td><td class="num ${colorViene(v.vino_vencido)}"><b>${vez(v.vino_vencido)}</b></td><td class="num">${vez(v.vino_plan)}</td><td class="num">${v.por_semana}</td></tr>`).join('')}
@@ -2887,6 +2923,8 @@ ${p.tareas_mes ? `<span class="uso-hoy">📋 Tareas del mes: ${p.tareas_mes.hech
     else if (a === 'tmes-cerrar') { E.tmesVer = false; render(); }
     else if (a === 'tmes-cual') { E.tmesCual = el.dataset.c; render(); }
     else if (a === 'liq-mes') { E.liqMes = el.dataset.m; render(); }
+    else if (a === 'alm-dia') { E.almDia = E.almDia === el.dataset.f ? '' : el.dataset.f; render(); }
+    else if (a === 'memb-mes') { E.membMes = el.dataset.m; render(); }
     else if (a === 'tmes-quitar') { el.closest('[data-tmes-fila]').remove(); }
     else if (a === 'tmes-agregar') { app.querySelector('.tmes-editor').insertAdjacentHTML('beforeend', app.querySelector('#tpl-tmes').innerHTML); }
     else if (a === 'tmes-guardar') {
