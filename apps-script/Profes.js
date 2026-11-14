@@ -1527,3 +1527,24 @@ function cubiertosPorDni(filas, mes) {
   });
   return out;
 }
+
+// ---------- Estado del Gym con las Analíticas de MOVE (Emanuel, 13/11/2026) ----------
+// La PC (pulso_estado.py) baja de MOVE las analíticas por cierre mensual desde 2025, por sede y por profe, y las sube acá.
+// Solo coordinación las ve: es el resumen de lo que está pasando (activos, altas, deserción, estacionalidad).
+function cargarProfeEstado(req, deps) {
+  exigirClave(req, deps);
+  if (!Array.isArray(req.filas)) falla('datos_invalidos');
+  const filas = req.filas.map(x => ({ clave: texto(x && x.clave), tipo: texto(x && x.tipo), nombre: texto(x && x.nombre), sede: texto(x && x.sede),
+    datos: typeof (x && x.datos) === 'string' ? x.datos : JSON.stringify((x && x.datos) || {}), cargada: deps.hoy() }));
+  if (!filas.every(x => x.clave && ['sede', 'profe', 'kine'].indexOf(x.tipo) >= 0 && SEDES.indexOf(x.sede) >= 0 && x.datos.length < 45000 && leerJson(x.datos, null))) falla('datos_invalidos');
+  deps.repo.escribir('profe_estado', filas);
+  return { filas: filas.length };
+}
+
+function profeEstado(req, deps) {
+  const { usuario } = sesion(req, deps);
+  if (!tieneRol(usuario, 'admin') && !tieneRol(usuario, 'coordinador')) falla('prohibido');
+  const ver = tieneRol(usuario, 'admin') ? SEDES : [usuario.sede];
+  return { hoy: deps.hoy(), filas: deps.repo.leer('profe_estado').filter(x => ver.indexOf(x.sede) >= 0)
+    .map(x => ({ clave: x.clave, tipo: x.tipo, nombre: x.nombre, sede: x.sede, cargada: x.cargada, datos: leerJson(x.datos, {}) })) };
+}

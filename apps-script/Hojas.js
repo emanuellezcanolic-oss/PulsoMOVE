@@ -59,6 +59,8 @@ const COLUMNAS = {
   profe_liq: ['mes', 'profe', 'profe_dni', 'sede', 'datos', 'cargada'],
   // Vacaciones y licencias de los profes, con quién los cubre
   profe_ausencias: ['id', 'profe', 'profe_dni', 'desde', 'hasta', 'tipo', 'reemplazo', 'reemplazo_dni', 'nota', 'por_dni', 'en'],
+  // Estado del Gym: analíticas de MOVE por sede y por profe, mes a mes (JSON). Solo la última carga
+  profe_estado: ['clave', 'tipo', 'nombre', 'sede', 'datos', 'cargada'],
   profe_coord: ['fecha', 'profe', 'profe_dni', 'sede', 'datos'],
   profe_puntajes: ['fecha', 'profe', 'profe_dni', 'socios', 'puntaje', 'gestion', 'diagnostico', 'metodologia', 'custom', 'rpe'],
   // Días en que el profe terminó todo lo del día, y cuánto tardó desde la primera marca

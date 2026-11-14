@@ -181,7 +181,7 @@
     // La ve recepción: es la que contesta "¿a qué hora hay menos gente?" (Emanuel, 09/11/2026)
     if (tiene('recepcion') || coord) p.push(['reservas', 'Reservas', coord ? 'Recepción' : 'Mi día']);
     if (tiene('admin') || tiene('recepcion') || coord) p.push(['liq', tiene('admin') ? 'Liquidación' : 'Mis ingresos', coord ? 'Recepción' : 'Mi día']);   // cada una ve lo suyo; admin ve a todas
-    if (coord) p.push(['profes', 'Planes y llegadas', 'Profes'], ['phor', 'Horarios y sábados', 'Profes'], ['pliq', tiene('admin') ? 'Comisiones y tareas' : 'Tareas del mes', 'Profes']);
+    if (coord) p.push(['pres', 'Resumen', 'Profes'], ['profes', 'Planes y llegadas', 'Profes'], ['phor', 'Horarios y sábados', 'Profes'], ['pliq', tiene('admin') ? 'Comisiones y tareas' : 'Tareas del mes', 'Profes']);
     if (tiene('admin')) p.push(['resumen', 'Resumen semanal', 'Gestión'], ['admin', 'Equipo', 'Gestión']);
     p.push(['chat', chatEtiqueta(), coord ? 'Gestión' : 'Mi día']);   // mensajes entre el equipo: todos
     return p;
@@ -1287,6 +1287,161 @@
     } catch (e) { aviso(PulsoApi.mensaje(e.codigo || e.message), true); render(); }
   }
 
+  // ---------- Resumen de coordinación: Estado del Gym con las Analíticas de MOVE (Emanuel, 13/11/2026) ----------
+  // Lo mismo que "Estado del Gym" de MOVE Dashboard (semáforo de deserción, meta de ventas, campana de Gauss, estacionalidad,
+  // 2025 contra 2026) pero con los cierres mensuales de MOVE en vez de las planillas.
+  const MES_CORTO = ['ENE', 'FEB', 'MAR', 'ABR', 'MAY', 'JUN', 'JUL', 'AGO', 'SEP', 'OCT', 'NOV', 'DIC'];
+  const mesTxt = m => MES_CORTO[Number(m.slice(5, 7)) - 1] + ' ' + m.slice(2, 4);
+  const num1 = v => (v == null ? '—' : String(Math.round(v * 10) / 10).replace('.', ','));
+  const semaforo = d => (d == null ? ['gris', 'Sin datos'] : d < 15 ? ['verde', 'Bajo control'] : d < 25 ? ['amarillo', 'Moderada'] : ['rojo', 'Crítica']);
+  const mediana = xs => { const a = xs.filter(v => v != null).sort((x, y) => x - y); return a.length ? (a.length % 2 ? a[(a.length - 1) / 2] : (a[a.length / 2 - 1] + a[a.length / 2]) / 2) : null; };
+
+  // Un mes es "a revisar" si la deserción de la sede se despega mucho de lo habitual (por ejemplo, octubre 2026)
+  function mesesRaros(sedes) {
+    const raros = {};
+    sedes.forEach(s => {
+      const vals = Object.keys(s.datos).filter(m => s.datos[m].activos >= 20).map(m => s.datos[m].desercion);
+      const med = mediana(vals);
+      Object.keys(s.datos).forEach(m => { const d = s.datos[m].desercion; if (med && d != null && d > med * 1.8 && d > 30) (raros[m] = raros[m] || []).push(s.nombre + ' ' + num1(d) + '%'); });
+    });
+    return raros;
+  }
+
+  function svgBarras(serie, opciones) {
+    const o = Object.assign({ alto: 150, ancho: 640, unidad: '', linea: null }, opciones || {});
+    const max = Math.max(1, ...serie.map(x => x.v || 0), o.linea || 0);
+    const n = serie.length, an = o.ancho / n;
+    const y = v => o.alto - 18 - (v / max) * (o.alto - 34);
+    return `<svg class="grafico" viewBox="0 0 ${o.ancho} ${o.alto}" role="img" aria-label="${esc(o.titulo || '')}">
+      ${serie.map((x, i) => x.v == null ? '' : `<rect x="${i * an + an * 0.15}" y="${y(x.v)}" width="${an * 0.7}" height="${o.alto - 18 - y(x.v)}" rx="3" class="barra-${x.c || 'azul'}"><title>${esc(x.l)}: ${num1(x.v)}${o.unidad}</title></rect>
+        <text x="${i * an + an / 2}" y="${y(x.v) - 3}" text-anchor="middle" class="graf-valor">${num1(x.v)}</text>`).join('')}
+      ${serie.map((x, i) => `<text x="${i * an + an / 2}" y="${o.alto - 4}" text-anchor="middle" class="graf-eje">${esc(x.l)}</text>`).join('')}
+      ${o.linea != null ? `<line x1="0" x2="${o.ancho}" y1="${y(o.linea)}" y2="${y(o.linea)}" class="graf-media"/><text x="${o.ancho - 2}" y="${y(o.linea) - 3}" text-anchor="end" class="graf-eje">media ${num1(o.linea)}${o.unidad}</text>` : ''}</svg>`;
+  }
+
+  function svgLineas(etiquetas, series, unidad) {
+    const W = 640, H = 170;
+    const vals = series.flatMap(s => s.v.filter(v => v != null));
+    const max = Math.max(1, ...vals);
+    const x = i => 20 + i * (W - 40) / Math.max(1, etiquetas.length - 1);
+    const y = v => H - 22 - (v / max) * (H - 40);
+    return `<svg class="grafico" viewBox="0 0 ${W} ${H}" role="img">
+      ${series.map(s => { const pts = s.v.map((v, i) => (v == null ? null : x(i) + ',' + y(v))); const tramos = []; let t = [];
+        pts.forEach(p => { if (p) t.push(p); else if (t.length) { tramos.push(t); t = []; } }); if (t.length) tramos.push(t);
+        return tramos.map(tr => `<polyline points="${tr.join(' ')}" class="linea-${s.c}"/>`).join('') + s.v.map((v, i) => v == null ? '' : `<circle cx="${x(i)}" cy="${y(v)}" r="3" class="punto-${s.c}"><title>${esc(s.n)} ${esc(etiquetas[i])}: ${num1(v)}${unidad}</title></circle>`).join(''); }).join('')}
+      ${etiquetas.map((l, i) => `<text x="${x(i)}" y="${H - 5}" text-anchor="middle" class="graf-eje">${esc(l)}</text>`).join('')}
+      </svg><div class="leyenda">${series.map(s => `<span><i class="punto-${s.c}"></i>${esc(s.n)}</span>`).join('')}</div>`;
+  }
+
+  // Campana de Gauss: cada profe en su z-score de deserción del mes (como en MOVE Dashboard)
+  function svgGauss(filas) {
+    const vals = filas.map(f => f.v);
+    const m = vals.reduce((a, b) => a + b, 0) / vals.length;
+    const sd = Math.sqrt(vals.reduce((a, b) => a + (b - m) * (b - m), 0) / vals.length) || 1;
+    const W = 640, H = 190, x = z => W / 2 + z * (W - 40) / 6.4, y = d => H - 30 - d * (H - 60);
+    const dens = z => Math.exp(-z * z / 2);
+    let curva = '', nucleo = '';
+    for (let z = -3.2; z <= 3.21; z += 0.1) { curva += x(z) + ',' + y(dens(z)) + ' '; if (Math.abs(z) <= 1.0001) nucleo += x(z) + ',' + y(dens(z)) + ' '; }
+    const pts = filas.map(f => Object.assign({}, f, { z: (f.v - m) / sd }));
+    return { m, sd, pts, svg: `<svg class="grafico" viewBox="0 0 ${W} ${H}" role="img" aria-label="Campana de Gauss de la deserción">
+      <polygon points="${x(-1)},${y(0)} ${nucleo} ${x(1)},${y(0)}" class="gauss-nucleo"/>
+      <polyline points="${curva}" class="gauss-curva"/>
+      ${[-2, -1, 0, 1, 2].map(z => `<text x="${x(z)}" y="${H - 12}" text-anchor="middle" class="graf-eje">${z === 0 ? 'media ' + num1(m) + '%' : (z > 0 ? '+' : '') + z + 'σ'}</text>`).join('')}
+      ${pts.map((p, i) => { const zz = Math.max(-3.1, Math.min(3.1, p.z)); const fuera = Math.abs(p.z) >= 1.5; const c = !fuera ? 'gris' : p.z > 0 ? 'rojo' : 'verde';
+        return `<circle cx="${x(zz)}" cy="${y(dens(zz))}" r="${fuera ? 8 : 6}" class="gauss-punto-${c}"><title>${esc(p.n)}: ${num1(p.v)}% (z=${p.z >= 0 ? '+' : ''}${num1(p.z)})</title></circle>
+          <text x="${x(zz)}" y="${y(dens(zz)) - 11 - (i % 2) * 10}" text-anchor="middle" class="graf-valor">${esc(p.n.split(' ')[0])}</text>`; }).join('')}</svg>` };
+  }
+
+  function vistaResumenProfes() {
+    const D = E.estado;
+    if (!D) return '<div class="cargando">Cargando el estado del gym…</div>';
+    const sedes = D.filas.filter(f => f.tipo === 'sede');
+    const profes = D.filas.filter(f => f.tipo !== 'sede');
+    if (!sedes.length) return '<div class="vacio">Todavía no hay datos de MOVE cargados: la PC los sube todas las mañanas.</div>';
+    const todosMeses = Object.keys(sedes[0].datos).sort();
+    const mesHoy = D.hoy.slice(0, 7);
+    const mes = E.estadoMes && todosMeses.indexOf(E.estadoMes) >= 0 ? E.estadoMes : mesHoy;
+    const raros = mesesRaros(sedes);
+    const prev = m => { const d = new Date(m + '-15T12:00:00Z'); d.setUTCMonth(d.getUTCMonth() - 1); return d.toISOString().slice(0, 7); };
+    const haceUnAnio = m => (Number(m.slice(0, 4)) - 1) + m.slice(4);
+    const chips = todosMeses.slice(-8).map(m => `<button class="chip" data-accion="estado-mes" data-m="${m}" aria-pressed="${m === mes}">${esc(mesTxt(m))}${raros[m] ? ' ⚠️' : ''}</button>`).join('');
+    const enCurso = mes === mesHoy;
+    const diasMes = new Date(Date.UTC(Number(mes.slice(0, 4)), Number(mes.slice(5, 7)), 0)).getUTCDate();
+    const restan = enCurso ? Math.max(0, diasMes - Number(D.hoy.slice(8, 10))) : 0;
+
+    const tarjetaProfe = p => {
+      const d = p.datos[mes] || {}, dp = p.datos[prev(mes)] || {}, d25 = p.datos[haceUnAnio(mes)] || {};
+      const [col, txt] = semaforo(d.desercion);
+      const ytd = Object.keys(p.datos).filter(m => m.slice(0, 4) === mes.slice(0, 4) && m <= mes && !raros[m] && p.datos[m].desercion != null && p.datos[m].activos >= 5).map(m => p.datos[m].desercion);
+      const prom = ytd.length ? ytd.reduce((a, b) => a + b, 0) / ytd.length : null;
+      const dif = d.desercion != null && dp.desercion != null ? d.desercion - dp.desercion : null;
+      const vs25 = d25.altas && !enCurso ? Math.round((d.altas - d25.altas) / d25.altas * 100) : null;   // el mes en curso todavía no se compara
+      return `<div class="estado-card"><div class="estado-cab"><span class="estado-punto ${col}"></span><div><b>${esc(p.nombre.split(' ')[0])}</b>${p.tipo === 'kine' ? ' <small>kine</small>' : ''}
+          <span class="${col}">${txt} · ${num1(d.desercion)}% deserción ${esc(MES_CORTO[Number(mes.slice(5, 7)) - 1])}</span></div></div>
+        <div class="estado-chips"><div><strong>${d.activos ?? '—'}</strong><span>activos</span></div><div><strong class="verde">${d.altas ?? '—'}</strong><span>altas</span></div><div><strong class="amarillo">${prom != null ? Math.round(prom) + '%' : '—'}</strong><span>prom. año</span></div>
+          ${dif != null && Math.abs(dif) >= 0.5 ? `<div><strong class="${dif > 0 ? 'rojo' : 'verde'}">${dif > 0 ? '↑' : '↓'} ${num1(Math.abs(dif))}%</strong><span>vs ${esc(MES_CORTO[Number(prev(mes).slice(5, 7)) - 1])}</span></div>` : ''}</div>
+        ${vs25 != null ? `<div class="estado-vs">vs ${esc(haceUnAnio(mes).slice(0, 4))}: <b class="${vs25 >= 0 ? 'verde' : 'rojo'}">${d.altas - d25.altas >= 0 ? '+' : ''}${d.altas - d25.altas} altas (${vs25 >= 0 ? '+' : ''}${vs25}%)</b></div>` : ''}
+        ${d.reeval != null ? `<div class="estado-vs">Reevaluó al ${num1(d.reeval)}% · perfil ${num1(d.perfil)}% · objetivo ${num1(d.objetivo)}%</div>` : ''}</div>`;
+    };
+
+    const metaSede = s => {
+      const d = s.datos[mes] || {};
+      const cerrados = Object.keys(s.datos).filter(m => m.slice(0, 4) === mes.slice(0, 4) && m < mes && (s.datos[m].altas || 0) > 0);
+      if (!cerrados.length) return '';
+      const prom = Math.round(cerrados.reduce((a, m) => a + s.datos[m].altas, 0) / cerrados.length);
+      const mejor = cerrados.reduce((a, m) => (s.datos[m].altas > s.datos[a].altas ? m : a), cerrados[0]);
+      const mv = s.datos[mejor].altas, act = d.altas || 0;
+      if (!enCurso) return `<div class="meta-sede"><b>Ventas · ${esc(mesTxt(mes))}</b><div class="estado-chips"><div><strong>${act}</strong><span>altas del mes</span></div><div><strong class="${act >= prom ? 'verde' : 'rojo'}">${act - prom >= 0 ? '+' : ''}${act - prom}</strong><span>vs promedio (${prom})</span></div><div><strong>${mv}</strong><span>mejor mes (${esc(mesTxt(mejor))})</span></div></div></div>`;
+      const techo = d.activos || 0, falta = Math.max(0, techo - act), pct = techo ? Math.round(act / techo * 100) : 0;
+      const frase = techo >= mv ? `Si renuevan los <b>${techo}</b> activos sería <b class="verde">récord</b> (supera a ${esc(mesTxt(mejor))}: ${mv}).`
+        : techo >= prom ? `Si renuevan los <b>${techo}</b> se supera el promedio (${prom}), pero no alcanza el récord de ${esc(mesTxt(mejor))} (${mv}).`
+        : `Aun renovando los <b>${techo}</b> queda por debajo del promedio (${prom}): hacen falta <b class="amarillo">${prom - techo} altas nuevas</b> además de las renovaciones.`;
+      return `<div class="meta-sede"><b>🎯 Meta de ventas · ${esc(mesTxt(mes))}</b>
+        <div class="estado-chips"><div><strong>${techo}</strong><span>socios a liquidar (techo)</span></div><div><strong class="${pct >= 80 ? 'verde' : pct >= 50 ? 'amarillo' : 'rojo'}">${act}</strong><span>liquidados · ${pct}%</span></div>
+          <div><strong class="amarillo">${falta || '✓'}</strong><span>faltan · ${restan} días</span></div><div><strong>${mv}</strong><span>mejor mes · prom ${prom}</span></div></div>
+        <p>${frase}${restan && falta ? ` Para que no quede nadie sin renovar hacen falta <b>${num1(falta / restan)} por día</b>.` : ''}</p></div>`;
+    };
+
+    // Gauss y homogeneidad: profes (no kines) con datos ese mes
+    const conDato = profes.filter(p => p.tipo === 'profe' && p.datos[mes] && p.datos[mes].desercion != null && p.datos[mes].activos >= 10).map(p => ({ n: p.nombre, v: p.datos[mes].desercion }));
+    const G = conDato.length >= 3 ? svgGauss(conDato) : null;
+    const cv = G ? Math.round(G.sd / (G.m || 1) * 100) : null;
+    const outs = G ? G.pts.filter(p => Math.abs(p.z) >= 1.5) : [];
+
+    // Estacionalidad: deserción por mes del año (promedio de los años con datos, sin meses a revisar) contra la media
+    const estac = sedes.map(s => {
+      const porMes = {};
+      Object.keys(s.datos).filter(m => !raros[m] && s.datos[m].activos >= 50 && s.datos[m].desercion != null && s.datos[m].tipo === 'cierre').forEach(m => { (porMes[m.slice(5, 7)] = porMes[m.slice(5, 7)] || []).push(s.datos[m].desercion); });
+      const prom = Object.keys(porMes).map(k => ({ k, v: porMes[k].reduce((a, b) => a + b, 0) / porMes[k].length }));
+      const media = prom.length ? prom.reduce((a, b) => a + b.v, 0) / prom.length : null;
+      return { s, media, prom };
+    });
+    const proxMes = String(Number(D.hoy.slice(5, 7)) % 12 + 1).padStart(2, '0');
+
+    const anios = [...new Set(todosMeses.map(m => m.slice(0, 4)))];
+    return `<h1 class="titulo">Resumen <span>·</span> estado del gym</h1>
+      <p class="bajada">Con los cierres mensuales de MOVE (Analíticas), no con las planillas. Datos al ${esc(ddmm(sedes[0].cargada))}. El mes en curso se actualiza cada mañana.</p>
+      <div class="filtros">${chips}</div>
+      ${raros[mes] ? `<div class="aviso-mes urgente">⚠️ <b>Dato a revisar:</b> en ${esc(mesTxt(mes))} MOVE da una deserción que se despega mucho de lo habitual (${esc(raros[mes].join(' · '))}). Puede ser un problema del cálculo de MOVE ese mes: conviene consultarlo con Teo antes de sacar conclusiones. Este mes no entra en los promedios ni en la estacionalidad.</div>` : ''}
+      ${sedes.map(s => `<section class="grupo estado-sede"><h2>📍 ${esc(s.nombre)}</h2>${metaSede(s)}
+        <div class="estado-lista">${profes.filter(p => p.sede === s.sede).map(tarjetaProfe).join('') || '<div class="vacio">Sin profes.</div>'}</div></section>`).join('')}
+      ${G ? `<section class="grupo"><h2>🔔 Campana de Gauss · deserción de ${esc(mesTxt(mes))}</h2>
+        <p class="intro-grupo">Cada profe ubicado según cuánto se aparta de la media del equipo. La zona sombreada es lo típico (±1σ); más allá de ±1,5σ se considera fuera de lo común.</p>${G.svg}
+        <p>${outs.length ? outs.map(p => `<b class="${p.z > 0 ? 'rojo' : 'verde'}">${esc(p.n.split(' ')[0])}</b> ${p.z > 0 ? 'a acompañar (deserción alta)' : 'como referente (deserción baja)'}`).join(' · ') : `Equipo parejo: nadie se aparta más de 1,5σ de la media (${num1(G.m)}%).`}
+          Homogeneidad entre profes: <b class="${cv < 15 ? 'verde' : cv < 30 ? 'amarillo' : 'rojo'}">${cv}% de variación</b> (${cv < 15 ? 'muy parejo' : cv < 30 ? 'variación moderada' : 'mucha dispersión entre profes'}).</p></section>` : ''}
+      <section class="grupo"><h2>📅 Estacionalidad · meses de riesgo</h2>
+        <p class="intro-grupo">Deserción promedio de cada mes del año (con los años que tiene MOVE, sin los meses a revisar), contra la media de la sede. En rojo, los meses 20% o más por encima: ahí conviene adelantar reevaluaciones y contacto.</p>
+        ${estac.filter(e => e.media).map(e => { const serie = MES_CORTO.map((l, i) => { const k = String(i + 1).padStart(2, '0'); const x = e.prom.find(p => p.k === k); return { l, v: x ? x.v : null, c: !x ? 'gris' : x.v >= e.media * 1.2 ? 'rojo' : x.v >= e.media ? 'amarillo' : 'verde' }; });
+          const px = e.prom.find(p => p.k === proxMes);
+          return `<h3 class="sub-coord">${esc(e.s.nombre)}</h3>${svgBarras(serie, { unidad: '%', linea: e.media, titulo: 'Estacionalidad ' + e.s.nombre })}
+            <p class="aclara">${px && px.v >= e.media * 1.2 ? `<b class="rojo">Atención: el mes que viene (${esc(MES_CORTO[Number(proxMes) - 1])}) suele tener más bajas (${num1(px.v)}% contra ${num1(e.media)}% de media).</b> Conviene trabajar a los socios en riesgo este mes.` : `El mes que viene (${esc(MES_CORTO[Number(proxMes) - 1])}) no figura entre los de más bajas.`}</p>`; }).join('')}</section>
+      <section class="grupo"><h2>📈 Deserción mes a mes · ${anios.join(' contra ')}</h2>
+        ${sedes.map(s => `<h3 class="sub-coord">${esc(s.nombre)}</h3>${svgLineas(MES_CORTO, anios.map((a, i) => ({ n: a, c: ['gris', 'rojo', 'azul'][i % 3], v: MES_CORTO.map((_, k) => { const m = a + '-' + String(k + 1).padStart(2, '0'); const d = s.datos[m]; return d && d.activos >= 20 && !raros[m] ? d.desercion : null; }) })), '%')}`).join('')}
+        <p class="aclara">Los puntos que faltan son meses sin datos en MOVE (empezó a usarse a mediados de 2025; Bariloche, en 2026) o marcados como a revisar.</p></section>
+      <section class="grupo"><h2>🧾 Altas por mes (nuevos + renovaciones)</h2>
+        ${sedes.map(s => `<h3 class="sub-coord">${esc(s.nombre)}</h3>${svgBarras(todosMeses.filter(m => (s.datos[m].altas || 0) > 0).slice(-12).map(m => ({ l: mesTxt(m), v: s.datos[m].altas, c: m === mesHoy ? 'amarillo' : 'azul' })), {})}`).join('')}</section>`;
+  }
+
   function vistaProfes() {
     if (!E.planes) return '<div class="cargando">Cargando los profes…</div>';
     if (E.agendaVer && E.planes.agenda) return vistaAgendaEquipo();
@@ -2331,6 +2486,8 @@ ${p.tareas_mes ? `<span class="uso-hoy">📋 Tareas del mes: ${p.tareas_mes.hech
         E.planes = await cliente.llamar('profe_tareas', ['profes', 'phor', 'pliq'].indexOf(vistaPlanes) >= 0 && tiene('admin') ? { sede: E.sedeElegida } : {});
         recordar(clavePlanes(vistaPlanes), E.planes);
         if (E.vista === 'planes') programarConsejos();
+      } else if (E.vista === 'pres') {
+        E.estado = await cliente.llamar('profe_estado', {});
       } else if (E.vista === 'admin') {
         E.usuarios = await cliente.llamar('usuarios_listar');
       }
@@ -2613,10 +2770,11 @@ ${p.tareas_mes ? `<span class="uso-hoy">📋 Tareas del mes: ${p.tareas_mes.hech
       : E.vista === 'pase' ? vistaPase()
       : E.vista === 'chat' ? vistaChat()
       : E.vista === 'planes' ? vistaPlanes() : E.vista === 'profes' ? vistaProfes() : E.vista === 'pmes' ? vistaMesProfe()
+      : E.vista === 'pres' ? vistaResumenProfes()
       : E.vista === 'phor' ? (E.planes ? vistaAgendaEquipo(true) : '<div class="cargando">Cargando…</div>')
       : E.vista === 'pliq' ? (E.planes ? `<h1 class="titulo">${tiene('admin') ? 'Comisiones y tareas del mes' : 'Tareas del mes'} <span>·</span> profes</h1>${vistaTareasMesCoord()}${tablaComisiones()}` : '<div class="cargando">Cargando…</div>')
       : '<div class="vacio">Tu usuario no tiene ninguna vista asignada. Avisale a Emanuel.</div>';
-    const sinDatos = { hoy: !E.tareas, sede: E.personaDni ? !E.persona : !E.sede, mes: !E.rend, rend: !E.rend, admin: !E.usuarios, reservas: !E.ocupacion, liq: !E.liq, resumen: !E.resumen, consultas: !E.cons, pase: !E.pase, chat: !E.chat, planes: !E.planes, profes: !E.planes, pmes: !E.planes, phor: !E.planes, pliq: !E.planes }[E.vista];
+    const sinDatos = { hoy: !E.tareas, sede: E.personaDni ? !E.persona : !E.sede, mes: !E.rend, rend: !E.rend, admin: !E.usuarios, reservas: !E.ocupacion, liq: !E.liq, resumen: !E.resumen, consultas: !E.cons, pase: !E.pase, chat: !E.chat, planes: !E.planes, profes: !E.planes, pmes: !E.planes, phor: !E.planes, pliq: !E.planes, pres: !E.estado }[E.vista];
     const mostrar = E.errorCarga && sinDatos ? `<div class="vacio" style="margin-top:18px"><p>${esc(E.errorCarga)}</p><p>La pantalla vuelve a intentarlo sola. Tus marcas no se pierden.</p><button class="boton" data-accion="reintentar">Reintentar ahora</button></div>` : cuerpo;
     const bandas = E.vista === 'hoy' ? bandaPase() + bandaFichajes() + bandaReservas() : '';
     app.innerHTML = encabezado() + `<main class="contenedor">${bandas}${mostrar}</main>` + (E.vista === 'hoy' && turnoTerminando() ? `<button class="cerrar-app-fijo${DEMO ? ' con-cinta' : ''}" data-accion="cerrar-app">🚪 ${E.dia && E.dia.cierre_hecho ? 'Listo por hoy' : 'Se termina tu turno'}: cerrá la app antes de irte</button>` : '') + (DEMO ? '<div class="cinta-practica">Modo práctica · datos inventados</div>' : '') + botonRanking() + panelRanking();
@@ -3210,6 +3368,7 @@ ${p.tareas_mes ? `<span class="uso-hoy">📋 Tareas del mes: ${p.tareas_mes.hech
     else if (a === 'tmes-cerrar') { E.tmesVer = false; render(); }
     else if (a === 'tmes-cual') { E.tmesCual = el.dataset.c; render(); }
     else if (a === 'liq-mes') { E.liqMes = el.dataset.m; render(); }
+    else if (a === 'estado-mes') { E.estadoMes = el.dataset.m; render(); }
     else if (a === 'alm-dia') { E.almDia = E.almDia === el.dataset.f ? '' : el.dataset.f; render(); }
     else if (a === 'memb-mes') { E.membMes = el.dataset.m; render(); }
     else if (a === 'tmes-quitar') { el.closest('[data-tmes-fila]').remove(); }

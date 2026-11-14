@@ -57,3 +57,15 @@ test('sin reemplazo nadie más marca; los sábados no se le asignan mientras est
   const sab = d.repo.hojas.profe_sabados.filter(s => s.fecha <= '2026-11-29').map(s => s.profe);
   assert.deepEqual(sab, ['Enzo Legammari', 'Enzo Legammari']);    // 21 y 28: Belén está de vacaciones
 });
+
+test('estado del gym: lo sube la PC y lo ve coordinación (cada coordinador su sede)', () => {
+  const d = entorno();
+  const filas = [{ clave: 'sede:bolson', tipo: 'sede', nombre: 'El Bolsón', sede: 'bolson', datos: { '2026-10': { activos: 300, desercion: 20 } } },
+    { clave: 'sede:puelo', tipo: 'sede', nombre: 'Lago Puelo', sede: 'puelo', datos: { '2026-10': { activos: 200 } } }];
+  assert.equal(pedir(d, { accion: 'cargar_profe_estado', clave: 'mal', filas }).error, 'clave');
+  assert.deepEqual(pedir(d, { accion: 'cargar_profe_estado', clave: PROPS.CLAVE_CARGA, filas }).data, { filas: 2 });
+  const r = pedir(d, { accion: 'profe_estado', token: entrar(d, '20555666') }).data;
+  assert.deepEqual(r.filas.map(f => f.sede), ['bolson']);
+  assert.equal(r.filas[0].datos['2026-10'].activos, 300);
+  assert.equal(pedir(d, { accion: 'profe_estado', token: entrar(d, '20111222') }).error, 'prohibido');
+});

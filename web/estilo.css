@@ -787,3 +787,30 @@ th.mes-actual, td.mes-actual { background: #eef6f2; }
 .form-aus .ancho { grid-column: span 2; }
 .form-aus select, .form-aus input { font: inherit; padding: 6px 8px; border-radius: 8px; border: 1px solid #c9d3dc; }
 .uso-hoy.amarillo { color: #a06000; }
+
+/* Resumen: estado del gym (13/11/2026) */
+.estado-lista { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 10px; }
+.estado-card { border: 1px solid #dde4ea; border-radius: 12px; padding: 10px 12px; background: #fff; }
+.estado-cab { display: flex; gap: 10px; align-items: center; margin-bottom: 8px; }
+.estado-cab span { display: block; font-size: .78rem; font-weight: 600; }
+.estado-punto { width: 14px; height: 14px; border-radius: 50%; flex: none; }
+.estado-punto.verde { background: #10b981; box-shadow: 0 0 8px #10b98188; } .estado-punto.amarillo { background: #f59e0b; box-shadow: 0 0 8px #f59e0b88; }
+.estado-punto.rojo { background: #ef4444; box-shadow: 0 0 8px #ef444488; } .estado-punto.gris { background: #94a3b8; }
+.estado-chips { display: flex; flex-wrap: wrap; gap: 6px; }
+.estado-chips > div { background: #f3f6f8; border-radius: 10px; padding: 6px 10px; min-width: 64px; text-align: center; }
+.estado-chips strong { display: block; font-size: 1.15rem; font-family: ui-monospace, monospace; }
+.estado-chips span { font-size: .66rem; text-transform: uppercase; color: #6b7a86; letter-spacing: .03em; }
+.estado-vs { margin-top: 6px; font-size: .8rem; color: #5b6873; }
+.meta-sede { border-left: 3px solid #6366f1; background: #fff; border-radius: 10px; padding: 10px 12px; margin: 6px 0 12px; }
+.meta-sede > b { display: block; color: #4f46e5; font-size: .78rem; text-transform: uppercase; letter-spacing: .05em; margin-bottom: 6px; }
+.meta-sede p { margin: 8px 0 0; font-size: .85rem; }
+.estado-sede .verde, .estado-card .verde, section .verde { color: #0f9f6e; } .estado-sede .rojo, section .rojo { color: #dc2626; } .estado-sede .amarillo, section .amarillo { color: #b7791f; }
+svg.grafico { width: 100%; height: auto; display: block; margin: 6px 0; }
+.graf-eje { font-size: 10px; fill: #7a8691; } .graf-valor { font-size: 10px; fill: #334155; font-weight: 700; }
+.graf-media { stroke: #64748b; stroke-dasharray: 5 4; }
+.barra-azul { fill: #3b82f6; } .barra-rojo { fill: #ef4444; } .barra-amarillo { fill: #f59e0b; } .barra-verde { fill: #10b981; } .barra-gris { fill: #e2e8f0; }
+polyline.linea-rojo { fill: none; stroke: #ef4444; stroke-width: 2.5; } polyline.linea-gris { fill: none; stroke: #94a3b8; stroke-width: 2.5; } polyline.linea-azul { fill: none; stroke: #3b82f6; stroke-width: 2.5; }
+circle.punto-rojo, .leyenda i.punto-rojo { fill: #ef4444; background: #ef4444; } circle.punto-gris, .leyenda i.punto-gris { fill: #94a3b8; background: #94a3b8; } circle.punto-azul, .leyenda i.punto-azul { fill: #3b82f6; background: #3b82f6; }
+.leyenda { display: flex; gap: 14px; font-size: .78rem; color: #5b6873; } .leyenda i { display: inline-block; width: 10px; height: 10px; border-radius: 50%; margin-right: 5px; vertical-align: -1px; }
+.gauss-curva { fill: none; stroke: #64748b; stroke-width: 2; } .gauss-nucleo { fill: rgba(59, 130, 246, .13); }
+.gauss-punto-gris { fill: #94a3b8; stroke: #fff; stroke-width: 2; } .gauss-punto-rojo { fill: #ef4444; stroke: #fff; stroke-width: 2; } .gauss-punto-verde { fill: #10b981; stroke: #fff; stroke-width: 2; }
