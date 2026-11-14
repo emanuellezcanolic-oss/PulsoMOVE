@@ -776,3 +776,14 @@ th.mes-actual, td.mes-actual { background: #eef6f2; }
 .pase-bloque ul { margin: 2px 0 6px; padding-left: 18px; font-size: 14px; }
 .tarjeta.cons.vencida { border-color: var(--naranja); }
 .sello.rojo { background: var(--rojo); color: #fff; }
+
+/* Vacaciones y reemplazos (13/11/2026) */
+.lista-aus { list-style: none; padding: 0; margin: 6px 0 12px; }
+.lista-aus li { padding: 6px 0; border-bottom: 1px dashed #e1e7ec; }
+.lista-aus li.pasada { color: #8a96a3; }
+.lista-aus .amarillo { color: #a06000; }
+.form-aus { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 8px; align-items: end; }
+.form-aus label { display: flex; flex-direction: column; gap: 4px; font-size: .8rem; font-weight: 600; }
+.form-aus .ancho { grid-column: span 2; }
+.form-aus select, .form-aus input { font: inherit; padding: 6px 8px; border-radius: 8px; border: 1px solid #c9d3dc; }
+.uso-hoy.amarillo { color: #a06000; }

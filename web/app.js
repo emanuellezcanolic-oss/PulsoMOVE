@@ -900,12 +900,14 @@
       <div class="principal">
       <h1 class="titulo">${esc(tituloDia(E.planes.hoy))} <span>·</span> tus planes</h1>
       ${avisoSabado(M)}
+      ${avisoAusencia(M)}
       ${avisoTareasMes(M)}
       <p class="bajada">Primero el socio nuevo, después los vencidos y después los que están por vencer.</p>
       ${bandaConcentrado(M)}
       ${nuevos.length ? `<section class="grupo"><h2>🆕 Plan nuevo, hoy <span class="cuenta">${nuevos.length}</span></h2>${nuevos.map(t => tarjetaPlan(t, i++, true)).join('')}</section>` : ''}
       ${resto.length ? `<section class="grupo"><h2>Para renovar hoy <span class="cuenta">${resto.length}</span></h2>${resto.map(t => tarjetaPlan(t, i++, true)).join('')}</section>`
         : (nuevos.length ? '' : '<div class="vacio">Hoy no tenés planes para renovar. 🎉</div>')}
+      ${bloqueCobertura(M)}
       ${bloqueAuditoria(M)}
       ${bloqueHechas(M)}
       ${bloqueRevisiones(M)}
@@ -1085,6 +1087,48 @@
       <button type="button" class="chip" data-accion="horario-quitar" title="Quitar esta franja">✕</button></div>`;
   }
 
+  // ---------- Vacaciones y reemplazos (Emanuel, 13/11/2026) ----------
+  const TIPO_AUS = { vacaciones: '🏖️ Vacaciones', licencia: '🩹 Licencia', otro: '📌 Ausencia' };
+  function bloqueAusencias(A, editables) {
+    const aus = A.ausencias || [];
+    const profes = A.profes.filter(p => editables.indexOf(p.sede) >= 0);
+    const hoy = E.planes.hoy;
+    const fila = a => `<li class="${a.hasta < hoy ? 'pasada' : ''}"><b>${esc(a.profe)}</b> · ${esc(TIPO_AUS[a.tipo] || a.tipo)} del ${esc(ddmm(a.desde))} al ${esc(ddmm(a.hasta))}
+      · ${a.reemplazo ? `lo cubre <b>${esc(a.reemplazo)}</b>` : '<span class="amarillo">sin reemplazo: no se le agenda nada esos días</span>'}${a.nota ? ` <small>(${esc(a.nota)})</small>` : ''}
+      ${profes.some(p => p.dni === a.profe_dni) ? `<button class="enlace chico" data-accion="aus-borrar" data-id="${esc(a.id)}">quitar</button>` : ''}</li>`;
+    const opciones = profes.map(p => `<option value="${esc(p.dni)}">${esc(p.nombre)}</option>`).join('');
+    return `<section class="grupo"><h2>🏖️ Vacaciones y reemplazos</h2>
+      <p class="intro-grupo">Con reemplazo, los planes de esos días le aparecen al reemplazo como "Cubrís a…" y lo que hace queda a su nombre (se cuenta para liquidarle ese trabajo). Sin reemplazo, no se le agenda nada esos días: se le adelanta antes de irse y se le reparte a la vuelta. La comisión por renovaciones se le liquida igual al profe: son sus socios. Esos sábados tampoco se le asignan.</p>
+      ${aus.length ? `<ul class="lista-aus">${aus.map(fila).join('')}</ul>` : '<p class="aclara">No hay vacaciones cargadas.</p>'}
+      ${profes.length ? `<div class="form-aus">
+        <label>Profe<select data-aus="profe">${opciones}</select></label>
+        <label>Desde<input type="date" data-aus="desde" value="${esc(hoy)}"></label>
+        <label>Hasta<input type="date" data-aus="hasta" value="${esc(hoy)}"></label>
+        <label>Tipo<select data-aus="tipo"><option value="vacaciones">Vacaciones</option><option value="licencia">Licencia</option><option value="otro">Otro</option></select></label>
+        <label>Lo cubre<select data-aus="reemplazo"><option value="">Nadie (se le reparte antes y después)</option>${A.profes.map(p => `<option value="${esc(p.dni)}">${esc(p.nombre)}</option>`).join('')}</select></label>
+        <label class="ancho">Nota<input type="text" data-aus="nota" placeholder="Opcional"></label>
+        <button class="boton verde" data-accion="aus-guardar">Guardar</button></div>` : ''}
+    </section>`;
+  }
+
+  function avisoAusencia(M) {
+    const a = M.ausencia;
+    if (!a) return '';
+    const hoy = E.planes.hoy;
+    const ya = a.desde <= hoy;
+    return `<div class="aviso-mes">🏖️ <b>${ya ? 'Estás de ' + esc((TIPO_AUS[a.tipo] || '').replace(/^\S+ /, '').toLowerCase()) + ' hasta el ' + esc(ddmm(a.hasta)) : 'Del ' + esc(ddmm(a.desde)) + ' al ' + esc(ddmm(a.hasta)) + ' tenés ' + esc((TIPO_AUS[a.tipo] || '').replace(/^\S+ /, '').toLowerCase())}.</b>
+      ${a.reemplazo ? `Te cubre ${esc(a.reemplazo)}: tus planes de esos días los ve y los hace él/ella.` : (ya ? 'No se te agenda nada: a la vuelta se te reparte lo pendiente.' : 'Antes de irte se te adelantan los planes de esos días.')} Tu comisión por renovaciones se liquida igual.</div>`;
+  }
+
+  function bloqueCobertura(M) {
+    const C = M.cubriendo || [];
+    if (!C.length) return '';
+    let i = 500;
+    return C.map(c => `<section class="grupo cubriendo"><h2>🔁 Cubrís a ${esc(c.profe)} <span class="cuenta">${c.hoy.length}</span></h2>
+      <p class="intro-grupo">Está de ${esc((TIPO_AUS[c.tipo] || '').replace(/^\S+ /, '').toLowerCase())} hasta el ${esc(ddmm(c.hasta))}. Lo que marques queda a tu nombre y se cuenta para tu liquidación.</p>
+      ${c.hoy.length ? c.hoy.map(t => tarjetaPlan(t, i++, true)).join('') : '<div class="vacio">Hoy no hay planes para renovar.</div>'}</section>`).join('');
+  }
+
   function vistaAgendaEquipo(propia) {
     const A = E.planes.agenda;
     if (!A) return '<div class="vacio">No tenés acceso a los horarios del equipo.</div>';
@@ -1141,6 +1185,7 @@
       <section class="grupo"><h2>🕒 Horario de cada uno</h2>
         <p class="intro-grupo">Marcá los días y el horario en que cada uno está en la sede. Se usa para proponer las reevaluaciones y para las horas por semana del tablero.</p>
         ${nombres.map(bloqueProfe).join('') || '<div class="vacio">No hay profes cargados.</div>'}</section>
+      ${bloqueAusencias(A, editables)}
       <template id="tpl-franja">${filaFranja(null, editables.length ? editables : ['bolson'])}</template>`;
   }
 
@@ -1268,7 +1313,7 @@
       ${tablaEquipo(eq)}
       ${bloqueProfes()}
       ${eq.length ? `<div class="personas">${eq.map(p => `<div class="persona"><b>${esc(p.profe)}</b><span class="turno">${p.con_usuario ? 'Con usuario' : 'Todavía sin usuario en PulsoMOVE'}</span>${cifrasPlanes(p.resumen)}${p.auditoria && p.auditoria.puntaje != null ? `<span class="uso-hoy aud-linea ${(NIVEL_AUD[p.auditoria.nivel] || [''])[0]}">🧾 Auditoría: <b>${p.auditoria.puntaje}</b> ${esc((NIVEL_AUD[p.auditoria.nivel] || ['', ''])[1])}${p.auditoria.cambio_semana ? ` (${p.auditoria.cambio_semana > 0 ? '▲' : '▼'} ${Math.abs(p.auditoria.cambio_semana)})` : ''} · ${p.auditoria.cuantos.pendientes} para corregir${p.auditoria.cuantos.no_corregidos ? ` · ${p.auditoria.cuantos.no_corregidos} dijo que corrigió y sigue` : ''}${p.auditoria.cuantos.dejadas ? ` · ${p.auditoria.cuantos.dejadas} dejó así` : ''}</span>` : ''}${p.dias ? `<span class="uso-hoy">Días completos este mes: ${p.dias.completos} (en menos de 1 hora: ${p.dias.en_una_hora})${p.revisiones && p.revisiones.resumen.minutos_mediana != null ? ` · arma un plan en ~${p.revisiones.resumen.minutos_mediana} min` : ''}${p.resumen.en_papel ? ` · en papel: ${p.resumen.en_papel}` : ''}</span>` : ''}${p.revisiones ? `<span class="uso-hoy">Planes renovados (30 días): ${p.revisiones.resumen.revisados} · en 30-80%: ${p.revisiones.resumen.en_rango} · casi todo cambiado: ${p.revisiones.resumen.casi_todo}${p.revisiones.resumen.con_saltos ? ` · con saltos: ${p.revisiones.resumen.con_saltos} (${p.revisiones.resumen.saltos_sin_responder} sin responder, ${p.revisiones.resumen.corregir} a corregir)` : ''}</span>` : ''}
-${p.tareas_mes ? `<span class="uso-hoy">📋 Tareas del mes: ${p.tareas_mes.hechas}/${p.tareas_mes.total}</span>` : ''}
+${p.tareas_mes ? `<span class="uso-hoy">📋 Tareas del mes: ${p.tareas_mes.hechas}/${p.tareas_mes.total}</span>` : ''}${p.ausente ? `<span class="uso-hoy amarillo">🏖️ De ${esc(p.ausente.tipo)} hasta el ${esc(ddmm(p.ausente.hasta))}${p.ausente.reemplazo ? ' · lo cubre ' + esc(p.ausente.reemplazo.split(' ')[0]) : ' · sin reemplazo'}</span>` : ''}${p.cubrio_mes ? `<span class="uso-hoy">🔁 Este mes hizo ${p.cubrio_mes} ${p.cubrio_mes === 1 ? 'plan' : 'planes'} cubriendo a otro profe</span>` : ''}
         <button class="chip ver-lista" data-accion="profe-ver" data-p="${esc(p.profe)}">Ver lo de hoy</button></div>`).join('')}</div>`
         : '<div class="vacio">Todavía no hay planes cargados para esta sede.</div>'}`;
   }
@@ -3150,6 +3195,8 @@ ${p.tareas_mes ? `<span class="uso-hoy">📋 Tareas del mes: ${p.tareas_mes.hech
         if (M) {
           const t = M.hoy.find(x => x.id === r.tarea.id);
           if (t) { const antes = t.estado; Object.assign(t, r.tarea); if (antes !== t.estado) { const d = t.estado === 'hecha' ? 1 : -1; M.resumen.hechas_hoy += d; M.resumen.hechas_mes += d; M.resumen.pendientes_hoy -= d; if (t.atraso > 0) M.resumen.atrasadas -= d; } }
+          // un plan del profe que está cubriendo (vacaciones)
+          (M.cubriendo || []).forEach(c => { const x = c.hoy.find(y => y.id === r.tarea.id); if (x) Object.assign(x, r.tarea); });
         }
         if (M && r.dia_completo) M.mes = Object.assign({}, M.mes, { hoy_completo: r.dia_completo, dias_completos: ((M.mes || {}).dias_completos || 0) + 1 });
         render();
@@ -3180,6 +3227,25 @@ ${p.tareas_mes ? `<span class="uso-hoy">📋 Tareas del mes: ${p.tareas_mes.hech
       } catch (e) { el.disabled = false; aviso(PulsoApi.mensaje(e.codigo || e.message), true); }
     }
     else if (a === 'tmes-nota') { await marcarTareaMes(el.dataset.id, null); }
+    else if (a === 'aus-guardar') {
+      const v = k => (app.querySelector('[data-aus="' + k + '"]') || {}).value || '';
+      if (!v('desde') || !v('hasta') || v('hasta') < v('desde')) { aviso('Revisá las fechas: "hasta" no puede ser antes de "desde".', true); return; }
+      el.disabled = true;
+      try {
+        await cliente.llamar('profe_ausencia_guardar', { profe_dni: v('profe'), desde: v('desde'), hasta: v('hasta'), tipo: v('tipo'), reemplazo_dni: v('reemplazo'), nota: v('nota') });
+        E.planes = await cliente.llamar('profe_tareas', E.sedeElegida && tiene('admin') ? { sede: E.sedeElegida } : {});
+        render();
+        aviso('✅ Guardado. Desde mañana a las 6:00 el reparto ya lo tiene en cuenta.');
+      } catch (e) { el.disabled = false; aviso(PulsoApi.mensaje(e.codigo || e.message), true); }
+    }
+    else if (a === 'aus-borrar') {
+      if (!confirm('¿Quitar estas vacaciones?')) return;
+      try {
+        await cliente.llamar('profe_ausencia_guardar', { borrar: el.dataset.id });
+        E.planes = await cliente.llamar('profe_tareas', E.sedeElegida && tiene('admin') ? { sede: E.sedeElegida } : {});
+        render();
+      } catch (e) { aviso(PulsoApi.mensaje(e.codigo || e.message), true); }
+    }
     else if (a === 'agenda-abrir') { E.agendaVer = true; render(); window.scrollTo(0, 0); }
     else if (a === 'agenda-cerrar') { E.agendaVer = false; render(); }
     else if (a === 'horario-quitar') { el.closest('[data-franja]').remove(); }

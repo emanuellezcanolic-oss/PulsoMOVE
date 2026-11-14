@@ -125,6 +125,10 @@ function profeTareas(req, deps) {
     out.mio.sabados = sabadosDeProfe(usuario, deps, hoy);
     out.mio.tareas_mes = tareasMesDeDni(deps, usuario.dni, mesDe(hoy), hoy);
     out.mio.membresias = membresiasDeProfe(deps, usuario);
+    const aus = ausenciasActivas(deps, hoy);
+    const mia = aus.find(a => a.profe_dni === usuario.dni && a.desde <= sumarDiasProfe(hoy, 14));
+    out.mio.ausencia = mia ? vistaAusencia(mia) : null;
+    out.mio.cubriendo = coberturaDe(usuario, deps, filas, hoy);
   }
   if (coordina) {
     const sede = tieneRol(usuario, 'admin') ? texto(req.sede) : usuario.sede;
@@ -137,6 +141,9 @@ function profeTareas(req, deps) {
     const coord = coordinacionPorProfe(deps, sede);
     const diasMes = deps.repo.leer('profe_dias').filter(d => String(d.fecha).slice(0, 7) === hoy.slice(0, 7));
     out.agenda = agendaEquipo(usuario, usuarios, deps, hoy, sede);
+    out.agenda.ausencias = ausenciasActivas(deps, sumarDiasProfe(hoy, -DIAS_AUSENCIA_ATRAS)).map(vistaAusencia);
+    const cubrio = cubiertosPorDni(filas, mesDe(hoy));
+    const ausHoy = deps.repo.leer('profe_ausencias');
     const tmHoy = tareasDelMes(deps, mesDe(hoy));
     const mesQueViene = mesDe(sumarDiasProfe(mesDe(hoy) + '-01', 32));
     out.tareas_mes = { mes: mesDe(hoy), lista: tmHoy.lista, origen: tmHoy.origen, siguiente: Object.assign({ mes: mesQueViene }, tareasDelMes(deps, mesQueViene)) };
@@ -151,6 +158,7 @@ function profeTareas(req, deps) {
       const h = horarioDe(n);
       const co = coord[n] ? Object.assign({}, coord[n], h.length ? { horas_semana: horasSemanaDe(h), horario: textoHorario(h) } : {}) : null;
       return { profe: n, con_usuario: !!dni, resumen: a.resumen, hoy: a.hoy, revisiones: rev[n] || null, coord: co,
+        cubrio_mes: dni ? cubrio[dni] || 0 : 0, ausente: dni ? (x => (x ? vistaAusencia(x) : null))(ausenteEl(ausHoy, dni, hoy)) : null,
         tareas_mes: dni ? (x => ({ hechas: x.hechas, total: x.total, pct: x.pct, puntos: x.puntos, lista: x.lista }))(tareasMesDeDni(deps, dni, mesDe(hoy), hoy)) : null,
         liq: tieneRol(usuario, 'admin') ? liqDeProfe(deps, n, dni) : null,
         auditoria: aud ? { puntaje: aud.puntaje, nivel: aud.nivel, cambio_semana: aud.cambio_semana, secciones: aud.secciones, cuantos: aud.cuantos, repetido: aud.repetido, pendientes: aud.pendientes.slice(0, 40), dejadas: aud.dejadas.slice(0, 40) } : null,
@@ -167,7 +175,7 @@ function profeMarcar(req, deps) {
   const filas = deps.repo.leer('profe_tareas');
   const t = filas.find(x => x.id === texto(req.id) && x.estado !== 'cerrada');
   if (!t) falla('no_existe');
-  if (!(esProfe(usuario) && t.profe_dni === usuario.dni) && !tieneRol(usuario, 'admin')) falla('prohibido');
+  if (!puedeMarcarProfe(usuario, t, deps)) falla('prohibido');   // el reemplazo también puede (vacaciones)
   if (req.hecha === false) {
     t.estado = 'pendiente'; t.hecha_en = ''; t.hecha_dni = '';
   } else {
@@ -1087,7 +1095,7 @@ function feriadosVista(deps, desde, hasta) {
 }
 
 // Completa los sábados vacíos de la sede hasta "hasta" (no toca lo que ya está cargado)
-function generarSabados(filas, rot, feriados, sede, hoy, hasta) {
+function generarSabados(filas, rot, feriados, sede, hoy, hasta, ausente) {
   if (rot.length < 2) return [];
   const cerrado = {};
   feriados.forEach(f => { if (f.se_trabaja === 'no') cerrado[f.fecha] = true; });
@@ -1102,7 +1110,8 @@ function generarSabados(filas, rot, feriados, sede, hoy, hasta) {
   for (; f <= hasta; f = sumarDiasProfe(f, 7)) {
     if (ocupado[f] || cerrado[f]) continue;
     // quien hace más que no va; a igual, el orden de turno. Lo cargado más adelante también cuenta.
-    const p = rot.slice().sort((a, b) => (ultimo[a] < ultimo[b] ? -1 : ultimo[a] > ultimo[b] ? 1 : rot.indexOf(a) - rot.indexOf(b)))[0];
+    const p = rot.filter(x => !(ausente && ausente(x, f))).sort((a, b) => (ultimo[a] < ultimo[b] ? -1 : ultimo[a] > ultimo[b] ? 1 : rot.indexOf(a) - rot.indexOf(b)))[0];
+    if (!p) continue;   // todos de vacaciones: queda para coordinación
     if (ultimo[p] > f) continue;   // ya tiene uno más adelante: dejamos el hueco para que lo vea coordinación
     nuevas.push({ fecha: f, sede: sede, profe: p, profe_dni: '', nota: '', por_dni: 'rotacion', en: '' });
     ultimo[p] = f;
@@ -1124,7 +1133,9 @@ function profeSabadosGenerar(req, deps) {
   const out = {};
   let todas = [];
   sedes.forEach(s => {
-    const n = generarSabados(filas, rotacionActual(deps, s), feriados, s, hoy, hasta);
+    const aus = deps.repo.leer('profe_ausencias');
+    const ausente = (nombre, fecha) => { const u = profes.find(x => mismoProfe(x.nombre, nombre)); return !!(u && ausenteEl(aus, u.dni, fecha)); };
+    const n = generarSabados(filas, rotacionActual(deps, s), feriados, s, hoy, hasta, ausente);
     n.forEach(x => { const u = profes.find(p => mismoProfe(p.nombre, x.profe)); if (u) x.profe_dni = u.dni; });
     out[s] = n.length;
     todas = todas.concat(n);
@@ -1433,4 +1444,86 @@ function membresiasDeProfe(deps, usuario) {
         sin_venir: d.sin_venir || 0, confirmados: d.confirmados || 0, renov_lista: d.renov_lista || [],
         sin_venir_lista: (d.sin_venir_lista || []).map(s => ({ nombre: s.nombre, respuesta: s.respuesta })) };
     });
+}
+
+// ---------- Vacaciones y reemplazos de los profes (Emanuel, 13/11/2026) ----------
+// Coordinación carga quién se va y quién lo cubre. Con reemplazo: los planes de esos días le aparecen al reemplazo
+// ("Cubrís a X"), que los marca, y lo hecho queda a su nombre para liquidarle ese trabajo. Sin reemplazo: la PC no le
+// agenda nada esos días (le adelanta antes de irse y le reparte lo que queda a la vuelta). La comisión por renovaciones
+// se le sigue liquidando al profe aunque esté de vacaciones: son sus socios. Los sábados no se le asignan esos días.
+const TIPOS_AUSENCIA = ['vacaciones', 'licencia', 'otro'];
+const DIAS_AUSENCIA_ATRAS = 31;
+
+function ausenciasActivas(deps, desde) {
+  return deps.repo.leer('profe_ausencias').filter(a => a.hasta >= desde).sort((a, b) => (a.desde < b.desde ? -1 : 1));
+}
+
+function ausenteEl(ausencias, dni, fecha) {
+  return ausencias.find(a => a.profe_dni === dni && a.desde <= fecha && fecha <= a.hasta) || null;
+}
+
+function vistaAusencia(a) {
+  return { id: a.id, profe: a.profe, profe_dni: a.profe_dni, desde: a.desde, hasta: a.hasta, tipo: a.tipo, reemplazo: a.reemplazo, reemplazo_dni: a.reemplazo_dni, nota: a.nota };
+}
+
+// Coordinación: agregar (o borrar con borrar: id) una ausencia
+function profeAusenciaGuardar(req, deps) {
+  const { usuario, usuarios } = sesion(req, deps);
+  if (!tieneRol(usuario, 'admin') && !tieneRol(usuario, 'coordinador')) falla('prohibido');
+  const filas = deps.repo.leer('profe_ausencias');
+  const profes = profesDelEquipo(usuarios);
+  if (req.borrar) {
+    const a = filas.find(x => x.id === texto(req.borrar));
+    if (!a) falla('no_existe');
+    const p = profes.find(x => x.dni === a.profe_dni);
+    if (p) sedeEditable(usuario, p.sede);
+    deps.repo.escribir('profe_ausencias', filas.filter(x => x !== a));
+    return { borrada: a.id };
+  }
+  const p = profes.find(x => x.dni === normalizarDni(req.profe_dni));
+  if (!p) falla('datos_invalidos');
+  sedeEditable(usuario, p.sede);
+  const desde = texto(req.desde), hasta = texto(req.hasta);
+  const tipo = TIPOS_AUSENCIA.indexOf(texto(req.tipo)) >= 0 ? texto(req.tipo) : 'vacaciones';
+  if (!fechaIsoValida(desde) || !fechaIsoValida(hasta) || hasta < desde || hasta < sumarDiasProfe(deps.hoy(), -DIAS_AUSENCIA_ATRAS) || sumarDiasProfe(desde, 120) < hasta) falla('datos_invalidos');
+  const r = texto(req.reemplazo_dni) ? profes.find(x => x.dni === normalizarDni(req.reemplazo_dni)) : null;
+  if (texto(req.reemplazo_dni) && (!r || r.dni === p.dni)) falla('datos_invalidos');
+  if (filas.some(x => x.profe_dni === p.dni && x.desde <= hasta && desde <= x.hasta)) falla('ya_anotado');
+  const a = { id: 'au-' + p.dni + '-' + desde, profe: p.nombre, profe_dni: p.dni, desde, hasta, tipo, reemplazo: r ? r.nombre : '', reemplazo_dni: r ? r.dni : '',
+    nota: texto(req.nota).slice(0, 200), por_dni: usuario.dni, en: new Date(deps.ahora()).toISOString() };
+  filas.push(a);
+  deps.repo.escribir('profe_ausencias', filas);
+  return { ausencia: vistaAusencia(a) };
+}
+
+// Para la PC: las ausencias que vienen (para no agendarle nada sin reemplazo y descontar las horas pagas)
+function profeAusencias(req, deps) {
+  exigirClave(req, deps);
+  return { ausencias: ausenciasActivas(deps, sumarDiasProfe(deps.hoy(), -DIAS_AUSENCIA_ATRAS)).map(vistaAusencia) };
+}
+
+// Lo que el reemplazo cubre hoy: los planes del profe ausente (de hoy y atrasados)
+function coberturaDe(usuario, deps, filas, hoy) {
+  return ausenciasActivas(deps, hoy).filter(a => a.reemplazo_dni === usuario.dni && a.desde <= hoy).map(a => {
+    const ag = agendaDeProfe(filas.filter(t => t.profe_dni === a.profe_dni), hoy);
+    return { profe: a.profe, desde: a.desde, hasta: a.hasta, tipo: a.tipo, hoy: ag.hoy, resumen: ag.resumen };
+  });
+}
+
+// Puede marcar la tarea: es suya, es admin, o cubre hoy al profe de esa tarea
+function puedeMarcarProfe(usuario, t, deps) {
+  if ((esProfe(usuario) && t.profe_dni === usuario.dni) || tieneRol(usuario, 'admin')) return true;
+  const a = ausenteEl(deps.repo.leer('profe_ausencias'), t.profe_dni, deps.hoy());
+  return !!(a && a.reemplazo_dni === usuario.dni);
+}
+
+// Cuántos planes hizo cada uno cubriendo a otro en el mes: para liquidarle ese trabajo al reemplazo
+function cubiertosPorDni(filas, mes) {
+  const out = {};
+  filas.forEach(t => {
+    if ((t.estado === 'hecha' || t.estado === 'cerrada') && t.hecha_dni && t.hecha_dni !== t.profe_dni && fechaArgentina(t.hecha_en).slice(0, 7) === mes) {
+      out[t.hecha_dni] = (out[t.hecha_dni] || 0) + 1;
+    }
+  });
+  return out;
 }

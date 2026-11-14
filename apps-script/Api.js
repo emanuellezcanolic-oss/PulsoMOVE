@@ -1301,6 +1301,8 @@ const ACCIONES = {
   profe_tarea_mes_marcar: (r, d) => profeTareaMesMarcar(r, d),
   profe_tareas_mes_guardar: (r, d) => profeTareasMesGuardar(r, d),
   cargar_profe_liq: (r, d) => cargarProfeLiq(r, d),
+  profe_ausencia_guardar: (r, d) => profeAusenciaGuardar(r, d),
+  profe_ausencias: (r, d) => profeAusencias(r, d),
   // Liquidación de recepción (Liquidacion.js)
   liquidacion_ver: (r, d) => liquidacionVer(r, d),
   coberturas_ver: (r, d) => coberturasVer(r, d),

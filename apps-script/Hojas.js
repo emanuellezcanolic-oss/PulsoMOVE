@@ -57,6 +57,8 @@ const COLUMNAS = {
   profe_tmes_hechas: ['mes', 'tarea_id', 'dni', 'hecha', 'nota', 'en'],
   // Comisión por renovaciones de cada profe por mes (la calcula la PC; solo la ve coordinación con rol admin)
   profe_liq: ['mes', 'profe', 'profe_dni', 'sede', 'datos', 'cargada'],
+  // Vacaciones y licencias de los profes, con quién los cubre
+  profe_ausencias: ['id', 'profe', 'profe_dni', 'desde', 'hasta', 'tipo', 'reemplazo', 'reemplazo_dni', 'nota', 'por_dni', 'en'],
   profe_coord: ['fecha', 'profe', 'profe_dni', 'sede', 'datos'],
   profe_puntajes: ['fecha', 'profe', 'profe_dni', 'socios', 'puntaje', 'gestion', 'diagnostico', 'metodologia', 'custom', 'rpe'],
   // Días en que el profe terminó todo lo del día, y cuánto tardó desde la primera marca
