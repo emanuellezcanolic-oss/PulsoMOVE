@@ -856,6 +856,47 @@
     </section>`;
   }
 
+  // ---------- Mis mediciones: relojes contra los objetivos de la planilla (Emanuel, 13/11/2026) ----------
+  // Un reloj de media vuelta: zonas de color (de la peor a la mejor) y la aguja donde está el profe.
+  function svgReloj(o) {
+    const W = 220, H = 150, cx = 110, cy = 112, r = 86;
+    const ang = v => Math.PI * (1 - Math.max(0, Math.min(1, v / o.max)));
+    const pto = (a, rr) => [cx + rr * Math.cos(a), cy - rr * Math.sin(a)];
+    const arco = (d, h) => { const [x1, y1] = pto(ang(d), r), [x2, y2] = pto(ang(h), r); return `M${x1.toFixed(1)},${y1.toFixed(1)} A${r},${r} 0 0 1 ${x2.toFixed(1)},${y2.toFixed(1)}`; };
+    let desde = 0;
+    const zonas = o.zonas.map(([hasta, c]) => { const p = `<path d="${arco(desde, Math.min(hasta, o.max))}" class="reloj-zona ${c}"/>`; desde = hasta; return p; }).join('');
+    const v = o.v == null ? null : Math.max(0, Math.min(o.max, o.v));
+    const aguja = v == null ? '' : (() => { const [x, y] = pto(ang(v), r - 18); return `<line x1="${cx}" y1="${cy}" x2="${x.toFixed(1)}" y2="${y.toFixed(1)}" class="reloj-aguja"/><circle cx="${cx}" cy="${cy}" r="6" class="reloj-eje"/>`; })();
+    return `<div class="reloj"><b>${esc(o.titulo)}</b><svg viewBox="0 0 ${W} ${H}" role="img" aria-label="${esc(o.titulo)}: ${esc(o.valorTxt)}">${zonas}${aguja}
+      <text x="${cx}" y="${cy + 34}" text-anchor="middle" class="reloj-valor">${esc(o.valorTxt)}</text></svg>
+      <span class="reloj-obj">${o.objetivo}</span>${o.puntos != null ? `<span class="reloj-pts">${o.puntos} ${o.puntos === 1 ? 'punto' : 'puntos'}</span>` : ''}</div>`;
+  }
+
+  function bloqueMediciones(M) {
+    const m = M.mediciones;
+    if (!m) return '';
+    const p = m.puntos || {};
+    const raro = m.desercion != null && m.serie.length >= 3 && (() => { const ant = m.serie.slice(0, -1).map(x => x.v).sort((a, b) => a - b); const med = ant[Math.floor(ant.length / 2)]; return m.desercion > 30 && m.desercion > med * 1.8; })();
+    const relojes = [];
+    if (m.metas && m.activos_mes != null) relojes.push(svgReloj({ titulo: 'Activos del mes', v: m.activos_mes, max: Math.round(m.metas[3] * 1.2),
+      zonas: [[m.metas[1], 'rojo'], [m.metas[2], 'amarillo'], [m.metas[3], 'verde-claro'], [Math.round(m.metas[3] * 1.2), 'verde']], valorTxt: String(m.activos_mes),
+      objetivo: `${esc(m.nivel_txt || '')}${m.faltan_siguiente ? ` · te faltan <b>${m.faltan_siguiente}</b> para el siguiente` : ' · ¡llegaste al máximo!'}<br><small>metas ${m.metas.slice(1).join(' / ')}</small>`, puntos: p.activos }));
+    if (m.desercion != null) relojes.push(svgReloj({ titulo: 'Deserción del mes', v: m.desercion, max: 40, zonas: [[10, 'verde'], [20, 'verde-claro'], [25, 'amarillo'], [40, 'rojo']],
+      valorTxt: num1(m.desercion) + '%', objetivo: raro ? '<span class="amarillo">Este dato de MOVE parece estar mal: lo estamos revisando.</span>' : 'Objetivo: menos de 25% · ideal, menos de 10%<br><small>menos es mejor</small>', puntos: p.desercion }));
+    if (m.reeval_pct != null) relojes.push(svgReloj({ titulo: 'Reevaluaciones', v: m.reeval_pct, max: 60, zonas: [[15, 'rojo'], [30, 'amarillo'], [60, 'verde']],
+      valorTxt: num1(m.reeval_pct) + '%', objetivo: `Objetivo: 30% de tus socios en el mes${m.reeval_n != null ? `<br><small>${m.reeval_n} reevaluados · 1,5 puntos cada uno si llegás</small>` : ''}`, puntos: p.reeval }));
+    if (m.perfil_pct != null) relojes.push(svgReloj({ titulo: 'Perfil del socio cargado', v: m.perfil_pct, max: 100, zonas: [[30, 'rojo'], [60, 'amarillo'], [100, 'verde']],
+      valorTxt: Math.round(m.perfil_pct) + '%', objetivo: 'Objetivo: más del 30% de tus socios', puntos: p.perfil }));
+    if (m.tareas_pct != null) relojes.push(svgReloj({ titulo: 'Tareas del mes', v: m.tareas_pct, max: 100, zonas: [[60, 'rojo'], [80, 'amarillo'], [100, 'verde']],
+      valorTxt: m.tareas_pct + '%', objetivo: 'Objetivo: todas · 60% suma 10, 80% suma 15, 100% suma 20', puntos: p.tareas }));
+    const serie = (m.serie || []).map(x => ({ l: mesTxt(x.mes), v: x.v, c: x.v <= 20 ? 'verde' : x.v <= 25 ? 'amarillo' : 'rojo' }));
+    return `<section class="grupo"><h2>📊 Cómo venís este mes</h2>
+      <div class="puntaje-mes"><strong>${num1(m.total)}</strong><span>puntos de objetivos</span><p>${esc(m.mensaje)}</p></div>
+      <div class="relojes">${relojes.join('')}</div>
+      ${serie.length >= 2 ? `<h3 class="sub-coord">Tu deserción mes a mes</h3>${svgBarras(serie, { unidad: '%', linea: 25, textoLinea: 'objetivo 25%' })}` : ''}
+      <p class="aclara">Datos de MOVE${m.datos_hasta ? ' al ' + esc(ddmm(m.datos_hasta)) : ''}: se actualizan cada mañana y el mes cierra el último día. Los puntos siguen las reglas de la pestaña Objetivos de tu planilla.</p></section>`;
+  }
+
   function vistaMesProfe() {
     if (!E.planes) return '<div class="cargando">Cargando tu mes…</div>';
     const M = E.planes.mio;
@@ -871,6 +912,7 @@
         <div class="persona"><b>Planes</b><div class="cifras">${c(r.en_agenda, 'te quedan en los próximos 30 días')}${c(r.atrasadas, 'atrasados hoy', r.atrasadas ? 'mal' : 'bien')}${c(r.hechas_mes, 'hechos este mes', 'bien')}${c(s.dias_completos, 'días completos')}${c(s.en_una_hora, 'días en menos de 1 hora')}${c(r.en_papel || 0, 'en papel')}</div></div>
         <div class="persona"><b>Customización y progresión (30 días)</b><div class="cifras">${c(rv.revisados, 'planes renovados revisados')}${c(rv.en_rango, 'entre 30 y 80%', 'bien')}${c(rv.casi_todo, 'cambiaste casi todo', rv.casi_todo ? 'mal' : '')}${c(rv.con_saltos, 'con saltos de escalón', rv.con_saltos ? 'mal' : 'bien')}${c(rv.saltos_sin_responder, 'saltos sin responder', rv.saltos_sin_responder ? 'mal' : 'bien')}${c(rv.minutos_mediana != null ? rv.minutos_mediana + ' min' : null, 'tardás en armar un plan (aprox.)')}</div></div>
       </div>
+      ${bloqueMediciones(M)}
       ${bloqueMembresias(M)}
       <section class="grupo"><h2>🏅 Medallas del mes</h2>${medallasHtml(s.medallas || [])}</section>
       ${lista.length ? `<section class="grupo"><h2>🔎 Tus planes renovados <span class="cuenta">${lista.length}</span></h2>${lista.map(x => tarjetaRevision(x, i++, true)).join('')}</section>` : ''}`;
@@ -1316,7 +1358,7 @@
       ${serie.map((x, i) => x.v == null ? '' : `<rect x="${i * an + an * 0.15}" y="${y(x.v)}" width="${an * 0.7}" height="${o.alto - 18 - y(x.v)}" rx="3" class="barra-${x.c || 'azul'}"><title>${esc(x.l)}: ${num1(x.v)}${o.unidad}</title></rect>
         <text x="${i * an + an / 2}" y="${y(x.v) - 3}" text-anchor="middle" class="graf-valor">${num1(x.v)}</text>`).join('')}
       ${serie.map((x, i) => `<text x="${i * an + an / 2}" y="${o.alto - 4}" text-anchor="middle" class="graf-eje">${esc(x.l)}</text>`).join('')}
-      ${o.linea != null ? `<line x1="0" x2="${o.ancho}" y1="${y(o.linea)}" y2="${y(o.linea)}" class="graf-media"/><text x="${o.ancho - 2}" y="${y(o.linea) - 3}" text-anchor="end" class="graf-eje">media ${num1(o.linea)}${o.unidad}</text>` : ''}</svg>`;
+      ${o.linea != null ? `<line x1="0" x2="${o.ancho}" y1="${y(o.linea)}" y2="${y(o.linea)}" class="graf-media"/><text x="${o.ancho - 2}" y="${y(o.linea) - 3}" text-anchor="end" class="graf-eje">${o.textoLinea ? esc(o.textoLinea) : 'media ' + num1(o.linea) + o.unidad}</text>` : ''}</svg>`;
   }
 
   function svgLineas(etiquetas, series, unidad) {

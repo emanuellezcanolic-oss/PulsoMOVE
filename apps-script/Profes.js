@@ -129,6 +129,7 @@ function profeTareas(req, deps) {
     const mia = aus.find(a => a.profe_dni === usuario.dni && a.desde <= sumarDiasProfe(hoy, 14));
     out.mio.ausencia = mia ? vistaAusencia(mia) : null;
     out.mio.cubriendo = coberturaDe(usuario, deps, filas, hoy);
+    out.mio.mediciones = medicionesDeProfe(deps, usuario, hoy, out.mio.tareas_mes);
   }
   if (coordina) {
     const sede = tieneRol(usuario, 'admin') ? texto(req.sede) : usuario.sede;
@@ -1547,4 +1548,54 @@ function profeEstado(req, deps) {
   const ver = tieneRol(usuario, 'admin') ? SEDES : [usuario.sede];
   return { hoy: deps.hoy(), filas: deps.repo.leer('profe_estado').filter(x => ver.indexOf(x.sede) >= 0)
     .map(x => ({ clave: x.clave, tipo: x.tipo, nombre: x.nombre, sede: x.sede, cargada: x.cargada, datos: leerJson(x.datos, {}) })) };
+}
+
+// ---------- Mis mediciones: cómo viene cada profe contra los objetivos de su planilla (Emanuel, 13/11/2026) ----------
+// Lo mismo que la pestaña "Objetivos" (activos, deserción, tarea mensual, reevaluación y perfil del socio, con sus puntos
+// y el mensaje según el total), con los datos de MOVE. Sin plata: eso lo ve coordinación.
+const OBJ_DESERCION = [[10, 30], [20, 20], [25, 10]];          // hasta X% de deserción → puntos; más, 5
+const OBJ_REEVAL_PCT = 30, OBJ_REEVAL_POR_SOCIO = 1.5;
+const OBJ_PERFIL_PCT = 30, OBJ_PERFIL_PTS = 20;
+const OBJ_ACTIVOS_PTS = [0, 20, 30, 40];                         // no alcanzado, objetivo 1, objetivo 2, máximo
+const MENSAJES_PUNTAJE = [[150, '🎉 ¡Felicitaciones! Seguro estás entre los primeros 🚀'], [120, '🔥 ¡Gran trabajo! Estás muy cerca 💪'],
+  [100, '💪 Dale, continúa así, podés estar entre los primeros!'], [0, '🌟 ¡Seguí dando lo mejor! Cada punto cuenta para crecer 💙']];
+
+function puntosDesercion(d) {
+  if (d == null) return null;
+  for (let i = 0; i < OBJ_DESERCION.length; i++) if (d <= OBJ_DESERCION[i][0]) return OBJ_DESERCION[i][1];
+  return 5;
+}
+
+function puntajeObjetivos(m) {
+  const pts = {
+    activos: m.nivel != null ? OBJ_ACTIVOS_PTS[m.nivel] : null,
+    desercion: puntosDesercion(m.desercion),
+    tareas: m.tareas_pct != null ? puntosTareasMes(m.tareas_pct / 100) : null,
+    reeval: m.reeval_pct == null ? null : m.reeval_pct >= OBJ_REEVAL_PCT ? Math.round(OBJ_REEVAL_POR_SOCIO * (m.reeval_n || 0) * 10) / 10 : 0,
+    perfil: m.perfil_pct == null ? null : m.perfil_pct > OBJ_PERFIL_PCT ? OBJ_PERFIL_PTS : 0,
+  };
+  const total = Math.round(Object.keys(pts).reduce((a, k) => a + (pts[k] || 0), 0) * 10) / 10;
+  return { puntos: pts, total: total, mensaje: MENSAJES_PUNTAJE.find(x => total >= x[0])[1] };
+}
+
+function medicionesDeProfe(deps, usuario, hoy, tareasMes) {
+  const fila = deps.repo.leer('profe_estado').find(x => x.tipo !== 'sede' && mismoProfe(x.nombre, usuario.nombre));
+  const liq = deps.repo.leer('profe_liq').filter(x => (x.profe_dni && x.profe_dni === usuario.dni) || (!x.profe_dni && mismoProfe(x.profe, usuario.nombre)))
+    .sort((a, b) => (a.mes < b.mes ? 1 : -1));
+  if (!fila && !liq.length) return null;
+  const datos = fila ? leerJson(fila.datos, {}) : {};
+  const mes = mesDe(hoy);
+  const d = datos[mes] || {};
+  const l = liq.find(x => x.mes === mes);
+  const ld = l ? liqConRespuestas(leerJson(l.datos, {}), mes, respuestasViene(deps)) : {};
+  const m = {
+    mes: mes, desercion: d.desercion != null ? d.desercion : null, activos: d.activos != null ? d.activos : null,
+    activos_mes: ld.activos_mes != null ? ld.activos_mes : null, metas: ld.metas || null, nivel: ld.nivel != null ? ld.nivel : null, nivel_txt: ld.nivel_txt || '',
+    faltan_siguiente: ld.faltan_siguiente || 0, reeval_pct: d.reeval != null ? d.reeval : null,
+    reeval_n: d.reeval != null && d.activos ? Math.round(d.reeval * d.activos / 100) : null, perfil_pct: d.perfil != null ? d.perfil : null,
+    objetivo_pct: d.objetivo != null ? d.objetivo : null, tareas_pct: tareasMes ? tareasMes.pct : null,
+  };
+  // la evolución de la deserción (los últimos 8 meses con datos)
+  const serie = Object.keys(datos).sort().filter(k => datos[k].desercion != null && datos[k].activos >= 5).slice(-8).map(k => ({ mes: k, v: datos[k].desercion }));
+  return Object.assign(m, puntajeObjetivos(m), { serie: serie, datos_hasta: fila ? fila.cargada : '' });
 }

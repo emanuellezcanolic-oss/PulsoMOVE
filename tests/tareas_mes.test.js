@@ -112,3 +112,25 @@ test('el profe ve quiénes renovaron la membresía, sin la plata', () => {
   assert.equal(M[0].comision, undefined);
   assert.equal(M[0].valor_socio, undefined);
 });
+
+test('mis mediciones: puntaje como la pestaña Objetivos de la planilla, sin plata', () => {
+  const r = L.puntajeObjetivos({ nivel: 2, desercion: 18, tareas_pct: 80, reeval_pct: 35, reeval_n: 20, perfil_pct: 90 });
+  assert.deepEqual(r.puntos, { activos: 30, desercion: 20, tareas: 15, reeval: 30, perfil: 20 });
+  assert.equal(r.total, 115);
+  assert.match(r.mensaje, /continúa así/);
+  assert.equal(L.puntajeObjetivos({ nivel: 3, desercion: 8, tareas_pct: 100, reeval_pct: 40, reeval_n: 30, perfil_pct: 95 }).total, 155);
+  assert.equal(L.puntajeObjetivos({ nivel: 0, desercion: 35, tareas_pct: 20, reeval_pct: 10, reeval_n: 5, perfil_pct: 20 }).total, 5);
+  const d = entorno();
+  pedir(d, { accion: 'cargar_profe_estado', clave: PROPS.CLAVE_CARGA, filas: [{ clave: 'prof:30', tipo: 'profe', nombre: 'Belén Juárez', sede: 'bolson',
+    datos: { '2026-10': { activos: 90, desercion: 22 }, '2026-11': { activos: 92, desercion: 12, reeval: 31, perfil: 88 } } }] });
+  pedir(d, { accion: 'cargar_profe_liq', clave: PROPS.CLAVE_CARGA, filas: [{ mes: '2026-11', profe: 'Belen Juarez', profe_dni: '20111222', sede: 'bolson',
+    datos: { activos_mes: 40, metas: [36, 37, 45, 55], nivel: 1, nivel_txt: 'Objetivo 1', faltan_siguiente: 5, valor_socio: 712, comision: 9999 } }] });
+  const M = pedir(d, { accion: 'profe_tareas', token: entrar(d, '20111222') }).data.mio.mediciones;
+  assert.equal(M.desercion, 12);
+  assert.equal(M.nivel_txt, 'Objetivo 1');
+  assert.equal(M.reeval_n, 29);
+  assert.equal(M.serie.length, 2);
+  assert.equal(M.comision, undefined);
+  assert.equal(M.valor_socio, undefined);
+  assert.equal(M.puntos.desercion, 20);
+});

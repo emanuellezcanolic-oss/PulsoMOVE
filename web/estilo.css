@@ -814,3 +814,18 @@ circle.punto-rojo, .leyenda i.punto-rojo { fill: #ef4444; background: #ef4444; }
 .leyenda { display: flex; gap: 14px; font-size: .78rem; color: #5b6873; } .leyenda i { display: inline-block; width: 10px; height: 10px; border-radius: 50%; margin-right: 5px; vertical-align: -1px; }
 .gauss-curva { fill: none; stroke: #64748b; stroke-width: 2; } .gauss-nucleo { fill: rgba(59, 130, 246, .13); }
 .gauss-punto-gris { fill: #94a3b8; stroke: #fff; stroke-width: 2; } .gauss-punto-rojo { fill: #ef4444; stroke: #fff; stroke-width: 2; } .gauss-punto-verde { fill: #10b981; stroke: #fff; stroke-width: 2; }
+
+/* Mis mediciones: relojes (13/11/2026) */
+.relojes { display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); gap: 10px; }
+.reloj { border: 1px solid #dde4ea; border-radius: 12px; padding: 10px; background: #fff; text-align: center; display: flex; flex-direction: column; gap: 2px; }
+.reloj > b { font-size: .82rem; }
+.reloj svg { width: 100%; max-width: 220px; margin: 0 auto; display: block; }
+.reloj-zona { fill: none; stroke-width: 16; }
+.reloj-zona.rojo { stroke: #ef4444; } .reloj-zona.amarillo { stroke: #f59e0b; } .reloj-zona.verde-claro { stroke: #86d9b4; } .reloj-zona.verde { stroke: #10b981; }
+.reloj-aguja { stroke: #1f2937; stroke-width: 4; stroke-linecap: round; } .reloj-eje { fill: #1f2937; }
+.reloj-valor { font-size: 22px; font-weight: 800; fill: #1f2937; }
+.reloj-obj { font-size: .76rem; color: #5b6873; } .reloj-pts { font-size: .78rem; font-weight: 700; color: #4f46e5; }
+.puntaje-mes { display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; margin: 4px 0 12px; }
+.puntaje-mes strong { font-size: 2.2rem; font-family: ui-monospace, monospace; color: #4f46e5; }
+.puntaje-mes span { font-size: .8rem; text-transform: uppercase; color: #6b7a86; }
+.puntaje-mes p { margin: 0; flex-basis: 100%; font-weight: 600; }
