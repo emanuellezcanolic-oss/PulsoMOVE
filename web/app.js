@@ -2703,15 +2703,55 @@ ${p.tareas_mes ? `<span class="uso-hoy">📋 Tareas del mes: ${p.tareas_mes.hech
   const RANKINGS = [['procesos', '✅ Procesos'], ['largos', '🏅 Planes de 3 meses'], ['nuevos', '👥 Socios nuevos']];
   const PERIODOS_LARGOS = [[1, 'Este mes'], [2, 'Últimos 2 meses'], [3, 'Últimos 3 meses']];
   const largosEn = (p, k) => (p.largos_meses || []).slice(-k).reduce((a, m) => a + m.n, 0);
-  function veRanking() { return tiene('recepcion') || tiene('coordinador') || tiene('admin'); }
+  function veRanking() { return !!modoRanking(); }
+  // Qué ranking: coordinación ve el de recepción en el grupo Recepción y el de profes en el grupo Profes; en los otros grupos no hay
+  // botón. Cada profe ve el de profes y cada recepcionista el de recepción (Emanuel, 16/11/2026).
+  function modoRanking() {
+    if (tiene('coordinador') || tiene('admin')) {
+      const p = pestanasDisponibles();
+      const g = ((p.find(x => x[0] === E.vista) || p[0]) || [])[2];
+      return g === 'Profes' ? 'profes' : g === 'Recepción' ? 'recepcion' : '';
+    }
+    if (tiene('recepcion')) return 'recepcion';
+    if (tiene('profe')) return 'profes';
+    return '';
+  }
 
   function botonRanking() {
-    if (!veRanking() || !cliente.sesion()) return '';
-    return `<button class="boton-ranking${DEMO ? ' con-cinta' : ''}" data-accion="rank-abrir" aria-label="Abrir el ranking">🏆 <span>Ranking</span></button>`;
+    if (!cliente.sesion() || !veRanking()) return '';
+    return `<button class="boton-ranking${DEMO ? ' con-cinta' : ''}" data-accion="rank-abrir" aria-label="Abrir el ranking">🏆 <span>Ranking${modoRanking() === 'profes' ? ' profes' : ''}</span></button>`;
+  }
+
+  // ---------- Ranking de profes: puntaje sobre 100 con las reglas a la vista ----------
+  function panelRankingProfes() {
+    const R = E.rankProfes;
+    let cuerpo = '<div class="cargando">Armando el ranking…</div>';
+    if (R) {
+      const num = n => String(n).replace('.', ',');
+      const fila = (p, i) => {
+        const partes = R.reglas.map(r => {
+          const it = p.items[r.clave];
+          return `<div class="rkp-item" title="${esc(r.como)}"><span>${r.emoji} ${esc(r.nombre)}</span><div class="medidor"><i class="${it && it.pts >= r.max * .75 ? 'bien' : 'cerca'}" style="width:${it ? Math.round(it.pts / r.max * 100) : 0}%"></i></div>
+            <b>${it ? num(it.pts) : '—'}<small>/${r.max}</small></b><em>${it ? esc(it.valor) + (it.extra ? ' · ' + esc(it.extra) : '') : 'sin datos'}</em></div>`;
+        }).join('');
+        const yo = p.dni === R.mi_dni;
+        return `<li class="rk-fila${yo ? ' yo' : ''}"><div class="rk-cab"><span class="rk-puesto">${MEDALLAS[i] || i + 1}</span><b>${esc(p.nombre)}</b><span class="rk-sede">${esc(SEDES[p.sede] || '')}</span><span class="rk-n">${num(p.total)}<small> pts</small></span></div>
+          <div class="rkp-items">${partes}</div>
+          ${yo && p.donde_sumar ? `<span class="rk-escalon">💡 Donde más podés sumar: ${esc(p.donde_sumar.nombre)} (te faltan ${num(p.donde_sumar.faltan)} puntos)</span>` : ''}</li>`;
+      };
+      const reglas = `<div class="rkp-reglas"><b>Cómo se suman los 100 puntos</b>${R.reglas.map(r => `<div><span>${r.emoji} <b>${esc(r.nombre)}</b> · hasta ${r.max}</span><small>${esc(r.como)}</small></div>`).join('')}</div>`;
+      cuerpo = `<div class="rk-equipo">Lo que más pesa: <b>que tus socios no dejen</b> y <b>que sus planes estén al día y customizados</b>.${R.promedio != null ? ` Promedio del equipo: <b>${num(R.promedio)}</b>.` : ''}</div>
+        ${reglas}
+        ${R.personas.length ? `<ol class="rk-lista">${R.personas.map(fila).join('')}</ol>` : '<div class="vacio">Todavía no hay datos este mes.</div>'}
+        <p class="aclara">Deserción y activos salen de MOVE y se actualizan cada mañana. Planes al día y customización salen del control diario de los planes. Las tareas del mes son las que marcás vos. Sin plata.</p>`;
+    }
+    return `<div class="rk-fondo" data-accion="rank-cerrar"></div><aside class="rk-panel" role="dialog" aria-label="Ranking de profes">
+      <div class="rk-tope"><h2>🏆 Ranking de profes · ${R ? esc(nombreMes(R.mes)) : ''}</h2><button class="chip" data-accion="rank-cerrar">Cerrar</button></div>${cuerpo}</aside>`;
   }
 
   function panelRanking() {
     if (!E.rankAbierto) return '';
+    if (E.rankModo === 'profes') return panelRankingProfes();
     const R = E.rank;
     const tab = E.rankTab || 'procesos';
     let cuerpo = '<div class="cargando">Armando el ranking…</div>';
@@ -2767,8 +2807,12 @@ ${p.tareas_mes ? `<span class="uso-hoy">📋 Tareas del mes: ${p.tareas_mes.hech
 
   async function abrirRanking() {
     E.rankAbierto = true;
+    E.rankModo = modoRanking();
     render();
-    try { E.rank = await cliente.llamar('ranking_ver', {}); } catch (e) { E.rankAbierto = false; falla(e); }
+    try {
+      if (E.rankModo === 'profes') E.rankProfes = await cliente.llamar('ranking_profes', {});
+      else E.rank = await cliente.llamar('ranking_ver', {});
+    } catch (e) { E.rankAbierto = false; falla(e); }
     render();
   }
 

@@ -1309,6 +1309,7 @@ const ACCIONES = {
   liquidacion_ver: (r, d) => liquidacionVer(r, d),
   coberturas_ver: (r, d) => coberturasVer(r, d),
   ranking_ver: (r, d) => rankVer(r, d),
+  ranking_profes: (r, d) => rankingProfes(r, d),
   consultas_ver: (r, d) => consultasVer(r, d),
   consulta_actualizar: (r, d) => consultaActualizar(r, d),
   pase_ver: (r, d) => paseVer(r, d),
@@ -1334,7 +1335,7 @@ const ACCIONES = {
 
 // Las pantallas que solo miran no esperan turno: un pedido trabado no las frena. Lista cerrada: lo que no esté acá espera.
 // Respaldo, bajadas y lo que usan los procesos de la PC siguen con turno porque necesitan los datos completos y sin cambios a mitad.
-const SOLO_LECTURA = ['mis_tareas', 'mi_dia', 'sede', 'tareas_de', 'rendimiento', 'cierres_ver', 'profes_ver', 'fichajes_ver', 'usuarios_listar', 'servidor_ver', 'ocupacion_ver', 'profe_tareas', 'profe_estado', 'liquidacion_ver', 'coberturas_ver', 'ranking_ver', 'resumen_semanal', 'consultas_ver', 'pase_ver', 'chat_personas', 'chat_listar', 'chat_ver', 'chat_novedad'];
+const SOLO_LECTURA = ['mis_tareas', 'mi_dia', 'sede', 'tareas_de', 'rendimiento', 'cierres_ver', 'profes_ver', 'fichajes_ver', 'usuarios_listar', 'servidor_ver', 'ocupacion_ver', 'profe_tareas', 'profe_estado', 'liquidacion_ver', 'coberturas_ver', 'ranking_ver', 'ranking_profes', 'resumen_semanal', 'consultas_ver', 'pase_ver', 'chat_personas', 'chat_listar', 'chat_ver', 'chat_novedad'];
 const ESPERA_TURNO_MS = 20000;
 const PEDIDO_LENTO_MS = 15000;
 

@@ -1599,3 +1599,64 @@ function medicionesDeProfe(deps, usuario, hoy, tareasMes) {
   const serie = Object.keys(datos).sort().filter(k => datos[k].desercion != null && datos[k].activos >= 5).slice(-8).map(k => ({ mes: k, v: datos[k].desercion }));
   return Object.assign(m, puntajeObjetivos(m), { serie: serie, datos_hasta: fila ? fila.cargada : '' });
 }
+
+// ---------- Ranking de profes (Emanuel, 16/11/2026) ----------
+// Un puntaje sobre 100 que pesa sobre todo la deserción y los planes al día (que no se venzan, customizados).
+// Se les muestra cuánto vale cada cosa, para que sepan dónde sumar. Sin plata. Lo ven los profes, coordinación y administración.
+const RANK_PROFE_DESERCION = [[10, 30], [15, 25], [20, 20], [25, 10]];   // hasta X% → puntos; más, 0
+const RANK_PROFE_ACTIVOS = [0, 4, 7, 10];                                  // objetivo de activos: no alcanzado, 1, 2, máximo
+const RANK_PROFE_REGLAS = [
+  { clave: 'desercion', emoji: '🛡️', nombre: 'Deserción baja', max: 30, como: 'Hasta 10%: 30 · hasta 15%: 25 · hasta 20%: 20 · hasta 25%: 10 · más de 25%: 0' },
+  { clave: 'al_dia', emoji: '📅', nombre: 'Planes al día', max: 30, como: 'El % de tus socios con el plan vigente, sin vencer: 100% vale 30' },
+  { clave: 'custom', emoji: '🎨', nombre: 'Planes customizados', max: 15, como: 'De los planes que renovaste en los últimos 30 días, el % que cambiaste entre 30 y 80%: 100% vale 15' },
+  { clave: 'tareas', emoji: '📋', nombre: 'Tareas del mes', max: 15, como: 'El % de las tareas del mes que marcaste hechas: 100% vale 15' },
+  { clave: 'activos', emoji: '👥', nombre: 'Socios activos', max: 10, como: 'Objetivo 1: 4 · objetivo 2: 7 · máximo: 10' },
+];
+
+function puntosRankDesercion(d) {
+  if (d == null) return null;
+  const t = RANK_PROFE_DESERCION.find(x => d <= x[0]);
+  return t ? t[1] : 0;
+}
+
+function rankingProfes(req, deps) {
+  const { usuario, usuarios } = sesion(req, deps);
+  if (!esProfe(usuario) && !tieneRol(usuario, 'coordinador') && !tieneRol(usuario, 'admin')) falla('prohibido');
+  const hoy = deps.hoy(), mes = mesDe(hoy);
+  const estado = deps.repo.leer('profe_estado').filter(x => x.tipo !== 'sede');
+  const coord = coordinacionPorProfe(deps, '');
+  const desde = sumarDiasProfe(hoy, -DIAS_REVISION_EQUIPO);
+  const revis = deps.repo.leer('profe_revision').filter(r => r.fecha >= desde);
+  const liq = deps.repo.leer('profe_liq').filter(x => x.mes === mes);
+  const nombresTareas = deps.repo.leer('profe_tareas');
+  const resp = respuestasViene(deps);
+  const uno = n => Math.round(n * 10) / 10;
+  const personas = usuarios.filter(u => esProfe(u) && String(u.activo) !== 'false').map(u => {
+    // el nombre con el que figura en el reparto (puede diferir del de la cuenta)
+    const enReparto = (nombresTareas.find(t => t.profe_dni === u.dni) || {}).profe || '';
+    const fila = estado.find(x => mismoProfe(x.nombre, u.nombre) || (enReparto && mismoProfe(x.nombre, enReparto)));
+    const d = fila ? (leerJson(fila.datos, {})[mes] || {}) : {};
+    const co = coord[enReparto] || Object.keys(coord).filter(k => mismoProfe(k, u.nombre)).map(k => coord[k])[0] || null;
+    const rv = resumenRevisiones(revis.filter(r => r.profe_dni === u.dni));
+    const tm = tareasMesDeDni(deps, u.dni, mes, hoy);
+    const l = liq.find(x => (x.profe_dni && x.profe_dni === u.dni) || (!x.profe_dni && mismoProfe(x.profe, u.nombre)));
+    const ld = l ? liqConRespuestas(leerJson(l.datos, {}), mes, resp) : {};
+    const items = {
+      desercion: d.desercion == null ? null : { pts: puntosRankDesercion(Number(d.desercion)), valor: String(uno(Number(d.desercion))).replace('.', ',') + '%' },
+      al_dia: co && co.al_dia_pct != null ? { pts: uno(30 * Number(co.al_dia_pct) / 100), valor: co.al_dia_pct + '%', extra: (co.vencidos || 0) + ' vencidos' } : null,
+      custom: rv.revisados ? { pts: uno(15 * rv.en_rango / rv.revisados), valor: Math.round(100 * rv.en_rango / rv.revisados) + '%', extra: rv.en_rango + ' de ' + rv.revisados } : null,
+      tareas: tm.total ? { pts: uno(15 * tm.pct / 100), valor: tm.pct + '%', extra: tm.hechas + ' de ' + tm.total } : null,
+      activos: ld.nivel != null ? { pts: RANK_PROFE_ACTIVOS[Number(ld.nivel)] || 0, valor: ld.activos_mes != null ? String(ld.activos_mes) : '', extra: ld.nivel_txt || '' } : null,
+    };
+    const con = Object.keys(items).filter(k => items[k]);
+    if (!con.length) return null;
+    const total = uno(con.reduce((a, k) => a + items[k].pts, 0));
+    // dónde puede sumar más: lo que más le falta para el máximo
+    const falta = RANK_PROFE_REGLAS.map(r => ({ clave: r.clave, nombre: r.nombre, faltan: uno(r.max - (items[r.clave] ? items[r.clave].pts : 0)) }))
+      .sort((a, b) => b.faltan - a.faltan)[0];
+    return { dni: u.dni, nombre: u.nombre, sede: u.sede, total: total, items: items, donde_sumar: falta && falta.faltan > 0 ? falta : null };
+  }).filter(Boolean).sort((a, b) => b.total - a.total || String(a.nombre).localeCompare(String(b.nombre)));
+  personas.forEach((p, i) => { p.puesto = i + 1; });
+  return { mes: mes, hoy: hoy, mi_dni: usuario.dni, reglas: RANK_PROFE_REGLAS, personas: personas,
+    promedio: personas.length ? uno(personas.reduce((a, p) => a + p.total, 0) / personas.length) : null };
+}
