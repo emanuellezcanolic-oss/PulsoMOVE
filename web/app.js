@@ -721,7 +721,7 @@
     const [color, texto] = TEXTO_BANDA[r.banda] || ['gris', ''];
     const pct = Math.round(r.pct * 100);
     const saltos = r.saltos || [];
-    const respuesta = r.respuesta === 'correcta' ? '✅ Dijiste que la progresión es correcta' : r.respuesta === 'corregir' ? '✏️ Dijiste que la vas a corregir' : '';
+    const respuesta = r.respuesta === 'correcta' ? '✅ Dijiste que la progresión es correcta' : r.respuesta === 'corregir' ? '✏️ Dijiste que la vas a corregir' : r.respuesta === 'visto' ? '👀 Lo viste' : '';
     return `<article class="tarjeta revision" style="--i:${i}"><div class="cabeza">
         <span class="socio">${esc(r.socio_nombre)}</span><span class="estado ${color === 'verde' ? 'hecha' : color === 'rojo' ? 'atrasada' : 'ayer'}">${pct}% cambiado</span>
         <span class="barra-custom" aria-hidden="true"><span class="zona"></span><span class="marca-pct ${color}" style="left:${Math.min(100, pct)}%"></span></span>
@@ -734,8 +734,16 @@
       </div>
       ${saltos.length && puedeResponder && !r.respuesta ? `<div class="fila-accion"><span class="pregunta-salto">${esc(PREGUNTA_SALTO)}</span>
         <button class="boton verde" data-accion="revision-responder" data-id="${esc(r.id)}" data-r="correcta">Sí, es correcta</button>
-        <button class="boton claro" data-accion="revision-responder" data-id="${esc(r.id)}" data-r="corregir">La voy a corregir</button></div>` : ''}
+        <button class="boton claro" data-accion="revision-responder" data-id="${esc(r.id)}" data-r="corregir">La voy a corregir</button></div>`
+        : !saltos.length && puedeResponder && !r.respuesta && r.banda !== 'bien' ? `<div class="fila-accion"><button class="boton claro" data-accion="revision-responder" data-id="${esc(r.id)}" data-r="visto">✔ Visto</button></div>` : ''}
     </article>`;
+  }
+
+  // Lo que todavía pide algo: saltos sin responder, o fuera del 30-80% sin "visto". Si el socio ya tiene un plan revisado más nuevo, el viejo no cuenta.
+  function revisionesPendientes(lista) {
+    const ultima = {};
+    lista.forEach(r => { if (!ultima[r.socio_id] || r.fecha > ultima[r.socio_id].fecha) ultima[r.socio_id] = r; });
+    return lista.filter(r => ultima[r.socio_id] === r && !r.respuesta && ((r.saltos || []).length || r.banda !== 'bien'));
   }
 
   function bloqueRevisiones(M) {
@@ -743,9 +751,13 @@
     if (!R || !R.lista.length) return '';
     let i = 0;
     const s = R.resumen;
-    return `<section class="grupo"><h2>🔎 Revisión de tus planes renovados <span class="cuenta">${R.lista.length}</span></h2>
-      <p class="intro-grupo">Comparamos cada plan nuevo con el anterior del mismo socio. Es una recomendación: lo ideal es cambiar entre el 30 y el 80% y progresar de a un escalón. En las últimas dos semanas: ${s.en_rango} de ${s.revisados} en el rango${s.saltos_sin_responder ? ` · ${s.saltos_sin_responder} con saltos para revisar` : ''}.</p>
-      ${R.lista.map(r => tarjetaRevision(r, i++, true)).join('')}</section>`;
+    // Arriba solo lo que pide algo; lo respondido, lo que está bien y lo que ya se volvió a renovar va plegado (Emanuel, 16/11/2026)
+    const pendientes = revisionesPendientes(R.lista);
+    const resto = R.lista.filter(r => pendientes.indexOf(r) < 0);
+    return `<section class="grupo"><h2>🔎 Revisión de tus planes renovados <span class="cuenta">${pendientes.length}</span></h2>
+      <p class="intro-grupo">Comparamos cada plan nuevo con el anterior del mismo socio. Es una recomendación: lo ideal es cambiar entre el 30 y el 80% y progresar de a un escalón. En las últimas dos semanas: ${s.en_rango} de ${s.revisados} en el rango.</p>
+      ${pendientes.length ? pendientes.map(r => tarjetaRevision(r, i++, true)).join('') : '<div class="vacio">No tenés nada para revisar. 👏</div>'}
+      ${resto.length ? `<details class="catalogo"><summary>✓ Ya revisados (${resto.length})</summary>${resto.map(r => tarjetaRevision(r, i++, true)).join('')}</details>` : ''}</section>`;
   }
 
   // ---------- Mi mes del profe, modo concentrado y medallas (Emanuel, 10/11/2026) ----------
@@ -848,7 +860,8 @@
       <p class="intro-grupo">Tenés una hora para planificar. ${D.planes_hoy ? `Hoy te ${D.planes_hoy === 1 ? 'toca 1 plan' : `tocan ${D.planes_hoy} planes`} (~${D.min_planes} min)` : 'Hoy no tenés planes'}${D.min_quedan ? `, así que para la auditoría te quedan ~${D.min_quedan} min: con ${plural(D.meta, 'corrección', 'correcciones')} cumplís.` : ': los planes te ocupan la hora, con 1 corrección cumplís.'}${D.al_renovar ? ` Lo de ${plural(D.al_renovar, 'cosa', 'cosas')} de socios que renovás esta semana se corrige al hacerles el plan nuevo.` : ''}</p>
       <div class="avance-dia"><i style="width:${Math.min(100, Math.round(100 * D.hechas / D.meta))}%"></i></div>
       ${listo ? `<div class="vacio">🎉 Listo lo de la auditoría por hoy.${A.cuantos.pendientes ? ' Si te sobra tiempo, abajo está el resto.' : ''}</div>` : ''}
-      ${D.lista.map(h => tarjetaHallazgo(h, i++, true)).join('')}` : `<h2>🧾 Auditoría: para corregir <span class="cuenta">${A.cuantos.pendientes}</span></h2>`;
+      ${D.lista.filter(h => h.estado !== 'marcada' && h.estado !== 'dejada').map(h => tarjetaHallazgo(h, i++, true)).join('')}
+      ${D.lista.some(h => h.estado === 'marcada' || h.estado === 'dejada') ? `<details class="catalogo"><summary>✓ Lo que ya marcaste hoy (${D.lista.filter(h => h.estado === 'marcada' || h.estado === 'dejada').length}): si te equivocaste, deshacelo</summary>${D.lista.filter(h => h.estado === 'marcada' || h.estado === 'dejada').map(h => tarjetaHallazgo(h, i++, true)).join('')}</details>` : ''}` : `<h2>🧾 Auditoría: para corregir <span class="cuenta">${A.cuantos.pendientes}</span></h2>`;
     return `<section class="grupo">${hoy}
       <p class="aclara">Cuando lo corregís en MOVE se cierra solo a la mañana siguiente; si tocás "Lo corregí", lo miramos primero.${A.cuantos.corregidos_semana ? ` Esta semana corregiste ${A.cuantos.corregidos_semana}. 👏` : ''}</p>
       ${A.pendientes.length ? `<details class="catalogo"${E.audAbierto ? ' open' : ''}><summary data-accion="aud-abrir">Ver todo lo pendiente (${A.cuantos.pendientes}), sin apuro</summary>
@@ -980,8 +993,9 @@
     const M = E.planes.mio;
     if (!M) return '<div class="vacio">Tu usuario no tiene socios asignados como profe.</div>';
     let i = 0;
-    const nuevos = M.hoy.filter(t => t.tipo === 'Plan nuevo');
-    const resto = M.hoy.filter(t => t.tipo !== 'Plan nuevo');
+    // lo que ya tildó sale de la lista en el momento: queda abajo, en "Lo que ya hiciste" (Emanuel, 16/11/2026)
+    const nuevos = M.hoy.filter(t => t.tipo === 'Plan nuevo' && t.estado !== 'hecha');
+    const resto = M.hoy.filter(t => t.tipo !== 'Plan nuevo' && t.estado !== 'hecha');
     const porDia = {};
     M.proximas.forEach(t => { (porDia[t.fecha] = porDia[t.fecha] || []).push(t); });
     return `<div class="dos-columnas"><aside class="lado"><div class="persona"><b>Tu mes</b>${cifrasPlanes(M.resumen)}</div>
@@ -3686,9 +3700,9 @@ ${p.tareas_mes ? `<span class="uso-hoy">📋 Tareas del mes: ${p.tareas_mes.hech
       try {
         const r = await cliente.llamar('profe_responder_revision', { id: el.dataset.id, respuesta: el.dataset.r });
         const R = E.planes && E.planes.mio && E.planes.mio.revisiones;
-        if (R) { const x = R.lista.find(v => v.id === r.revision.id); if (x) { Object.assign(x, r.revision); R.resumen.saltos_sin_responder = Math.max(0, R.resumen.saltos_sin_responder - 1); } }
+        if (R) { const x = R.lista.find(v => v.id === r.revision.id); if (x) { const tenia = (x.saltos || []).length; Object.assign(x, r.revision); if (tenia) R.resumen.saltos_sin_responder = Math.max(0, R.resumen.saltos_sin_responder - 1); } }
         render();
-        aviso(el.dataset.r === 'correcta' ? '✅ Anotado: la progresión es correcta.' : '✏️ Anotado: la vas a corregir en MOVE.');
+        aviso(el.dataset.r === 'correcta' ? '✅ Anotado: la progresión es correcta.' : el.dataset.r === 'visto' ? '👀 Listo.' : '✏️ Anotado: la vas a corregir en MOVE.');
       } catch (e) { el.disabled = false; aviso(PulsoApi.mensaje(e.codigo || e.message), true); }
     }
     else if (a === 'reeval-pedir') {

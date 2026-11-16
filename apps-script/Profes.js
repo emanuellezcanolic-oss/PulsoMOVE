@@ -387,7 +387,7 @@ function profePedirReeval(req, deps) {
 
 const DIAS_REVISION_PROFE = 14;      // lo que ve el profe: sus planes de las últimas dos semanas
 const DIAS_REVISION_EQUIPO = 30;     // lo que resume coordinación
-const RESPUESTAS_REVISION = ['correcta', 'corregir'];
+const RESPUESTAS_REVISION = ['correcta', 'corregir', 'visto'];   // visto: los que no tienen saltos (16/11/2026)
 
 function leerJson(s, siNo) {
   try { return JSON.parse(s); } catch (e) { return siNo; }
