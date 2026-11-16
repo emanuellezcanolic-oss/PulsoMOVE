@@ -374,6 +374,18 @@ function ventaLargaPedir(req, deps) {
   return {};
 }
 
+// Quien cobró dice que la venta fue suya: queda confirmada y deja de aparecer para todas (Emanuel, 16/11/2026)
+function ventaLargaConfirmar(req, deps) {
+  const { usuario } = sesion(req, deps);
+  if (!tieneRol(usuario, 'recepcion')) falla('prohibido');
+  const filas = deps.repo.leer('ventas_largas');
+  const v = ventaLargaBuscar(filas, req.id);
+  if (v.estado !== 'cobro' || v.dni_cobro !== usuario.dni || v.sede !== usuario.sede) falla('datos_invalidos');
+  Object.assign(v, { estado: 'confirmada', dni_vendio: usuario.dni, ts_decidido: new Date(deps.ahora()).toISOString(), decide_dni: usuario.dni });
+  deps.repo.escribir('ventas_largas', filas);
+  return {};
+}
+
 function ventaLargaResponder(req, deps) {
   const { usuario } = sesion(req, deps);
   const filas = deps.repo.leer('ventas_largas');
@@ -1305,6 +1317,7 @@ const ACCIONES = {
   cargar_ventas: cargarVentas,
   cargar_ventas_largas: cargarVentasLargas,
   venta_larga_pedir: ventaLargaPedir,
+  venta_larga_confirmar: ventaLargaConfirmar,
   venta_larga_responder: ventaLargaResponder,
   venta_larga_decidir: ventaLargaDecidir,
   // PulsoMOVE Profes (Profes.js). Se llaman al momento del pedido: así no importa en qué orden carga Apps Script los archivos

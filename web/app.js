@@ -2192,9 +2192,9 @@ ${p.tareas_mes ? `<span class="uso-hoy">📋 Tareas del mes: ${p.tareas_mes.hech
       `<button class="boton verde" data-accion="venta-responder" data-id="${esc(v.id)}" data-si="1">Sí, aceptar</button><button class="boton claro" data-accion="venta-responder" data-id="${esc(v.id)}" data-si="">No</button>`)).join('');
     const opciones = v => V.companeros.map(c => `<option value="${esc(c.dni)}" ${c.dni === v.sugerido_dni ? 'selected' : ''}>${esc(c.nombre)}</option>`).join('');
     const cobradas = V.cobradas.map(v => fila(
-      `Cobraste el ${esc(v.plan)} de <b>${esc(v.socio_nombre)}</b> el ${ddmm(v.fecha)}. ¿Lo vendió otra persona?`,
-      `${v.sugerido ? `💡 ${esc(v.sugerido)} habló con este socio hace poco. ` : ''}Si no hacés nada, la venta queda para vos.`,
-      V.companeros.length ? `<select data-venta-dar="${esc(v.id)}" aria-label="Dar la venta a">${opciones(v)}</select><button class="boton claro" data-accion="venta-dar" data-id="${esc(v.id)}">Dársela</button>` : '')).join('');
+      `Cobraste el ${esc(v.plan)} de <b>${esc(v.socio_nombre)}</b> el ${ddmm(v.fecha)}. ¿La vendiste vos?`,
+      `${v.sugerido ? `💡 ${esc(v.sugerido)} habló con este socio hace poco. ` : ''}Si fue tuya, tocá “Fue mía” y deja de aparecer. Si no hacés nada, la venta queda para vos y esto se va solo a los 7 días.`,
+      `<button class="boton verde" data-accion="venta-confirmar" data-id="${esc(v.id)}">Fue mía</button>` + (V.companeros.length ? `<select data-venta-dar="${esc(v.id)}" aria-label="Dar la venta a">${opciones(v)}</select><button class="boton claro" data-accion="venta-dar" data-id="${esc(v.id)}">Dársela</button>` : ''))).join('');
     const sede = V.de_la_sede.map(v => fila(
       `${esc(v.nombre_cobro)} cobró el ${esc(v.plan)} de <b>${esc(v.socio_nombre)}</b> el ${ddmm(v.fecha)}.`,
       v.te_sugiere ? '💡 Hablaste con este socio hace poco.' : '',
@@ -3783,11 +3783,12 @@ ${p.tareas_mes ? `<span class="uso-hoy">📋 Tareas del mes: ${p.tareas_mes.hech
       const comentario = app.querySelector(`[data-comentario="${CSS.escape(el.dataset.id)}"]`).value;
       el.disabled = true;
       try { await cliente.llamar('garantia_decidir', { id: el.dataset.id, estado: el.dataset.estado, comentario }); aviso('Decisión guardada.'); cargarVista(); } catch (e) { el.disabled = false; falla(e); }
-    } else if (a === 'venta-dar' || a === 'venta-pedir' || a === 'venta-responder' || a === 'venta-decidir') {
+    } else if (a === 'venta-dar' || a === 'venta-pedir' || a === 'venta-responder' || a === 'venta-decidir' || a === 'venta-confirmar') {
       el.disabled = true;
       try {
         if (a === 'venta-dar') await cliente.llamar('venta_larga_pedir', { id: el.dataset.id, dni: app.querySelector(`[data-venta-dar="${CSS.escape(el.dataset.id)}"]`).value });
         if (a === 'venta-pedir') await cliente.llamar('venta_larga_pedir', { id: el.dataset.id });
+        if (a === 'venta-confirmar') await cliente.llamar('venta_larga_confirmar', { id: el.dataset.id });
         if (a === 'venta-responder') await cliente.llamar('venta_larga_responder', { id: el.dataset.id, acepta: !!el.dataset.si });
         if (a === 'venta-decidir') await cliente.llamar('venta_larga_decidir', { id: el.dataset.id, dni: el.dataset.dni });
         aviso('Guardado.');

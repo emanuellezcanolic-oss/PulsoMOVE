@@ -338,3 +338,19 @@ test('las ventas que esperan confirmación se resumen para quien las pidió y pa
   const sede = pedir(d, { accion: 'sede', token: entrar(d, ADMIN.dni), sede: 'bolson' }).data;
   assert.equal(sede.pedidos_sin_responder[0].total, 3);
 });
+
+test('"Fue mía": quien cobró confirma la venta y deja de aparecer, sin cambiar los números de nadie', () => {
+  const v = (id, cobra) => ({ id, fecha: '2026-11-12', sede: 'bolson', dni_cobro: cobra, nombre_cobro: 'x', socio_id: id, socio_nombre: 'S' + id, plan: 'plan de 3 meses', tipo: 'nuevo', largo: '1', sugerido_dni: '', estado: 'cobro', pide_dni: '', responde_dni: '', hacia_dni: '', dni_vendio: '', ts_pedido: '', ts_decidido: '', decide_dni: '' });
+  const OTRA = usuario({ dni: '20000007', nombre: 'Ara', roles: 'recepcion', sede: 'bolson', turno: 'manana' });
+  const d = entorno({ usuarios: [ADMIN, TANI, AZUL, KEILA, PROFE, OTRA], ventas_largas: [v('1', TANI.dni), v('2', TANI.dni), v('3', OTRA.dni)] });
+  const t = entrar(d, TANI.dni);
+  const ver = () => pedir(d, { accion: 'mi_dia', token: t }).data.ventas_largas;
+  assert.equal(ver().cobradas.length, 2);
+  assert.equal(pedir(d, { accion: 'venta_larga_confirmar', token: t, id: '3' }).ok, false, 'no se confirma la venta que cobró otra persona');
+  assert.equal(pedir(d, { accion: 'venta_larga_confirmar', token: t, id: '1' }).ok, true);
+  assert.equal(ver().cobradas.length, 1, 'la confirmada ya no aparece');
+  const otra = pedir(d, { accion: 'mi_dia', token: entrar(d, OTRA.dni) }).data.ventas_largas;
+  assert.equal(otra.de_la_sede.some(x => x.id === '1'), false, 'tampoco le aparece a las demás');
+  assert.equal(pedir(d, { accion: 'venta_larga_confirmar', token: t, id: '1' }).ok, false, 'no se confirma dos veces');
+  assert.equal(d.repo.leer('ventas_largas').find(x => x.id === '1').estado, 'confirmada');
+});
