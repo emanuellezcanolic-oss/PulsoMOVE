@@ -83,9 +83,9 @@ function leerToken(token, ahoraMs, secreto, hmac) {
 const CANALES = ['MP', 'AU', 'MG', 'LL', 'PR', 'SIN CONTACTO'];
 const RESULTADOS = ['VOLVIÓ', 'VUELVE', 'RESERVA', 'PAGÓ', 'PAGA', 'VACACIONES', 'PAUSA', 'SALUD', 'HORARIOS',
                     'PRECIO', 'BAJA', 'NO CONTESTA', 'TEL MAL', 'NOTIFICADO', 'ENCUESTA ENVIADA', 'SALUDADO', 'SIN CAMBIO', 'SEGUIDO', 'HECHO',
-                    'AGENDADA', 'REPROGRAMADA', 'SE HIZO', 'NO SE HACE', 'CORREGIDO', 'VIENE', 'NO VIENE', 'MULTISEDE', 'DE PASO', 'LO SIGUE EL PROFE', 'LO CAMBIA EL PROFE', 'NO HACE FALTA', 'RESPONDIÓ', 'ELIGIÓ PRODUCTO', 'ELIGIÓ RECOVERY', 'LO PIENSA'];
-const PIDEN_FECHA = ['VUELVE', 'PAGA', 'VACACIONES', 'AGENDADA', 'REPROGRAMADA'];   // la fecha se pide solo en estos: en los demás no aparece
-const PREGUNTA_FECHA = { VUELVE: '¿Qué día vuelve?', PAGA: '¿Qué día paga?', VACACIONES: '¿Qué día vuelve de vacaciones?', AGENDADA: '¿Qué día es la evaluación?', REPROGRAMADA: '¿Para qué día quedó?' };
+                    'AGENDADA', 'REPROGRAMADA', 'SE HIZO', 'NO SE HACE', 'CORREGIDO', 'VIENE', 'NO VIENE', 'MULTISEDE', 'DE PASO', 'LO SIGUE EL PROFE', 'LO CAMBIA EL PROFE', 'NO HACE FALTA', 'RESPONDIÓ', 'ELIGIÓ PRODUCTO', 'ELIGIÓ RECOVERY', 'LO PIENSA', 'ESPERANDO'];
+const PIDEN_FECHA = ['VUELVE', 'PAGA', 'VACACIONES', 'AGENDADA', 'REPROGRAMADA', 'ESPERANDO'];   // la fecha se pide solo en estos: en los demás no aparece
+const PREGUNTA_FECHA = { VUELVE: '¿Qué día vuelve?', PAGA: '¿Qué día paga?', VACACIONES: '¿Qué día vuelve de vacaciones?', AGENDADA: '¿Qué día es la evaluación?', REPROGRAMADA: '¿Para qué día quedó?', ESPERANDO: '¿Qué día la vuelvo a mostrar?' };
 // El desplegable de resultados, por categoría
 const GRUPOS_RESULTADO = [
   ['Ya se resolvió', ['VOLVIÓ', 'RESERVA', 'PAGÓ']],
@@ -94,7 +94,7 @@ const GRUPOS_RESULTADO = [
   ['Por qué no viene', ['PAUSA', 'SALUD', 'HORARIOS', 'PRECIO', 'BAJA']],
   ['No se pudo hablar', ['NO CONTESTA', 'TEL MAL']],
 ];
-const PIDEN_DETALLE = ['BAJA', 'SIN CAMBIO', 'NO SE HACE'];
+const PIDEN_DETALLE = ['BAJA', 'SIN CAMBIO', 'NO SE HACE', 'ESPERANDO'];
 
 // Las respuestas posibles según lo que pide cada tarea (Emanuel, 05/11/2026). Lo que no está acá muestra la lista completa.
 const NO_SE_PUDO = ['No se pudo hablar', [['NO CONTESTA', 'No contesta'], ['TEL MAL', 'El teléfono está mal']]];
@@ -282,6 +282,24 @@ function seVerificaEnMove(tipo) {
 // y no debe contarle como pendiente ni bajarle el cumplimiento (Emanuel, 13/11/2026).
 function esperaAMove(t) {
   return t.estado === 'pendiente' && seVerificaEnMove(t.tipo);
+}
+
+// "Esperando confirmación": la persona hizo lo suyo y falta que alguien responda. Se anota con una marca ESPERANDO en el registro,
+// con el día en que la tarea vuelve a mostrarse y de quién espera la respuesta. La tarea sigue pendiente, pero hasta ese día no
+// cuenta como pendiente ni baja el cumplimiento (Rubén, 14/11/2026).
+function esperasActivas(registro, hoy) {
+  const out = {};
+  registro.forEach(r => {
+    if (r.resultado !== 'ESPERANDO') return;
+    const prev = out[r.tarea_id];
+    if (!prev || String(r.ts) > String(prev.ts)) out[r.tarea_id] = { ts: r.ts, hasta: r.fecha_resultado, detalle: r.detalle };
+  });
+  Object.keys(out).forEach(k => { if (!(String(out[k].hasta) > hoy)) delete out[k]; });
+  return out;
+}
+
+function enEspera(t, esperas) {
+  return t.estado === 'pendiente' && !!esperas[t.id];
 }
 
 function fechaIsoValida(s) {

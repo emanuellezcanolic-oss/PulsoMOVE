@@ -829,6 +829,10 @@ circle.punto-rojo, .leyenda i.punto-rojo { fill: #ef4444; background: #ef4444; }
 .puntaje-mes strong { font-size: 2.2rem; font-family: ui-monospace, monospace; color: #4f46e5; }
 .puntaje-mes span { font-size: .8rem; text-transform: uppercase; color: #6b7a86; }
 .puntaje-mes p { margin: 0; flex-basis: 100%; font-weight: 600; }
+.banda-ventas { display: flex; gap: 10px; align-items: center; justify-content: space-between; margin: 10px 0; padding: 10px 14px; border-radius: 10px; background: var(--naranja-claro); font-size: 14px; }
+.banda-ventas.pide { background: var(--rojo-claro, #fde4e1); }
+details.espera { margin: 8px 0 0; padding: 4px 14px 10px; border-top: 1px dashed var(--linea); }
+details.espera summary { cursor: pointer; font-weight: 700; font-size: 13px; padding: 8px 0; }
 
 /* Ranking de profes (16/11/2026) */
 .rkp-items { display: grid; gap: 4px; margin: 6px 0 2px; }

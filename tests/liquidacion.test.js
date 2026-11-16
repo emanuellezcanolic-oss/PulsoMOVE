@@ -302,3 +302,39 @@ test('el ranking premia los procesos y los planes de 3 meses, no solo los socios
   assert.deepEqual(por('Tani').largos_meses.map(m => [m.mes, m.n]), [['2026-09', 0], ['2026-10', 4], ['2026-11', 6]], 'mes, 2 y 3 meses salen de esta serie');
   assert.equal(r.data.equipo.procesos_pct, 80);
 });
+
+test('una tarea esperando confirmación sale de los pendientes y vuelve el día elegido', () => {
+  const tarea = (id, estado) => ({ id, fecha: '2026-11-12', sede: 'bolson', socio_id: id, socio_nombre: 'Socio ' + id, profe: '', tipo: 'Coordinar reevaluación', prioridad: '2', situacion: 's', accion: 'a', ultima_anotacion: '', asignado_dni: TANI.dni, pendiente_desde: '2026-11-12', estado, hecha_en: '', intro: '' });
+  const d = entorno({ tareas: [tarea('1', 'pendiente'), tarea('2', 'pendiente')] });
+  const t = entrar(d, TANI.dni), admin = entrar(d, ADMIN.dni);
+  const valores = () => pedir(d, { accion: 'rendimiento', token: admin, sede: 'bolson' }).data.personas.find(p => p.dni === TANI.dni).valores;
+  const sede = () => pedir(d, { accion: 'sede', token: admin, sede: 'bolson' }).data.personas.find(p => p.dni === TANI.dni);
+  assert.equal(valores().tareas_total, 2);
+  const mal = pedir(d, { accion: 'marcar', token: t, id_marca: 'e0', tarea_id: '1', canal: 'SIN CONTACTO', resultado: 'ESPERANDO', fecha: '2026-11-12', detalle: 'Emanuel' });
+  assert.equal(mal.ok, false, 'tiene que volver otro día');
+  const sinMotivo = pedir(d, { accion: 'marcar', token: t, id_marca: 'e00', tarea_id: '1', canal: 'SIN CONTACTO', resultado: 'ESPERANDO', fecha: '2026-11-14' });
+  assert.equal(sinMotivo.ok, false, 'hay que decir de quién espera');
+  const ok = pedir(d, { accion: 'marcar', token: t, id_marca: 'e1', tarea_id: '1', canal: 'SIN CONTACTO', resultado: 'ESPERANDO', fecha: '2026-11-14', detalle: 'Emanuel confirma los socios' });
+  assert.equal(ok.ok, true, JSON.stringify(ok));
+  assert.equal(d.repo.leer('tareas').find(x => x.id === '1').estado, 'pendiente', 'sigue pendiente');
+  assert.equal(valores().tareas_total, 1, 'no baja el cumplimiento mientras espera');
+  assert.equal(sede().pendientes_hoy, 1);
+  assert.equal(sede().en_espera, 1);
+  const lista = pedir(d, { accion: 'mis_tareas', token: t }).data.tareas;
+  assert.equal(lista.find(x => x.id === '1').en_espera.detalle, 'Emanuel confirma los socios');
+  assert.equal(lista.find(x => x.id === '2').en_espera, undefined);
+  assert.equal(pedir(d, { accion: 'mi_dia', token: t }).data.hoy.pendientes, 1);
+});
+
+test('las ventas que esperan confirmación se resumen para quien las pidió y para quien debe responder', () => {
+  const v = (id, tipo, largo, estado, pide, responde) => ({ id, fecha: '2026-11-09', sede: 'bolson', dni_cobro: responde, nombre_cobro: 'x', socio_id: id, socio_nombre: 'S' + id, plan: 'plan', tipo, largo, sugerido_dni: '', estado, pide_dni: pide, responde_dni: responde, hacia_dni: pide, dni_vendio: '', ts_pedido: '2026-11-09T18:00:00.000Z', ts_decidido: '', decide_dni: '' });
+  const d = entorno({ ventas_largas: [v('1', 'nuevo', 'no', 'pedida', TANI.dni, ADMIN.dni), v('2', 'nuevo', '1', 'pedida', TANI.dni, ADMIN.dni), v('3', 'renovacion', '1', 'pedida', TANI.dni, ADMIN.dni)] });
+  const tani = pedir(d, { accion: 'mi_dia', token: entrar(d, TANI.dni) }).data.ventas_largas;
+  assert.deepEqual([tani.resumen_espera.total, tani.resumen_espera.nuevos, tani.resumen_espera.largos, tani.resumen_espera.dias], [3, 2, 2, 3]);
+  assert.deepEqual(tani.resumen_espera.de_quienes, ['Lucía Admin']);
+  assert.equal(tani.resumen_pedidos, null);
+  const admin = pedir(d, { accion: 'mi_dia', token: entrar(d, ADMIN.dni) }).data.ventas_largas;
+  assert.equal(admin.resumen_pedidos.total, 3);
+  const sede = pedir(d, { accion: 'sede', token: entrar(d, ADMIN.dni), sede: 'bolson' }).data;
+  assert.equal(sede.pedidos_sin_responder[0].total, 3);
+});

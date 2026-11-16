@@ -469,7 +469,7 @@
         <span class="accion">${conLinks(t.accion)}</span>
         ${t.ultima_anotacion ? `<span class="nota">Última anotación: “${esc(t.ultima_anotacion)}”</span>` : ''}${historialSocio(t)}
       </button>
-      ${abierta ? formularioMarca(t) : ''}
+      ${abierta ? formularioMarca(t) + formularioEspera(t) : ''}
     </article>`;
   }
 
@@ -525,10 +525,57 @@
       </section>`;
   }
 
+  // ---------- Esperando confirmación ----------
+  // La persona hizo lo suyo y falta que otra responda: la tarea sale de los pendientes y vuelve el día que elija.
+  const SIN_ESPERA = /^(Apertura|Cierre|Controlar stock|Profes de hoy)/;
+  function formularioEspera(t) {
+    if (SIN_ESPERA.test(String(t.tipo)) || seVerificaEnMove(t.tipo) || t.estado !== 'pendiente') return '';
+    const manana = sumarDiasIso(E.hoy, 1);
+    return `<details class="espera"><summary>⏳ Estoy esperando una confirmación</summary>
+      <form class="marca-form" data-form="marcar" data-id="${esc(t.id)}">
+        <input type="hidden" name="canal" value="SIN CONTACTO"><input type="hidden" name="resultado" value="ESPERANDO">
+        <p class="aclara">La tarea sale de tus pendientes y no te baja el cumplimiento. Vuelve a aparecer el día que elijas.</p>
+        <div class="campos">
+          <label class="campo">¿Qué día la vuelvo a mostrar?<input name="fecha" type="date" min="${esc(manana)}" required></label>
+          <label class="campo">¿De quién o de qué esperás la respuesta? <span class="opcional">(obligatorio)</span><textarea name="detalle" maxlength="500" required placeholder="Ej.: Emanuel me confirma qué socios reevaluar"></textarea></label>
+        </div>
+        <div class="botones"><button class="boton verde">Dejarla en espera</button></div>
+      </form></details>`;
+  }
+
+  function sumarDiasIso(iso, n) {
+    const d = new Date(iso + 'T12:00:00Z');
+    d.setUTCDate(d.getUTCDate() + n);
+    return d.toISOString().slice(0, 10);
+  }
+
+  function bloqueEspera(lista) {
+    if (!lista.length) return '';
+    return `<section class="grupo espera-lista"><h2>⏳ Esperando confirmación <span class="cuenta">${lista.length}</span></h2>
+      <p class="intro-grupo">No te cuentan como pendientes. Cada una vuelve a aparecer el día que elegiste.</p>
+      ${lista.map(t => `<article class="tarjeta"><div class="cabeza" style="display:grid;gap:2px;padding:12px 14px">
+        <span class="socio">${esc(t.socio_nombre)}</span><span class="profe">${esc(t.tipo)}</span>
+        <span class="situacion">Espera: ${esc(t.en_espera.detalle)} · vuelve el ${ddmm(t.en_espera.hasta)}</span></div>
+        <div class="fila-accion"><button class="boton verde" data-accion="espera-liberar" data-id="${esc(t.id)}">Ya me confirmaron</button></div></article>`).join('')}</section>`;
+  }
+
+  // Las ventas que esperan una confirmación explican por qué los números todavía no se movieron
+  function bandaVentas() {
+    const V = E.dia && E.dia.ventas_largas;
+    if (!V) return '';
+    const e = V.resumen_espera, p = V.resumen_pedidos;
+    const partes = [];
+    if (p) partes.push(`<div class="banda-ventas pide"><span>🔔 Tenés <b>${p.total}</b> ${p.total === 1 ? 'pedido de venta sin responder' : 'pedidos de venta sin responder'}${p.dias ? `, el más viejo hace ${p.dias} ${p.dias === 1 ? 'día' : 'días'}` : ''}. Hasta que respondas, esas ventas no se suman a quien las vendió.</span><button class="chip" data-accion="ir-ventas">Responder</button></div>`);
+    if (e) partes.push(`<div class="banda-ventas"><span>⏳ <b>${e.total}</b> ${e.total === 1 ? 'venta tuya espera' : 'ventas tuyas esperan'} la confirmación de ${esc((e.de_quienes || []).join(' y '))} (${e.nuevos} ${e.nuevos === 1 ? 'socio nuevo' : 'socios nuevos'} · ${e.largos} ${e.largos === 1 ? 'plan' : 'planes'} de 3 meses). La más vieja, hace ${e.dias} ${e.dias === 1 ? 'día' : 'días'}. No se actualizan por semana: se suman apenas las confirme.</span></div>`);
+    return partes.join('');
+  }
+
   function vistaHoy() {
     if (!E.tareas) return '<div class="cargando">Cargando tus tareas…</div>';
     const profes = E.tareas.filter(t => esRecordatorio(t.tipo));
-    const todas = E.tareas.filter(t => !esRecordatorio(t.tipo));
+    const sinRecordatorios = E.tareas.filter(t => !esRecordatorio(t.tipo));
+    const enEspera = sinRecordatorios.filter(t => t.en_espera && t.estado === 'pendiente');
+    const todas = sinRecordatorios.filter(t => !(t.en_espera && t.estado === 'pendiente'));
     const delDia = todas.filter(deHoy);
     const hechas = delDia.filter(t => t.estado === 'hecha').length;
     const tipos = [];
@@ -548,6 +595,7 @@
       ${primera ? `<button class="empeza" data-accion="abrir" data-id="${esc(primera.id)}"><b>👉 Empezá por acá</b><span>${esc(primera.socio_nombre)} · ${esc(primera.tipo)}</span></button>` : ''}
       ${porNivel.length ? porNivel.map(([n, grupos]) => `<section class="nivel nivel-${n.n}">${n.titulo ? `<h2 class="nivel-titulo">${n.emoji} ${esc(n.titulo)}<small>${esc(n.ayuda)}</small></h2>` : ''}${grupos.map(grupoHtml).join('')}</section>`).join('')
         : `<div class="vacio">${E.filtro === 'pendientes' ? '¡No te quedan tareas pendientes! Mirá qué más podés hacer hoy.' : 'No hay tareas para mostrar.'}</div>`}
+      ${bloqueEspera(enEspera)}
       ${E.dia && !E.dia.hoy.pendientes && E.filtro === 'pendientes' ? bloqueIdeas(E.dia, 3) : ''}
     </div></div>`;
   }
@@ -2313,6 +2361,7 @@ ${p.tareas_mes ? `<span class="uso-hoy">📋 Tareas del mes: ${p.tareas_mes.hech
     const aclaracion = '<p class="bajada">“Le quedan hoy” son las de hoy y las que arrastra de días anteriores. “Próximos días” son las del resto de la semana, que todavía no le tocan.</p>';
     const personas = S.personas.length ? aclaracion + `<div class="personas">${S.personas.map(p => `<div class="persona ${p.en_vivo ? 'vivo-' + esc(p.en_vivo.color) : ''}"><b>${esc(p.nombre)}</b><span class="turno">${esc(TURNOS[p.turno] || '')}</span>${p.en_vivo ? `<span class="en-vivo">${p.en_vivo.color === 'rojo' ? '🔴' : p.en_vivo.color === 'verde' ? '🟢' : '⚪'} ${esc(p.en_vivo.texto)}</span>` : ''}${p.uso_hoy && p.uso_hoy.con_senal ? `<span class="uso-hoy">Hoy: ${horas(p.uso_hoy.activo)} usando la app · ${horas(p.uso_hoy.completando)} completando</span>` : ''}
         <div class="cifras"><div class="${p.meta && p.hechas_hoy >= p.meta ? 'bien' : ''}"><strong>${p.hechas_hoy}${p.meta ? '/' + p.meta : ''}</strong><span>Hechas hoy${p.meta ? ' · meta' : ''}</span></div><div class="${p.pendientes_hoy > 15 ? 'mal' : ''}"><strong>${p.pendientes_hoy}</strong><span>Le quedan hoy</span></div><div><strong>${p.hechas_semana}</strong><span>Hechas esta semana</span></div><div><strong>${p.proximos_dias}</strong><span>Próximos días</span></div></div>
+        ${p.en_espera ? `<span class="aclara">Dejó ${p.en_espera} ${p.en_espera === 1 ? 'tarea' : 'tareas'} esperando una confirmación: no le cuentan como pendientes.</span>` : ''}
         ${p.esperan_move ? `<span class="aclara">Además tiene ${p.esperan_move} ${p.esperan_move === 1 ? 'tarea que espera' : 'tareas que esperan'} a MOVE: no le cuentan como pendientes.</span>` : ''}
         ${p.atrasadas ? `<span class="aclara">De lo que le queda hoy, ${p.atrasadas === 1 ? '1 viene atrasada de días anteriores' : p.atrasadas + ' vienen atrasadas de días anteriores'}.</span>` : ''}
         <button class="chip ver-lista" data-accion="ver-persona" data-dni="${esc(p.dni)}">Ver su lista</button></div>`).join('')}</div>`
@@ -2335,6 +2384,7 @@ ${p.tareas_mes ? `<span class="uso-hoy">📋 Tareas del mes: ${p.tareas_mes.hech
       : '<div class="vacio">No hay pedidos de garantía pendientes.</div>';
     return `${selector}<h1 class="titulo">${esc(SEDES[S.sede])} <span>·</span> ${esc(tituloDia(S.hoy))}</h1>
       <p class="bajada">Avance del equipo, ventas, tareas atrasadas y pedidos de garantía.</p>
+      ${(S.pedidos_sin_responder || []).length ? `<div class="alerta-roja">⏳ Pedidos de venta sin responder: ${S.pedidos_sin_responder.map(p => `<b>${esc(p.nombre.split(' ')[0])}</b> ${p.total} (el más viejo hace ${p.dias} ${p.dias === 1 ? 'día' : 'días'})`).join(' · ')}. Mientras tanto, esas ventas no figuran en los números de quien las vendió.</div>` : ''}
       ${S.personas.some(p => p.en_vivo && p.en_vivo.color === 'rojo') ? `<div class="alerta-roja">🔴 Para mirar: ${S.personas.filter(p => p.en_vivo && p.en_vivo.color === 'rojo').map(p => esc(p.nombre.split(' ')[0])).join(', ')}</div>` : ''}
       ${bloqueBeneficios(S)}
       ${personas}
@@ -2862,7 +2912,7 @@ ${p.tareas_mes ? `<span class="uso-hoy">📋 Tareas del mes: ${p.tareas_mes.hech
       : '<div class="vacio">Tu usuario no tiene ninguna vista asignada. Avisale a Emanuel.</div>';
     const sinDatos = { hoy: !E.tareas, sede: E.personaDni ? !E.persona : !E.sede, mes: !E.rend, rend: !E.rend, admin: !E.usuarios, reservas: !E.ocupacion, liq: !E.liq, resumen: !E.resumen, consultas: !E.cons, pase: !E.pase, chat: !E.chat, planes: !E.planes, profes: !E.planes, pmes: !E.planes, phor: !E.planes, pliq: !E.planes, pres: !E.estado }[E.vista];
     const mostrar = E.errorCarga && sinDatos ? `<div class="vacio" style="margin-top:18px"><p>${esc(E.errorCarga)}</p><p>La pantalla vuelve a intentarlo sola. Tus marcas no se pierden.</p><button class="boton" data-accion="reintentar">Reintentar ahora</button></div>` : cuerpo;
-    const bandas = E.vista === 'hoy' ? bandaPase() + bandaFichajes() + bandaReservas() : '';
+    const bandas = E.vista === 'hoy' ? bandaPase() + bandaVentas() + bandaFichajes() + bandaReservas() : '';
     app.innerHTML = encabezado() + `<main class="contenedor">${bandas}${mostrar}</main>` + (E.vista === 'hoy' && turnoTerminando() ? `<button class="cerrar-app-fijo${DEMO ? ' con-cinta' : ''}" data-accion="cerrar-app">🚪 ${E.dia && E.dia.cierre_hecho ? 'Listo por hoy' : 'Se termina tu turno'}: cerrá la app antes de irte</button>` : '') + (DEMO ? '<div class="cinta-practica">Modo práctica · datos inventados</div>' : '') + botonRanking() + panelRanking();
     const abierto = app.querySelector('.marca-form select');
     if (abierto && !E.errorForm) abierto.focus({ preventScroll: true });
@@ -3364,14 +3414,14 @@ ${p.tareas_mes ? `<span class="uso-hoy">📋 Tareas del mes: ${p.tareas_mes.hech
         btn.disabled = false;
         return;
       }
-      t.estado = 'hecha';
-      t.resultado_local = marca.resultado;
+      if (marca.resultado === 'ESPERANDO') t.en_espera = { hasta: marca.fecha, detalle: marca.detalle };   // sigue pendiente, pero en espera
+      else { t.estado = 'hecha'; t.resultado_local = marca.resultado; }
       E.abierta = null;
       E.errorForm = '';
       render();
-      aviso(r.enviada ? 'Guardado.' : 'Guardado en este equipo. Se envía solo cuando vuelva la conexión.', !r.enviada);
+      aviso(marca.resultado === 'ESPERANDO' ? `Listo: vuelve a aparecer el ${ddmm(marca.fecha)}.` : r.enviada ? 'Guardado.' : 'Guardado en este equipo. Se envía solo cuando vuelva la conexión.', !r.enviada);
       E.ultimaMarca = Date.now();
-      revisarLogros();
+      if (marca.resultado !== 'ESPERANDO') revisarLogros();
       cliente.llamar('mi_dia').then(d => { E.dia = d; if (!E.abierta) render(); revisarAvisos(); }).catch(() => {});
     }
   });
@@ -3671,6 +3721,8 @@ ${p.tareas_mes ? `<span class="uso-hoy">📋 Tareas del mes: ${p.tareas_mes.hech
     else if (a === 'liq-persona') { E.liqDni = el.dataset.dni; E.liqBorrador = null; render(); window.scrollTo(0, 0); }
     else if (a === 'cons-sede') { E.sedeElegida = el.dataset.s; E.cons = null; render(); cargarVista(); }
     else if (a === 'pase-leido') { cliente.llamar('pase_leido', { id: el.dataset.id }).then(() => { cargarVista(); }).catch(falla); }
+    else if (a === 'espera-liberar') { const t = (E.tareas || []).find(x => x.id === el.dataset.id); if (t) { t.en_espera = null; E.abierta = t.id; render(); } }
+    else if (a === 'ir-ventas') { const v = document.querySelector('.ventas-largas'); if (v) v.scrollIntoView({ behavior: 'smooth', block: 'center' }); }
     else if (a === 'hice-en-move') {
       const t = (E.tareas || []).find(x => x.id === el.dataset.id);
       if (!t) return;

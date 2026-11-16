@@ -102,11 +102,13 @@ function misTareas(req, deps) {
   const hoy = deps.hoy();
   const todas = deps.repo.leer('tareas');
   const futuras = t => t.asignado_dni === usuario.dni && t.estado === 'pendiente' && String(t.fecha) > hoy;
+  const esperas = esperasActivas(deps.repo.leer('registro'), hoy);
   const tareas = todas
     .filter(t => t.asignado_dni === usuario.dni && ((req.adelantar && futuras(t)) || (String(t.fecha) <= hoy && (t.estado === 'pendiente' || fechaArgentina(t.hecha_en) === hoy || t.fecha === hoy))))
     .filter(t => t.estado !== 'cerrada')
     .sort(ordenTareas)
-    .map(t => conDias(t, hoy));
+    .map(t => conDias(t, hoy))
+    .map(t => (enEspera(t, esperas) ? Object.assign(t, { en_espera: { hasta: esperas[t.id].hasta, detalle: esperas[t.id].detalle } }) : t));
   const historial = historialDeSocios(deps.repo.leer('registro'), deps.repo.leer('reservas_qr'));
   tareas.forEach(t => { t.historial = historial[idDeSocio(t.socio_id)] || []; });
   return { hoy: hoy, tareas: tareas, para_adelantar: todas.filter(futuras).length };
@@ -122,7 +124,9 @@ function marcar(req, deps) {
   if (!t) falla('no_existe');
   if (t.asignado_dni !== usuario.dni) falla('prohibido');
   if (esRecordatorio(t.tipo) || (seVerificaEnMove(t.tipo) && (marca.resultado !== 'CORREGIDO' || marca.canal !== 'SIN CONTACTO'))) falla('datos_invalidos');
-  if (String(t.tipo).indexOf('Controlar stock') === 0 && !stockValido(req.stock)) falla('datos_invalidos');
+  const esperando = marca.resultado === 'ESPERANDO';
+  if (esperando && String(marca.fecha) <= deps.hoy()) falla('datos_invalidos');   // tiene que volver a mostrarse otro día
+  if (!esperando && String(t.tipo).indexOf('Controlar stock') === 0 && !stockValido(req.stock)) falla('datos_invalidos');
   if (deps.repo.leer('registro').some(r => r.id_marca === idMarca)) return {};
   const ts = new Date(deps.ahora()).toISOString();
   const abierta = Date.parse(texto(req.abierta_en));
@@ -134,6 +138,7 @@ function marcar(req, deps) {
     socio_nombre: t.socio_nombre, tipo: t.tipo, dni: usuario.dni, canal: marca.canal, resultado: marca.resultado,
     fecha_resultado: marca.fecha, detalle: marca.detalle,
   });
+  if (esperando) return {};      // sigue pendiente: solo se anotó de quién espera la respuesta
   t.estado = 'hecha';
   t.hecha_en = ts;
   deps.repo.escribir('tareas', tareas);
@@ -169,7 +174,8 @@ function vistaSede(req, deps) {
   const todasLasTareas = deps.repo.leer('tareas').filter(t => !esRecordatorio(t.tipo)
     && (equipo.some(u => u.dni === t.asignado_dni) || (t.sede === sede && !deOtraSede(t.asignado_dni))));
   // Lo que espera a MOVE se cuenta aparte: la persona no puede cerrarlo, así que no suma a sus pendientes ni a las alertas
-  const tareas = todasLasTareas.filter(t => !esperaAMove(t));
+  const esperas = esperasActivas(deps.repo.leer('registro'), hoy);
+  const tareas = todasLasTareas.filter(t => !esperaAMove(t) && !enEspera(t, esperas));
   const nombre = dni => (usuarios.find(u => u.dni === dni) || {}).nombre || '';
   const ve = veUso(usuario);
   const filasUso = ve ? deps.repo.leer('uso').filter(f => f.fecha === hoy) : [];
@@ -196,6 +202,7 @@ function vistaSede(req, deps) {
       proximos_dias: suyas.filter(t => t.estado === 'pendiente' && String(t.fecha) > hoy).length,
       hechas_semana: hechas.filter(f => f >= lunes && f <= hoy).length,
       esperan_move: todasLasTareas.filter(t => t.asignado_dni === u.dni && esperaAMove(t)).length,
+      en_espera: todasLasTareas.filter(t => t.asignado_dni === u.dni && enEspera(t, esperas)).length,
     };
   });
   const alertas = tareas.filter(t => t.estado === 'pendiente')
@@ -203,7 +210,10 @@ function vistaSede(req, deps) {
     .filter(t => t.dias_pendiente >= DIAS_ALERTA)
     .sort((a, b) => b.dias_pendiente - a.dias_pendiente || ordenTareas(a, b));
   const garantias = deps.repo.leer('garantia').filter(g => g.sede === sede && g.estado === 'pendiente');
-  return { hoy: hoy, sede: sede, personas: personas, alertas: alertas, garantias: garantias, beneficios: beneficiosParaAutorizar(usuario, deps), stock: ultimoStock(usuario, sede, deps), ventas: ventasDeSede(usuario, sede, deps), ventas_largas: ventasLargasDeSede(usuario, usuarios, sede, deps) };
+  const hoyVentas = deps.repo.leer('ventas_largas').filter(v => v.sede === sede && v.estado === 'pedida');
+  const pedidosSinResponder = Object.keys(hoyVentas.reduce((o, v) => { o[v.responde_dni] = 1; return o; }, {})).map(dni => Object.assign({ nombre: nombre(dni) }, resumenVentasPendientes(hoyVentas.filter(v => v.responde_dni === dni), hoy)))
+    .sort((a, b) => b.dias - a.dias);
+  return { hoy: hoy, sede: sede, personas: personas, pedidos_sin_responder: pedidosSinResponder, alertas: alertas, garantias: garantias, beneficios: beneficiosParaAutorizar(usuario, deps), stock: ultimoStock(usuario, sede, deps), ventas: ventasDeSede(usuario, sede, deps), ventas_largas: ventasLargasDeSede(usuario, usuarios, sede, deps) };
 }
 
 // Lista de una persona tal como la ve ella, con lo que marcó en cada tarea. Admin: cualquiera; coordinador: su sede.
@@ -402,6 +412,21 @@ function ajustarVentasLargas(valores, dni, mes, filas) {
   return valores;
 }
 
+// Resumen de ventas que esperan una confirmación: cuántas son, de qué tipo, desde cuándo y hace cuántos días.
+// Es lo que explica por qué "todavía no se actualizaron mis ventas": se suman cuando quien debe responder las confirma (Rubén, 14/11/2026).
+function resumenVentasPendientes(filas, hoy) {
+  if (!filas.length) return null;
+  const dia = v => String(v.ts_pedido || v.fecha).slice(0, 10);
+  const desde = filas.map(dia).sort()[0];
+  return {
+    total: filas.length,
+    nuevos: filas.filter(v => v.tipo === 'nuevo').length,
+    largos: filas.filter(v => v.largo !== 'no').length,
+    desde: desde,
+    dias: Math.max(0, Math.round((Date.parse(hoy + 'T12:00:00Z') - Date.parse(desde + 'T12:00:00Z')) / 86400000)),
+  };
+}
+
 function ventasLargasDe(usuario, usuarios, deps) {
   if (!tieneRol(usuario, 'recepcion')) return null;
   const hoy = deps.hoy(), desde = desdeReasignar(deps);
@@ -409,7 +434,12 @@ function ventasLargasDe(usuario, usuarios, deps) {
   const ver = v => ({ id: v.id, estado: v.estado, fecha: v.fecha, socio_nombre: v.socio_nombre, plan: v.plan, nombre_cobro: v.nombre_cobro, sugerido_dni: v.sugerido_dni === usuario.dni ? '' : v.sugerido_dni, sugerido: v.sugerido_dni === usuario.dni ? '' : nombre(v.sugerido_dni), pide: nombre(v.pide_dni), cobro_pide: v.pide_dni === v.dni_cobro, responde: nombre(v.responde_dni), te_sugiere: v.sugerido_dni === usuario.dni });
   const filas = deps.repo.leer('ventas_largas').filter(v => v.sede === usuario.sede);
   const abierta = v => v.estado === 'cobro' && String(v.fecha) >= desde;
+  const paraMi = filas.filter(v => v.estado === 'pedida' && v.responde_dni === usuario.dni);
+  const esperaMia = filas.filter(v => (v.estado === 'pedida' || v.estado === 'disputa') && v.pide_dni === usuario.dni);
+  const quienes = esperaMia.map(v => (v.estado === 'pedida' ? nombre(v.responde_dni) : 'Lucía y Emanuel')).filter((x, i, a) => x && a.indexOf(x) === i);
   return {
+    resumen_pedidos: resumenVentasPendientes(paraMi, hoy),
+    resumen_espera: esperaMia.length ? Object.assign(resumenVentasPendientes(esperaMia, hoy), { de_quienes: quienes }) : null,
     pedidos: filas.filter(v => v.estado === 'pedida' && v.responde_dni === usuario.dni).map(ver),
     espera: filas.filter(v => (v.estado === 'pedida' || v.estado === 'disputa') && v.pide_dni === usuario.dni).map(ver),
     cobradas: filas.filter(v => abierta(v) && v.dni_cobro === usuario.dni).map(ver),
@@ -638,10 +668,11 @@ function delMes(iso, mes) {
 
 // Lo que se mide en la app, en vivo. Lo que viene de MOVE (cajas, renovaciones) lo carga el pipeline cada mañana.
 function valoresEnApp(dni, mes, tareas, registro, actividad, hoy) {
-  const suyas = tareas.filter(t => t.asignado_dni === dni && t.estado !== 'cerrada' && !esRecordatorio(t.tipo) && !esperaAMove(t) && pendienteDesde(t).indexOf(mes) === 0 && (t.estado === 'hecha' ? fechaArgentina(t.hecha_en) >= INICIO_REAL : String(t.fecha) <= hoy));
+  const esperas = esperasActivas(registro.filter(r => r.dni === dni), hoy);
+  const suyas = tareas.filter(t => t.asignado_dni === dni && t.estado !== 'cerrada' && !esRecordatorio(t.tipo) && !esperaAMove(t) && !enEspera(t, esperas) && pendienteDesde(t).indexOf(mes) === 0 && (t.estado === 'hecha' ? fechaArgentina(t.hecha_en) >= INICIO_REAL : String(t.fecha) <= hoy));
   const hechas = suyas.filter(t => t.estado === 'hecha');
   const aTiempo = hechas.filter(t => diasHabiles(pendienteDesde(t), fechaArgentina(t.hecha_en)) === 0);
-  const marcas = registro.filter(r => r.dni === dni && delMes(r.ts, mes));
+  const marcas = registro.filter(r => r.dni === dni && delMes(r.ts, mes) && r.resultado !== 'ESPERANDO');
   const contactos = marcas.filter(esContactoConSocio);
   const CON_FECHA = ['RESERVA', 'VUELVE', 'PAGA', 'PAGÓ', 'VOLVIÓ', 'VACACIONES'];
   const reten = marcas.filter(r => !/^(Controlar stock|Encargo|Felicitar|Invitar a escanear|Cumpleaños|Encuesta de baja|Asignarle profesor|Completar ficha|Corregir calendario|Revisar profesor|Seguimiento de consulta|Profes de hoy|Apertura|Cierre|Socio antiguo|Coordinar|Cambiar profesor|Confirmar si viene|Evaluación sin cargar|Entrena en otra sede|Revisar plan)/.test(r.tipo));
@@ -788,7 +819,8 @@ function miDia(req, deps) {
   const propios = {};
   deps.repo.leer('objetivos').filter(o => o.dni === usuario.dni).forEach(o => { propios[o.clave] = Number(o.valor); });
   const suyas = tareas.filter(t => t.asignado_dni === usuario.dni && t.estado !== 'cerrada');
-  const pendientes = suyas.filter(t => t.estado === 'pendiente' && String(t.fecha) <= hoy && !seVerificaEnMove(t.tipo) && !esRecordatorio(t.tipo)).map(t => conDias(t, hoy));
+  const esperas = esperasActivas(registro, hoy);
+  const pendientes = suyas.filter(t => t.estado === 'pendiente' && String(t.fecha) <= hoy && !seVerificaEnMove(t.tipo) && !esRecordatorio(t.tipo) && !enEspera(t, esperas)).map(t => conDias(t, hoy));
   const atrasadas = pendientes.filter(t => diasHabiles(pendienteDesde(t), hoy) >= 1).length;
   const deHoy = valoresEnAppDia(usuario.dni, hoy, tareas, registro, actividad);
   const racha = rachaDe(usuario.dni, tareas, hoy);
@@ -867,7 +899,8 @@ function cierreGuardar(req, deps) {
   const hoy = deps.hoy();
   const tareas = deps.repo.leer('tareas');
   const d = valoresEnAppDia(usuario.dni, hoy, tareas, deps.repo.leer('registro'), deps.repo.leer('actividad'));
-  const pendientes = tareas.filter(t => t.asignado_dni === usuario.dni && t.estado === 'pendiente' && String(t.fecha) <= hoy && !seVerificaEnMove(t.tipo) && !esRecordatorio(t.tipo)).length;
+  const esperasCierre = esperasActivas(deps.repo.leer('registro'), hoy);
+  const pendientes = tareas.filter(t => t.asignado_dni === usuario.dni && t.estado === 'pendiente' && String(t.fecha) <= hoy && !seVerificaEnMove(t.tipo) && !esRecordatorio(t.tipo) && !enEspera(t, esperasCierre)).length;
   const filas = deps.repo.leer('cierres').filter(c => !(c.dni === usuario.dni && c.fecha === hoy));
   filas.push({
     fecha: hoy, ts: new Date(deps.ahora()).toISOString(), dni: usuario.dni, nombre: usuario.nombre, sede: usuario.sede, animo: String(animo),
