@@ -175,7 +175,8 @@
     const p = [];
     const coord = tiene('coordinador') || tiene('admin');
     if (tiene('profe')) p.push(['planes', 'Mis planes', 'Mi día'], ['pmes', tiene('recepcion') ? 'Mis planes: el mes' : 'Mi mes', 'Mi día']);   // PulsoMOVE Profes: profes y kinesiólogos
-    if (tiene('profe') && !coord) p.push(['ppl', '📋 Planilla', 'Mi día']);   // la planilla de sus socios (Emanuel, 16/11/2026)
+    // la planilla: el profe ve sus socios (16/11/2026); recepción, la de toda su sede (17/11/2026)
+    if ((tiene('profe') || tiene('recepcion')) && !coord) p.push(['ppl', '📋 Planilla', 'Mi día']);
     if (tiene('recepcion')) p.push(['hoy', 'Mis tareas', 'Mi día'], ['mes', 'Mi mes', 'Mi día']);
     if (coord) p.push(['sede', 'Sede', 'Recepción'], ['rend', 'Rendimiento', 'Recepción']);
     if (tiene('recepcion') || coord) p.push(['consultas', 'Consultas', coord ? 'Recepción' : 'Mi día'], ['pase', 'Pase de turno', coord ? 'Recepción' : 'Mi día']);
@@ -2886,7 +2887,7 @@ ${p.tareas_mes ? `<span class="uso-hoy">📋 Tareas del mes: ${p.tareas_mes.hech
         recordar(clavePlanes(vistaPlanes), E.planes);
         if (E.vista === 'planes') programarConsejos();
       } else if (E.vista === 'ppl') {
-        const coordina = tiene('coordinador') || tiene('admin');
+        const coordina = tiene('coordinador') || tiene('admin') || tiene('recepcion');   // recepción: toda su sede
         const P = await cliente.llamar('profe_planilla', coordina ? (tiene('admin') ? { sede: E.plSede == null ? E.sedeElegida : E.plSede } : {}) : { mio: true });
         if (E.plSede == null && tiene('admin')) E.plSede = P.sede;
         if (E.plProfe && !P.profes.some(x => x.dni === E.plProfe)) E.plProfe = '';

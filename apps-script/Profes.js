@@ -1806,11 +1806,12 @@ function filasPlanilla(deps, hoy, usuarios, socios) {
   });
 }
 
-// profe → sus socios. coordinador → su sede. admin → la sede que pida (o todas). Se puede pedir un profe.
+// profe → sus socios. coordinador y recepción → su sede (todos los profes y kinesiólogos, Emanuel 17/11).
+// admin → la sede que pida (o todas). Se puede pedir un profe.
 function profePlanilla(req, deps) {
   const { usuario, usuarios } = sesion(req, deps);
   const hoy = deps.hoy();
-  const coordina = tieneRol(usuario, 'admin') || tieneRol(usuario, 'coordinador');
+  const coordina = tieneRol(usuario, 'admin') || tieneRol(usuario, 'coordinador') || (tieneRol(usuario, 'recepcion') && !!usuario.sede);
   if (!coordina && !esProfe(usuario)) falla('prohibido');
   const comoEquipo = coordina && !req.mio;
   let sede = '';

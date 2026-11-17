@@ -82,8 +82,16 @@ test('planilla: cada rol ve lo suyo', () => {
   // admin: todo, o la sede que pide
   assert.equal(ver(d, '20777888').data.filas.length, 4);
   assert.deepEqual(ver(d, '20777888', { sede: 'puelo' }).data.filas.map(f => f.socio_id), ['3']);
-  // recepción no tiene la vista
-  assert.equal(ver(d, '20999000').error, 'prohibido');
+  // recepción (17/11): la planilla de su sede, todos los profes, aunque pida otra; edita pero no cambia el dueño
+  const r = ver(d, '20999000', { sede: 'puelo' }).data;
+  assert.equal(r.modo, 'equipo');
+  assert.deepEqual(r.filas.map(f => f.socio_id).sort(), ['1', '2', '4']);
+  assert.equal(r.filas.every(f => f.editable && !f.puede_profe), true);
+  assert.deepEqual(ver(d, '20999001').data.filas.map(f => f.socio_id), ['3']);
+  assert.ok(!/price|precio|comision|monto/i.test(JSON.stringify(r)));
+  // recepción sin sede no la ve
+  const d2 = depsFalsas({ repo: repoFalso({ usuarios: [usuario({ dni: '20999002', nombre: 'Sin sede', roles: 'recepcion', sede: '' })] }), hoy: HOY, ahora: Date.parse(HOY + 'T15:00:00Z') });
+  assert.equal(ver(d2, '20999002').error, 'prohibido');
   // nada de plata
   assert.ok(!/price|precio|comision|monto/i.test(JSON.stringify(ver(d, '20777888').data)));
 });
