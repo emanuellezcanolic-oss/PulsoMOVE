@@ -2503,7 +2503,7 @@ ${p.tareas_mes ? `<span class="uso-hoy">📋 Tareas del mes: ${p.tareas_mes.hech
     const disputa = lista.filter(v => v.estado === 'disputa');
     const resto = lista.filter(v => v.estado === 'asignada' || v.estado === 'confirmada' || v.estado === 'pedida');
     const botones = v => (tiene('admin') ? `<div class="fila-accion"><button class="boton verde" data-accion="venta-decidir" data-id="${esc(v.id)}" data-dni="${esc(v.hacia_dni)}">Es de ${esc(v.nombre_hacia)}</button>${v.dni_cobro ? `<button class="boton claro" data-accion="venta-decidir" data-id="${esc(v.id)}" data-dni="${esc(v.dni_cobro)}">Es de ${esc(v.nombre_cobro)}</button>` : ''}</div>` : '');
-    return `<section class="grupo"><h2>🏆 Planes de 3 meses o más <span class="cuenta">${lista.length}</span></h2>
+    return `<section class="grupo"><h2>🏆 Planes de 3 meses e ingresos <span class="cuenta">${lista.length}</span></h2>
       ${disputa.map(v => `<article class="tarjeta"><div class="cabeza" style="display:grid;gap:2px;padding:12px 14px"><span class="socio">${esc(v.socio_nombre)}</span><span class="profe">${esc(v.plan)} · cobró ${esc(v.nombre_cobro)} · lo pide ${esc(v.nombre_hacia)}</span><span class="situacion">No se pusieron de acuerdo: hay que decidir.</span></div>${botones(v)}</article>`).join('')}
       ${resto.length ? `<div class="envoltura-tabla"><table class="tabla compacta"><thead><tr><th>Día</th><th>Socio</th><th>Cobró</th><th>Quedó para</th></tr></thead><tbody>${resto.map(v => `<tr><td>${ddmm(v.fecha)}</td><td>${esc(v.socio_nombre)}</td><td>${esc(v.nombre_cobro)}</td><td>${v.estado === 'pedida' ? `⏳ falta que responda ${esc(v.nombre_responde)}` : esc(v.nombre_vendio)}</td></tr>`).join('')}</tbody></table></div>` : ''}
     </section>`;
