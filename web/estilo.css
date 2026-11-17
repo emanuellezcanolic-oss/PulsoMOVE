@@ -845,7 +845,7 @@ details.espera summary { cursor: pointer; font-weight: 700; font-size: 13px; pad
 
 /* ---------- 📋 Planilla del profe: parecida a la planilla de Google (Arial, encabezado gris), pero que se use en el celular ---------- */
 .pl-contadores { display: grid; grid-template-columns: repeat(auto-fill, minmax(118px, 1fr)); gap: 8px; margin: 12px 0 4px; }
-.pl-contadores > div { background: var(--hoja); border: 1px solid var(--linea); border-radius: var(--radio); padding: 10px 12px; display: grid; align-content: start; box-shadow: var(--sombra); }
+.pl-contadores > * { font: inherit; color: inherit; text-align: left; cursor: pointer; background: var(--hoja); border: 1px solid var(--linea); border-radius: var(--radio); padding: 10px 12px; display: grid; align-content: start; box-shadow: var(--sombra); }
 .pl-contadores strong { font: 800 22px/1 var(--display); }
 .pl-contadores strong small { font-size: 13px; color: var(--gris); font-weight: 600; }
 .pl-contadores span { font-size: 11px; line-height: 1.25; color: var(--gris); text-transform: uppercase; letter-spacing: .05em; margin-top: 4px; }
@@ -935,7 +935,7 @@ dialog:has(.pl-datos) { width: min(560px, calc(100% - 20px)); max-height: calc(1
 .pl-contactos { margin: 4px 0 0; padding-left: 18px; font-size: 13px; display: grid; gap: 4px; }
 @media (max-width: 640px) {
   .pl-contadores { grid-template-columns: repeat(4, 1fr); gap: 5px; }
-  .pl-contadores > div { padding: 6px 6px; }
+  .pl-contadores > * { padding: 6px 6px; }
   .pl-contadores strong { font-size: 17px; }
   .pl-contadores strong small { font-size: 10px; }
   .pl-contadores span { font-size: 8.5px; letter-spacing: .02em; }
@@ -947,3 +947,6 @@ dialog:has(.pl-datos) { width: min(560px, calc(100% - 20px)); max-height: calc(1
   .pl-datos { grid-template-columns: 1fr; }
   .pl-meses-ficha { grid-template-columns: repeat(6, 1fr); }
 }
+.pl-contadores > button:hover { border-color: var(--gris); }
+.pl-contadores > button[aria-pressed="true"] { outline: 2px solid #1f6feb; outline-offset: 1px; }
+.pl-contadores > button:focus-visible { outline: 2px solid #1f6feb; outline-offset: 2px; }

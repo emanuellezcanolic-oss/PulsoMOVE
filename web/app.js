@@ -1584,7 +1584,7 @@ ${p.tareas_mes ? `<span class="uso-hoy">📋 Tareas del mes: ${p.tareas_mes.hech
   const PL_GRUPOS = [['ACTIVO', 'Activos'], ['VACACIONES', 'Vacaciones'], ['DERIVADO', 'Derivados'], ['LIBERADO', 'Liberados'], ['ONLINE', 'Online'], ['BAJA', 'Bajas']];
   const PL_CONDICIONES = ['ACTIVO', 'VACACIONES', 'DERIVADO', 'LIBERADO', 'ONLINE', 'BAJA'];
   const PL_FILTROS = [['todos', 'Todos'], ['activos', 'Activos'], ['semana', 'Vence esta semana'], ['no_renovo', 'No renovó'], ['renovo', 'Renovó este mes'],
-    ['nuevos', 'Nuevos'], ['vacaciones', 'Vacaciones'], ['derivados', 'Derivados'], ['bajas', 'Bajas'], ['mal_move', '⚠️ Mal asignado en MOVE'], ['nombre', '✏️ Nombre distinto'], ['desde_move', '🆕 Entró desde MOVE']];
+    ['nuevos', 'Nuevos'], ['vacaciones', 'Vacaciones'], ['derivados', 'Derivados'], ['bajas', 'Bajas'], ['bajas_mes', 'Bajas del mes'], ['mal_move', '⚠️ Mal asignado en MOVE'], ['nombre', '✏️ Nombre distinto'], ['desde_move', '🆕 Entró desde MOVE']];
   const PL_ESTADO_PLAN = { incompleto: ['🧩', 'Plan incompleto: tiene menos de 2 rutinas'], fuera_rango: ['🎨', 'El último plan no quedó entre 30 y 80% de cambio'], sin_plan: ['∅', 'Sin plan en MOVE'], vencido: ['', 'Plan vencido'] };
   const PL_CANAL = { AU: '🎙️', MP: '💬', MG: '📣', LL: '📞', PR: '🙋', 'SIN CONTACTO': '🚫' };
   const plDias = (iso, hoy) => (iso ? Math.round((Date.parse(iso + 'T12:00:00Z') - Date.parse(hoy + 'T12:00:00Z')) / 864e5) : null);
@@ -1625,6 +1625,7 @@ ${p.tareas_mes ? `<span class="uso-hoy">📋 Tareas del mes: ${p.tareas_mes.hech
     if (filtro === 'vacaciones') return f.condicion === 'VACACIONES';
     if (filtro === 'derivados') return f.condicion === 'DERIVADO';
     if (filtro === 'bajas') return f.condicion === 'BAJA';
+    if (filtro === 'bajas_mes') return f.mov_mes === 'baja';
     if (filtro === 'mal_move') return !!f.profe_move;
     if (filtro === 'nombre') return !!f.nombre_planilla;
     if (filtro === 'desde_move') return f.origen === 'move';
@@ -1648,16 +1649,18 @@ ${p.tareas_mes ? `<span class="uso-hoy">📋 Tareas del mes: ${p.tareas_mes.hech
     const activos = n(f => f.condicion === 'ACTIVO');
     const bajasMes = n(f => f.mov_mes === 'baja');
     const desercion = activos + bajasMes ? Math.round(1000 * bajasMes / (activos + bajasMes)) / 10 : null;
-    const c = (v, txt, clase, titulo) => `<div class="${clase || ''}"${titulo ? ` title="${esc(titulo)}"` : ''}><strong>${v}</strong><span>${txt}</span></div>`;
+    // Cada contador es un botón: al tocarlo filtra la tabla con esos socios (Emanuel 17/11)
+    const sel = E.plFiltro || 'todos';
+    const c = (v, txt, clase, titulo, filtro) => `<button type="button" class="${clase || ''}" data-accion="pl-filtro" data-f="${filtro}" data-bajar="1" aria-pressed="${sel === filtro}" title="${esc((titulo ? titulo + '. ' : '') + 'Tocá para ver quiénes son')}"><strong>${v}</strong><span>${txt}</span></button>`;
     return `<div class="pl-contadores">
-      ${c(activos + (cupo ? `<small>/${cupo}</small>` : ''), cupo ? 'activos / cupo' : 'activos', cupo && activos >= cupo ? 'mal' : 'bien')}
-      ${c(n(f => f.mov_mes === 'renovo'), 'renovaron este mes', 'bien')}
-      ${c(n(f => plFiltra(f, 'semana', hoy)), 'vencen en 7 días', 'aviso')}
-      ${c(n(f => f.mov_mes === 'no_renovo'), 'no renovaron', n(f => f.mov_mes === 'no_renovo') ? 'mal' : '')}
-      ${c(n(f => f.condicion === 'VACACIONES'), 'de vacaciones')}
-      ${c(bajasMes, 'bajas del mes', bajasMes ? 'mal' : '')}
-      ${c(desercion == null ? '—' : num1(desercion) + '%', 'deserción del mes', desercion > 25 ? 'mal' : desercion != null && desercion <= 10 ? 'bien' : '', 'Bajas del mes sobre activos + bajas del mes')}
-      ${n(f => f.profe_move) ? c(n(f => f.profe_move), 'mal asignados en MOVE', 'aviso', 'MOVE los tiene con otro profe: hay que corregirlo en MOVE') : ''}
+      ${c(activos + (cupo ? `<small>/${cupo}</small>` : ''), cupo ? 'activos / cupo' : 'activos', cupo && activos >= cupo ? 'mal' : 'bien', '', 'activos')}
+      ${c(n(f => f.mov_mes === 'renovo'), 'renovaron este mes', 'bien', '', 'renovo')}
+      ${c(n(f => plFiltra(f, 'semana', hoy)), 'vencen en 7 días', 'aviso', '', 'semana')}
+      ${c(n(f => f.mov_mes === 'no_renovo'), 'no renovaron', n(f => f.mov_mes === 'no_renovo') ? 'mal' : '', '', 'no_renovo')}
+      ${c(n(f => f.condicion === 'VACACIONES'), 'de vacaciones', '', '', 'vacaciones')}
+      ${c(bajasMes, 'bajas del mes', bajasMes ? 'mal' : '', '', 'bajas_mes')}
+      ${c(desercion == null ? '—' : num1(desercion) + '%', 'deserción del mes', desercion > 25 ? 'mal' : desercion != null && desercion <= 10 ? 'bien' : '', 'Bajas del mes sobre activos + bajas del mes', 'bajas_mes')}
+      ${n(f => f.profe_move) ? c(n(f => f.profe_move), 'mal asignados en MOVE', 'aviso', 'MOVE los tiene con otro profe: hay que corregirlo en MOVE', 'mal_move') : ''}
     </div>`;
   }
 
@@ -1752,7 +1755,7 @@ ${p.tareas_mes ? `<span class="uso-hoy">📋 Tareas del mes: ${p.tareas_mes.hech
       <p class="bajada">Como la planilla de siempre, pero se arma sola con lo que muestra MOVE${P.cargada ? ` (datos del ${esc(plFecha(P.cargada))})` : ''}. La condición y las observaciones se pueden corregir desde la ficha del socio.</p>
       ${sedes || profeSel ? `<div class="filtros">${sedes}${profeSel}</div>` : ''}
       ${plContadores(base, hoy, cupo)}
-      <div class="filtros pl-filtros">${PL_FILTROS.filter(([k]) => ['mal_move', 'nombre', 'desde_move'].indexOf(k) < 0 || cuenta(k)).map(([k, t]) => `<button class="chip${k === 'mal_move' || k === 'nombre' ? ' chip-mal' : ''}" data-accion="pl-filtro" data-f="${k}" aria-pressed="${filtro === k}">${esc(t)} <small>${cuenta(k)}</small></button>`).join('')}</div>
+      <div class="filtros pl-filtros">${PL_FILTROS.filter(([k]) => ['mal_move', 'nombre', 'desde_move', 'bajas_mes'].indexOf(k) < 0 || cuenta(k) || filtro === k).map(([k, t]) => `<button class="chip${k === 'mal_move' || k === 'nombre' ? ' chip-mal' : ''}" data-accion="pl-filtro" data-f="${k}" aria-pressed="${filtro === k}">${esc(t)} <small>${cuenta(k)}</small></button>`).join('')}</div>
       <div class="pl-herramientas"><input class="buscador" type="search" placeholder="Buscar socio por nombre" data-pl-buscar value="${esc(E.plBusca || '')}" aria-label="Buscar socio">
         <button class="boton claro" data-accion="pl-excel">⬇️ Excel</button></div>
       <div id="pl-cuerpo">${plTabla()}</div>
@@ -3832,7 +3835,13 @@ ${p.tareas_mes ? `<span class="uso-hoy">📋 Tareas del mes: ${p.tareas_mes.hech
     else if (a === 'alm-dia') { E.almDia = E.almDia === el.dataset.f ? '' : el.dataset.f; render(); }
     else if (a === 'memb-mes') { E.membMes = el.dataset.m; render(); }
     else if (a === 'pl-ficha') plFicha(el.dataset.id);
-    else if (a === 'pl-filtro') { E.plFiltro = el.dataset.f; render(); }
+    else if (a === 'pl-filtro') {
+      // Desde un contador: si ya estaba elegido, volver a "Todos"; y bajar hasta la tabla para ver quiénes son
+      const bajar = el.dataset.bajar === '1';
+      E.plFiltro = bajar && E.plFiltro === el.dataset.f ? 'todos' : el.dataset.f;
+      render();
+      if (bajar) { const t = document.getElementById('pl-cuerpo'); if (t && t.scrollIntoView) t.scrollIntoView({ behavior: 'smooth', block: 'start' }); }
+    }
     else if (a === 'pl-orden') {
       const c = el.dataset.c, o = E.plOrden;
       E.plOrden = !o || o.c !== c ? { c: c, dir: -1 } : o.dir < 0 ? { c: c, dir: 1 } : null;
