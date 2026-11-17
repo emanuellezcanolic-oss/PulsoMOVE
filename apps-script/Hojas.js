@@ -65,6 +65,14 @@ const COLUMNAS = {
   profe_puntajes: ['fecha', 'profe', 'profe_dni', 'socios', 'puntaje', 'gestion', 'diagnostico', 'metodologia', 'custom', 'rpe'],
   // Días en que el profe terminó todo lo del día, y cuánto tardó desde la primera marca
   profe_dias: ['dni', 'fecha', 'primera_ts', 'completado_ts', 'planes', 'minutos'],
+  // Planilla de socios de cada profe (reemplaza la pestaña "Planilla 2026"). La arma la PC cada mañana y la reemplaza entera.
+  // meses: JSON {"AAAA-MM": "RENUEVA" | "BAJA" | ...}. Sin plata.
+  profe_planilla: ['socio_id', 'sede', 'profe_dni', 'profe_nombre', 'nombre', 'condicion_auto', 'vence', 'plan_meses', 'plan_tipo',
+                   'plan_fecha', 'plan_proximo', 'plan_rutinas', 'plan_pct', 'plan_estado', 'ultima_eval', 'perfil', 'ultima_visita',
+                   'contacto_fecha', 'contacto_quien', 'contacto_canal', 'contacto_resultado', 'contacto_nota', 'contactos_n',
+                   'meses', 'mov_mes', 'observaciones', 'profe_move', 'origen', 'nombre_planilla', 'cargada'],
+  // Lo que cambia la app sobre la planilla (condición a mano, observaciones, dueño). La PC la lee y no la pisa.
+  profe_planilla_edit: ['socio_id', 'campo', 'valor', 'hasta', 'vence_al_editar', 'ts', 'dni'],
   chat_conv: ['id', 'tipo', 'nombre', 'miembros', 'creada_por', 'creada', 'ultimo_ts'],
   chat_msg: ['id', 'conv_id', 'ts', 'dni', 'nombre', 'texto', 'ref'],
   chat_lect: ['conv_id', 'dni', 'ts'],

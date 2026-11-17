@@ -842,3 +842,104 @@ details.espera summary { cursor: pointer; font-weight: 700; font-size: 13px; pad
 .rkp-reglas { border: 1px dashed #c9d3dc; border-radius: 10px; padding: 8px 10px; margin: 8px 0; display: grid; gap: 4px; font-size: .8rem; }
 .rkp-reglas small { display: block; color: #6b7a86; font-size: .72rem; }
 .rk-n small { font-size: .7rem; font-weight: 400; }
+
+/* ---------- 📋 Planilla del profe: parecida a la planilla de Google (Arial, encabezado gris), pero que se use en el celular ---------- */
+.pl-contadores { display: grid; grid-template-columns: repeat(auto-fill, minmax(118px, 1fr)); gap: 8px; margin: 12px 0 4px; }
+.pl-contadores > div { background: var(--hoja); border: 1px solid var(--linea); border-radius: var(--radio); padding: 10px 12px; display: grid; align-content: start; box-shadow: var(--sombra); }
+.pl-contadores strong { font: 800 22px/1 var(--display); }
+.pl-contadores strong small { font-size: 13px; color: var(--gris); font-weight: 600; }
+.pl-contadores span { font-size: 11px; line-height: 1.25; color: var(--gris); text-transform: uppercase; letter-spacing: .05em; margin-top: 4px; }
+.pl-contadores .bien strong { color: var(--verde-texto); }
+.pl-contadores .mal strong { color: var(--rojo); }
+.pl-contadores .aviso strong { color: var(--naranja); }
+.pl-filtros .chip small { font-weight: 500; opacity: .7; }
+.chip.chip-mal { border-color: var(--naranja); color: var(--naranja); }
+.chip.chip-mal[aria-pressed="true"] { background: var(--naranja); color: #fff; }
+.pl-herramientas { display: flex; gap: 8px; align-items: center; }
+.pl-herramientas .buscador { flex: 1; margin: 8px 0; }
+.pl-herramientas .boton { white-space: nowrap; }
+.pl-cuenta { margin: 2px 0 6px; }
+.pl-envoltura { overflow-x: auto; -webkit-overflow-scrolling: touch; border: 1px solid #b7b7b7; border-radius: 6px; background: #fff; max-height: 75vh; overflow-y: auto; }
+.pl-tabla { border-collapse: separate; border-spacing: 0; font: 13px/1.25 Arial, 'Helvetica Neue', sans-serif; color: #111; min-width: 100%; }
+.pl-tabla th { position: sticky; top: 0; z-index: 2; background: #d8d8d8; color: #000; font-weight: 700; text-align: center; padding: 6px 6px; border-bottom: 2px solid #000; border-right: 1px solid #b7b7b7; white-space: nowrap; font-size: 12px; }
+.pl-tabla td { padding: 4px 6px; border-bottom: 1px solid #e3e3e3; border-right: 1px solid #ededed; white-space: nowrap; vertical-align: middle; background: #fff; }
+.pl-tabla .pl-socio { position: sticky; left: 0; z-index: 1; text-align: left; min-width: 170px; max-width: 220px; border-right: 2px solid #999; }
+.pl-tabla th.pl-socio { z-index: 3; }
+.pl-tabla td.pl-socio { white-space: normal; }
+.pl-tabla td.pl-socio b { font-weight: 700; }
+.pl-tabla td.pl-socio small { display: block; color: #666; font-size: 11px; }
+.pl-tabla td.pl-socio-mal { background: #fff3d6; box-shadow: inset 4px 0 0 var(--naranja); }
+.pl-n { display: inline-block; min-width: 22px; color: #777; font-size: 11px; margin-right: 4px; }
+.pl-mal { cursor: help; font-size: 12px; }
+.pl-desde-move { display: inline-block; font: 700 9.5px/1 Arial, sans-serif; background: #4a86e8; color: #fff; border-radius: 3px; padding: 3px 4px; vertical-align: 1px; white-space: nowrap; cursor: help; }
+.pl-ficha-cab .pl-desde-move { font-size: 11.5px; padding: 4px 6px; }
+.pl-fila { cursor: pointer; }
+.pl-fila:hover td, .pl-fila:focus td { background: #f3f6ec; }
+.pl-fila:hover td.pl-socio-mal, .pl-fila:focus td.pl-socio-mal { background: #ffe9b8; }
+.pl-fila:focus { outline: none; }
+.pl-fila:focus td.pl-socio { box-shadow: inset 3px 0 0 var(--verde); }
+.pl-grupo td { background: #f1f1f1; font-weight: 700; text-transform: uppercase; letter-spacing: .06em; font-size: 11.5px; padding: 6px; border-top: 2px solid #000; }
+.pl-grupo td span { position: sticky; left: 6px; }
+.pl-grupo td small { color: #666; font-weight: 500; }
+.pl-c { text-align: center; }
+.pl-cond { display: inline-block; font: 700 10.5px/1 Arial, sans-serif; padding: 4px 6px; border-radius: 3px; letter-spacing: .02em; background: #fff; border: 1px solid #ccc; }
+.cond-activo { background: #00ff00; border-color: #00c000; color: #000; }
+.cond-baja { background: #ff0000; border-color: #c00; color: #fff; }
+.cond-derivado { background: #ff9900; border-color: #d27c00; color: #000; }
+.cond-vacaciones { background: #9fdcf5; border-color: #5fb8de; color: #003049; }
+.cond-liberado { background: #ffff00; border-color: #d6d600; color: #000; }
+.cond-online { background: #d9c8f5; border-color: #a58ad6; color: #2e1a59; }
+.pl-amano { margin-left: 2px; font-size: 11px; cursor: help; }
+.pl-fecha { text-align: center; font-variant-numeric: tabular-nums; }
+.sem-amarillo { background: #ffff00 !important; color: #000; }
+.sem-naranja { background: #ff9900 !important; color: #000; }
+.sem-rojo { background: #ff0000 !important; color: #fff; font-weight: 700; }
+.pl-contacto small { display: block; color: #666; font-size: 10.5px; max-width: 110px; overflow: hidden; text-overflow: ellipsis; }
+.pl-nada { color: #aaa; }
+.pl-icono { font-size: 12px; }
+.pl-tabla .pl-mes { width: 34px; min-width: 34px; padding: 3px 2px; text-align: center; font: 700 9.5px/1.1 Arial, sans-serif; }
+.pl-tabla th.pl-mes { font-size: 10.5px; padding: 6px 2px; }
+.mes-renueva { background: #92d050 !important; }
+.mes-x2 { background: #00ffff !important; }
+.mes-nuevo { background: #4a86e8 !important; color: #fff; }
+.mes-baja { background: #ff0000 !important; color: #000; }
+.mes-liberado { background: #ffff00 !important; }
+.mes-vacaciones { background: #9fdcf5 !important; }
+.mes-novino { background: #bfbfbf !important; }
+.mes-derivado { background: #ff9900 !important; }
+.mes-online { background: #d9c8f5 !important; }
+.mes-otro { background: #efefef !important; }
+.pl-tabla td.mes-actual { outline: 2px solid #000; outline-offset: -2px; }
+.pl-tabla .pl-obs { text-align: left; min-width: 180px; max-width: 320px; overflow: hidden; text-overflow: ellipsis; color: #333; }
+.pl-leyenda p { margin: 6px 0; line-height: 1.8; }
+.pl-ley { display: inline-block; padding: 1px 6px; border-radius: 3px; font-size: 12px; }
+.pl-ley.pl-mes { font: 700 10px/1.4 Arial, sans-serif; min-width: 34px; text-align: center; }
+/* Ficha del socio */
+dialog:has(.pl-datos) { width: min(560px, calc(100% - 20px)); max-height: calc(100vh - 24px); }
+.pl-ficha-cab { display: flex; flex-wrap: wrap; gap: 6px 10px; align-items: center; }
+.pl-ficha-cab small { color: var(--gris); font-size: 12.5px; }
+.pl-aviso-move { background: #fff3d6; border-left: 4px solid var(--naranja); padding: 8px 10px; font-weight: 600; font-size: 14px; color: #7a4a06; }
+.pl-datos { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
+.pl-datos > div { border: 1px solid var(--linea); border-radius: 8px; padding: 6px 8px; display: grid; gap: 2px; background: #fff; }
+.pl-datos span { font-size: 10.5px; text-transform: uppercase; letter-spacing: .05em; color: var(--gris); }
+.pl-datos .sem-rojo span, .pl-datos .sem-naranja span, .pl-datos .sem-amarillo span { color: inherit; opacity: .85; }
+.pl-datos b { font-size: 14px; }
+.pl-datos small { font-weight: 400; font-size: 12px; }
+.pl-meses-ficha { display: grid; grid-template-columns: repeat(12, 1fr); gap: 2px; }
+.pl-meses-ficha .pl-mes { border: 1px solid #ddd; border-radius: 3px; text-align: center; font: 700 10px/1.2 Arial, sans-serif; padding: 3px 0; background: #fff; }
+.pl-meses-ficha small { display: block; font-weight: 400; font-size: 9px; color: #333; }
+.pl-contactos { margin: 4px 0 0; padding-left: 18px; font-size: 13px; display: grid; gap: 4px; }
+@media (max-width: 640px) {
+  .pl-contadores { grid-template-columns: repeat(4, 1fr); gap: 5px; }
+  .pl-contadores > div { padding: 6px 6px; }
+  .pl-contadores strong { font-size: 17px; }
+  .pl-contadores strong small { font-size: 10px; }
+  .pl-contadores span { font-size: 8.5px; letter-spacing: .02em; }
+  .pl-tabla { font-size: 12px; }
+  .pl-tabla .pl-socio { min-width: 128px; max-width: 150px; }
+  .pl-envoltura { max-height: 70vh; margin: 0 -8px; }
+  .pl-filtros { flex-wrap: nowrap; overflow-x: auto; padding-bottom: 4px; }
+  .pl-filtros .chip { white-space: nowrap; flex: none; }
+  .pl-datos { grid-template-columns: 1fr; }
+  .pl-meses-ficha { grid-template-columns: repeat(6, 1fr); }
+}

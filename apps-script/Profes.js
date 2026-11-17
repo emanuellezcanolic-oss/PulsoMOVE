@@ -1660,3 +1660,207 @@ function rankingProfes(req, deps) {
   return { mes: mes, hoy: hoy, mi_dni: usuario.dni, reglas: RANK_PROFE_REGLAS, personas: personas,
     promedio: personas.length ? uno(personas.reduce((a, p) => a + p.total, 0) / personas.length) : null };
 }
+
+// ---------- Planilla de socios del profe (reemplaza la pestaña "Planilla 2026", Emanuel 16/11/2026) ----------
+// La PC arma una fila por socio cada mañana (profe_planilla, se reemplaza entera). Lo que se cambia desde la app va a
+// profe_planilla_edit, que la PC lee y nunca pisa. Sin plata: ni precios ni comisiones.
+const CONDICIONES_PLANILLA = ['ACTIVO', 'BAJA', 'DERIVADO', 'VACACIONES', 'LIBERADO', 'ONLINE'];
+const CAMPOS_PLANILLA = ['condicion', 'observaciones', 'profe_dni'];
+const MOV_MES_PLANILLA = ['renovo', 'por_vencer', 'no_renovo', 'nuevo', 'baja', '—', ''];
+const CUPO_SEDE_PLANILLA = { bolson: 110, puelo: 125, bariloche: 100 };
+const OBS_PLANILLA_MAX = 300;
+const DIAS_VACACIONES_MAX = 365;
+const CONTACTOS_FICHA = 5;
+const COLS_PLANILLA_PC = ['socio_id', 'sede', 'profe_dni', 'profe_nombre', 'nombre', 'condicion_auto', 'vence', 'plan_meses', 'plan_tipo',
+  'plan_fecha', 'plan_proximo', 'plan_rutinas', 'plan_pct', 'plan_estado', 'ultima_eval', 'perfil', 'ultima_visita',
+  'contacto_fecha', 'contacto_quien', 'contacto_canal', 'contacto_resultado', 'contacto_nota', 'contactos_n',
+  'meses', 'mov_mes', 'observaciones', 'profe_move', 'origen', 'nombre_planilla'];   // nombre_planilla: solo si difiere del de MOVE
+
+function fechaOVacia(s) { return s === '' || fechaIsoValida(s); }
+
+function cargarProfePlanilla(req, deps) {
+  exigirClave(req, deps);
+  if (!Array.isArray(req.filas)) falla('datos_invalidos');
+  const cargada = texto(req.hoy) || deps.hoy();
+  const filas = req.filas.map(x => {
+    const o = {};
+    COLS_PLANILLA_PC.forEach(c => { o[c] = texto(x && x[c]); });
+    o.profe_dni = normalizarDni(x && x.profe_dni);
+    o.condicion_auto = o.condicion_auto.toUpperCase();
+    const m = x && x.meses;
+    o.meses = m && typeof m === 'object' ? JSON.stringify(m) : (o.meses || '{}');
+    o.observaciones = o.observaciones.slice(0, OBS_PLANILLA_MAX);
+    o.cargada = cargada;
+    return o;
+  });
+  const vistos = {};
+  const ok = filas.every(x => {
+    if (!x.socio_id || vistos[x.socio_id] || SEDES.indexOf(x.sede) < 0 || CONDICIONES_PLANILLA.indexOf(x.condicion_auto) < 0) return false;
+    vistos[x.socio_id] = true;
+    const m = leerJson(x.meses, null);
+    return m && typeof m === 'object' && !Array.isArray(m) && x.meses.length < 2000 && MOV_MES_PLANILLA.indexOf(x.mov_mes) >= 0 &&
+      ['vence', 'plan_fecha', 'plan_proximo', 'ultima_eval', 'ultima_visita', 'contacto_fecha'].every(c => fechaOVacia(x[c]));
+  });
+  if (!ok) falla('datos_invalidos');
+  deps.repo.escribir('profe_planilla', filas);
+  // Primera carga: las condiciones VACACIONES y DERIVADO de la planilla vieja entran como edición inicial, una sola vez por socio
+  let iniciales = 0;
+  if (Array.isArray(req.ediciones) && req.ediciones.length) {
+    const edits = deps.repo.leer('profe_planilla_edit');
+    const yaTiene = {};
+    edits.forEach(e => { yaTiene[e.socio_id + '|' + e.campo] = true; });
+    const ts = new Date(deps.ahora()).toISOString();
+    req.ediciones.forEach(x => {
+      const e = { socio_id: texto(x && x.socio_id), campo: texto(x && x.campo) || 'condicion', valor: texto(x && x.valor),
+        hasta: texto(x && x.hasta), vence_al_editar: texto(x && x.vence_al_editar), ts: texto(x && x.ts) || ts, dni: 'planilla' };
+      if (!vistos[e.socio_id] || yaTiene[e.socio_id + '|' + e.campo]) return;
+      if (e.campo === 'condicion' && CONDICIONES_PLANILLA.indexOf(e.valor) < 0) return;
+      if (e.campo === 'observaciones') e.valor = e.valor.slice(0, OBS_PLANILLA_MAX);
+      else if (e.campo !== 'condicion') return;
+      if (!fechaOVacia(e.hasta) || !fechaOVacia(e.vence_al_editar)) return;
+      yaTiene[e.socio_id + '|' + e.campo] = true;
+      edits.push(e);
+      iniciales++;
+    });
+    if (iniciales) deps.repo.escribir('profe_planilla_edit', edits);
+  }
+  return { filas: filas.length, ediciones_iniciales: iniciales };
+}
+
+function profePlanillaEdiciones(req, deps) {
+  exigirClave(req, deps);
+  return { filas: deps.repo.leer('profe_planilla_edit') };
+}
+
+// La última edición de cada campo, por socio (la hoja se lee en orden de llegada; a igual orden manda el ts más nuevo)
+function ultimasEdicionesPlanilla(edits) {
+  const out = {};
+  edits.forEach(e => {
+    const k = e.socio_id;
+    const o = out[k] = out[k] || {};
+    if (!o[e.campo] || String(e.ts) >= String(o[e.campo].ts)) o[e.campo] = e;
+  });
+  return out;
+}
+
+// Regla de la condición (la misma en el servidor y en la pantalla): manda la edición mientras siga vigente.
+// Con 'hasta', hasta ese día inclusive; sin 'hasta', mientras MOVE no cambie el vencimiento que había al editarla.
+function condicionEfectiva(fila, edicion, hoy) {
+  if (edicion && edicion.valor) {
+    const vigente = edicion.hasta ? hoy <= edicion.hasta : String(edicion.vence_al_editar || '') === String(fila.vence || '');
+    if (vigente) return { condicion: edicion.valor, manual: true };
+  }
+  return { condicion: fila.condicion_auto, manual: false };
+}
+
+function fechaLocalDe(ts) {
+  const t = Date.parse(ts);
+  return isNaN(t) ? '' : new Date(t - 3 * 3600 * 1000).toISOString().slice(0, 10);
+}
+
+function vistaFilaPlanilla(f, ed, hoy, nombres, contactos) {
+  const e = ed || {};
+  const cond = condicionEfectiva(f, e.condicion, hoy);
+  const v = {};
+  COLS_PLANILLA_PC.forEach(c => { v[c] = f[c] == null ? '' : String(f[c]); });
+  v.cargada = f.cargada || '';
+  v.meses = leerJson(f.meses, {}) || {};
+  v.condicion = cond.condicion;
+  v.condicion_manual = cond.manual ? { valor: e.condicion.valor, hasta: e.condicion.hasta || '', ts: e.condicion.ts,
+    quien: e.condicion.dni === 'planilla' ? 'planilla vieja' : (nombres[e.condicion.dni] || e.condicion.dni) } : null;
+  if (e.observaciones) { v.observaciones = e.observaciones.valor; v.obs_editada = { ts: e.observaciones.ts, quien: nombres[e.observaciones.dni] || e.observaciones.dni }; }
+  if (e.profe_dni && e.profe_dni.valor) { v.profe_dni = e.profe_dni.valor; v.profe_nombre = nombres[e.profe_dni.valor] || v.profe_nombre;
+    if (v.profe_move && mismoProfe(v.profe_move, v.profe_nombre)) v.profe_move = '';   // ya coincide con MOVE
+  }
+  v.contactos = contactos || [];
+  // lo de hoy de recepción todavía no lo tiene la PC: el último contacto se completa en vivo
+  const ult = v.contactos[0];
+  if (ult && ult.fecha > (v.contacto_fecha || '')) {
+    v.contacto_fecha = ult.fecha; v.contacto_quien = ult.quien; v.contacto_canal = ult.canal; v.contacto_resultado = ult.resultado; v.contacto_nota = ult.nota;
+  }
+  return v;
+}
+
+function puedeEditarPlanilla(u, fila, campo) {
+  if (tieneRol(u, 'admin')) return true;
+  if (tieneRol(u, 'coordinador') && u.sede === fila.sede) return true;
+  if (campo === 'profe_dni') return false;
+  if (tieneRol(u, 'recepcion') && u.sede === fila.sede) return true;
+  return esProfe(u) && fila.profe_dni === u.dni;
+}
+
+// Las filas con la condición ya resuelta (y el dueño, si coordinación lo cambió)
+function filasPlanilla(deps, hoy, usuarios, socios) {
+  const nombres = {};
+  usuarios.forEach(u => { nombres[u.dni] = u.nombre; });
+  const eds = ultimasEdicionesPlanilla(deps.repo.leer('profe_planilla_edit'));
+  const filas = deps.repo.leer('profe_planilla').filter(f => !socios || socios[f.socio_id]);
+  const ids = {};
+  filas.forEach(f => { ids[f.socio_id] = []; });
+  deps.repo.leer('registro').forEach(r => {
+    if (ids[r.socio_id]) ids[r.socio_id].push({ fecha: fechaLocalDe(r.ts), ts: r.ts, quien: nombres[r.dni] || '', canal: r.canal, resultado: r.resultado, nota: texto(r.detalle).slice(0, 200), tipo: r.tipo });
+  });
+  return filas.map(f => {
+    const c = ids[f.socio_id].sort((a, b) => (a.ts < b.ts ? 1 : -1)).slice(0, CONTACTOS_FICHA).map(x => ({ fecha: x.fecha, quien: x.quien, canal: x.canal, resultado: x.resultado, nota: x.nota, tipo: x.tipo }));
+    return vistaFilaPlanilla(f, eds[f.socio_id], hoy, nombres, c);
+  });
+}
+
+// profe → sus socios. coordinador → su sede. admin → la sede que pida (o todas). Se puede pedir un profe.
+function profePlanilla(req, deps) {
+  const { usuario, usuarios } = sesion(req, deps);
+  const hoy = deps.hoy();
+  const coordina = tieneRol(usuario, 'admin') || tieneRol(usuario, 'coordinador');
+  if (!coordina && !esProfe(usuario)) falla('prohibido');
+  const comoEquipo = coordina && !req.mio;
+  let sede = '';
+  if (comoEquipo) {
+    sede = tieneRol(usuario, 'admin') ? texto(req.sede) : usuario.sede;
+    if (sede && SEDES.indexOf(sede) < 0) falla('datos_invalidos');
+  }
+  const profeDni = comoEquipo ? normalizarDni(req.profe_dni) : usuario.dni;
+  const todas = filasPlanilla(deps, hoy, usuarios);
+  const deSede = comoEquipo ? todas.filter(f => !sede || f.sede === sede) : todas;
+  const filas = deSede.filter(f => !profeDni || f.profe_dni === profeDni)
+    .map(f => Object.assign(f, { editable: puedeEditarPlanilla(usuario, f, 'condicion'), puede_profe: puedeEditarPlanilla(usuario, f, 'profe_dni') }));
+  // los profes que aparecen (para el selector de coordinación)
+  const profes = {};
+  if (comoEquipo) deSede.forEach(f => { const k = f.profe_dni || ''; (profes[k] = profes[k] || { dni: k, nombre: f.profe_nombre || 'Sin profe', sede: f.sede, socios: 0 }).socios++; });
+  const equipo = comoEquipo ? profesDelEquipo(usuarios).filter(p => !sede || p.sede === sede) : [];
+  const cupoDe = s => CUPO_SEDE_PLANILLA[s] || null;
+  return { hoy: hoy, modo: comoEquipo ? 'equipo' : 'mio', sede: sede, profe_dni: profeDni,
+    cupo: comoEquipo ? (sede ? cupoDe(sede) : null) : cupoDe(usuario.sede), cupos: CUPO_SEDE_PLANILLA,
+    profes: Object.keys(profes).map(k => profes[k]).sort((a, b) => String(a.nombre).localeCompare(String(b.nombre))),
+    equipo: equipo, cargada: (deps.repo.leer('profe_planilla')[0] || {}).cargada || '', filas: filas };
+}
+
+function profePlanillaEditar(req, deps) {
+  const { usuario, usuarios } = sesion(req, deps);
+  const hoy = deps.hoy();
+  const socio = texto(req.socio_id), campo = texto(req.campo);
+  let valor = texto(req.valor);
+  const hasta = texto(req.hasta);
+  if (!socio || CAMPOS_PLANILLA.indexOf(campo) < 0) falla('datos_invalidos');
+  const fila = filasPlanilla(deps, hoy, usuarios, { [socio]: true })[0];
+  if (!fila) falla('no_existe');
+  if (!puedeEditarPlanilla(usuario, fila, campo)) falla('prohibido');
+  if (campo === 'condicion') {
+    valor = valor.toUpperCase();
+    // vacío: vuelve a la condición automática
+    if (valor && CONDICIONES_PLANILLA.indexOf(valor) < 0) falla('datos_invalidos');
+    if (valor === 'VACACIONES') {
+      if (!fechaIsoValida(hasta) || hasta < hoy || hasta > sumarDiasProfe(hoy, DIAS_VACACIONES_MAX)) falla('datos_invalidos');
+    } else if (hasta) falla('datos_invalidos');
+  } else if (campo === 'observaciones') {
+    if (valor.length > OBS_PLANILLA_MAX || hasta) falla('datos_invalidos');
+  } else {
+    valor = normalizarDni(valor);
+    const p = usuarios.find(u => u.dni === valor && esVerdad(u.activo) && esProfe(u));
+    if (!p || hasta) falla('datos_invalidos');
+    if (!tieneRol(usuario, 'admin') && p.sede !== usuario.sede) falla('prohibido');
+  }
+  deps.repo.agregar('profe_planilla_edit', { socio_id: socio, campo: campo, valor: valor, hasta: campo === 'condicion' ? hasta : '',
+    vence_al_editar: fila.vence || '', ts: new Date(deps.ahora()).toISOString(), dni: usuario.dni });
+  const nueva = filasPlanilla(deps, hoy, usuarios, { [socio]: true })[0];
+  return { fila: Object.assign(nueva, { editable: puedeEditarPlanilla(usuario, nueva, 'condicion'), puede_profe: puedeEditarPlanilla(usuario, nueva, 'profe_dni') }) };
+}

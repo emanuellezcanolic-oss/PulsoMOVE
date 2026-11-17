@@ -175,13 +175,14 @@
     const p = [];
     const coord = tiene('coordinador') || tiene('admin');
     if (tiene('profe')) p.push(['planes', 'Mis planes', 'Mi día'], ['pmes', tiene('recepcion') ? 'Mis planes: el mes' : 'Mi mes', 'Mi día']);   // PulsoMOVE Profes: profes y kinesiólogos
+    if (tiene('profe') && !coord) p.push(['ppl', '📋 Planilla', 'Mi día']);   // la planilla de sus socios (Emanuel, 16/11/2026)
     if (tiene('recepcion')) p.push(['hoy', 'Mis tareas', 'Mi día'], ['mes', 'Mi mes', 'Mi día']);
     if (coord) p.push(['sede', 'Sede', 'Recepción'], ['rend', 'Rendimiento', 'Recepción']);
     if (tiene('recepcion') || coord) p.push(['consultas', 'Consultas', coord ? 'Recepción' : 'Mi día'], ['pase', 'Pase de turno', coord ? 'Recepción' : 'Mi día']);
     // La ve recepción: es la que contesta "¿a qué hora hay menos gente?" (Emanuel, 09/11/2026)
     if (tiene('recepcion') || coord) p.push(['reservas', 'Reservas', coord ? 'Recepción' : 'Mi día']);
     if (tiene('admin') || tiene('recepcion') || coord) p.push(['liq', tiene('admin') ? 'Liquidación' : 'Mis ingresos', coord ? 'Recepción' : 'Mi día']);   // cada una ve lo suyo; admin ve a todas
-    if (coord) p.push(['pres', 'Resumen', 'Profes'], ['profes', 'Planes y llegadas', 'Profes'], ['phor', 'Horarios y sábados', 'Profes'], ['pliq', tiene('admin') ? 'Comisiones y tareas' : 'Tareas del mes', 'Profes']);
+    if (coord) p.push(['pres', 'Resumen', 'Profes'], ['profes', 'Planes y llegadas', 'Profes'], ['ppl', '📋 Planilla', 'Profes'], ['phor', 'Horarios y sábados', 'Profes'], ['pliq', tiene('admin') ? 'Comisiones y tareas' : 'Tareas del mes', 'Profes']);
     if (tiene('admin')) p.push(['resumen', 'Resumen semanal', 'Gestión'], ['admin', 'Equipo', 'Gestión']);
     p.push(['chat', chatEtiqueta(), coord ? 'Gestión' : 'Mi día']);   // mensajes entre el equipo: todos
     return p;
@@ -1577,6 +1578,260 @@ ${p.tareas_mes ? `<span class="uso-hoy">📋 Tareas del mes: ${p.tareas_mes.hech
         : '<div class="vacio">Todavía no hay planes cargados para esta sede.</div>'}`;
   }
 
+  // ---------- 📋 Planilla de socios del profe (reemplaza la pestaña "Planilla 2026", Emanuel 16/11/2026) ----------
+  // Lo arma la PC cada mañana con los datos de MOVE; acá se mira, se filtra y se corrige la condición y las observaciones.
+  // La condición ya viene resuelta por el servidor (la edición a mano manda mientras siga vigente). Sin plata.
+  const PL_GRUPOS = [['ACTIVO', 'Activos'], ['VACACIONES', 'Vacaciones'], ['DERIVADO', 'Derivados'], ['LIBERADO', 'Liberados'], ['ONLINE', 'Online'], ['BAJA', 'Bajas']];
+  const PL_CONDICIONES = ['ACTIVO', 'VACACIONES', 'DERIVADO', 'LIBERADO', 'ONLINE', 'BAJA'];
+  const PL_FILTROS = [['todos', 'Todos'], ['activos', 'Activos'], ['semana', 'Vence esta semana'], ['no_renovo', 'No renovó'], ['renovo', 'Renovó este mes'],
+    ['nuevos', 'Nuevos'], ['vacaciones', 'Vacaciones'], ['derivados', 'Derivados'], ['bajas', 'Bajas'], ['mal_move', '⚠️ Mal asignado en MOVE'], ['nombre', '✏️ Nombre distinto'], ['desde_move', '🆕 Entró desde MOVE']];
+  const PL_ESTADO_PLAN = { incompleto: ['🧩', 'Plan incompleto: tiene menos de 2 rutinas'], fuera_rango: ['🎨', 'El último plan no quedó entre 30 y 80% de cambio'], sin_plan: ['∅', 'Sin plan en MOVE'], vencido: ['', 'Plan vencido'] };
+  const PL_CANAL = { AU: '🎙️', MP: '💬', MG: '📣', LL: '📞', PR: '🙋', 'SIN CONTACTO': '🚫' };
+  const plDias = (iso, hoy) => (iso ? Math.round((Date.parse(iso + 'T12:00:00Z') - Date.parse(hoy + 'T12:00:00Z')) / 864e5) : null);
+  const plFecha = iso => (iso ? Number(iso.slice(8, 10)) + '/' + iso.slice(5, 7) : '');
+  // Semáforos de la planilla: vence (amarillo 1-3 días, naranja vencido 0-4, rojo vencido 5 o más), cambio de plan
+  // (amarillo toca en 1-3, naranja 0-2 atrasado, rojo 3 o más) y evaluación (naranja desde 45 días, rojo desde 60)
+  const plSemVence = d => (d == null ? '' : d >= 1 && d <= 3 ? 'sem-amarillo' : d <= 0 && d >= -4 ? 'sem-naranja' : d <= -5 ? 'sem-rojo' : '');
+  const plSemPlan = d => (d == null ? '' : d >= 1 && d <= 3 ? 'sem-amarillo' : d <= 0 && d >= -2 ? 'sem-naranja' : d <= -3 ? 'sem-rojo' : '');
+  const plSemEval = d => (d == null ? '' : -d >= 60 ? 'sem-rojo' : -d >= 45 ? 'sem-naranja' : '');
+  const plCuando = d => (d == null ? '' : d === 0 ? 'hoy' : d === 1 ? 'mañana' : d === -1 ? 'ayer' : d > 0 ? 'en ' + d + ' días' : 'hace ' + -d + ' días');
+  function plMes(v) {
+    const s = String(v || '').toUpperCase();
+    if (!s) return null;
+    if (s.indexOf('NUEVO') === 0) { const quien = String(v).split('·')[1]; return ['nuevo', quien ? quien.trim().slice(0, 5).toUpperCase() : 'NUEVO']; }
+    if (s.indexOf('RENUEVA X2') === 0) return ['x2', 'X2'];
+    if (s.indexOf('RENUEVA') === 0) return ['renueva', 'REN'];
+    if (s.indexOf('BAJA') === 0) return ['baja', 'BAJA'];
+    if (s.indexOf('LIBERADO') === 0) return ['liberado', 'LIB'];
+    if (s.indexOf('VACACIONES') === 0) return ['vacaciones', 'VAC'];
+    if (s.indexOf('NO VINO') === 0) return ['novino', 'NV'];
+    if (s.indexOf('DERIV') === 0) return ['derivado', 'DER'];
+    if (s.indexOf('ONLINE') === 0) return ['online', 'OL'];
+    return ['otro', s.slice(0, 4)];
+  }
+  const plCond = c => `<span class="pl-cond cond-${esc(String(c || '').toLowerCase())}">${esc(c || '—')}</span>`;
+  const plMalMove = f => `En MOVE figura con ${f.profe_move} — falta corregir en MOVE`;
+  const plNombreViejo = f => `En la planilla figuraba como ${f.nombre_planilla}`;
+  const plContactoTxt = f => [f.contacto_canal ? (NOMBRE_CANAL[f.contacto_canal] || f.contacto_canal) : '', f.contacto_resultado, f.contacto_quien, f.contacto_nota ? '“' + f.contacto_nota + '”' : ''].filter(Boolean).join(' · ');
+
+  function plFiltra(f, filtro, hoy) {
+    const mes = hoy.slice(0, 7);
+    const dv = plDias(f.vence, hoy);
+    if (filtro === 'activos') return f.condicion === 'ACTIVO';
+    if (filtro === 'semana') return f.condicion !== 'BAJA' && dv != null && dv >= 0 && dv <= 7;
+    if (filtro === 'no_renovo') return f.mov_mes === 'no_renovo';
+    if (filtro === 'renovo') return f.mov_mes === 'renovo';
+    if (filtro === 'nuevos') return f.mov_mes === 'nuevo' || String((f.meses || {})[mes] || '').toUpperCase().indexOf('NUEVO') === 0;
+    if (filtro === 'vacaciones') return f.condicion === 'VACACIONES';
+    if (filtro === 'derivados') return f.condicion === 'DERIVADO';
+    if (filtro === 'bajas') return f.condicion === 'BAJA';
+    if (filtro === 'mal_move') return !!f.profe_move;
+    if (filtro === 'nombre') return !!f.nombre_planilla;
+    if (filtro === 'desde_move') return f.origen === 'move';
+    return true;
+  }
+
+  // Las filas del profe elegido (coordinación) o todas
+  function plBase() {
+    const P = E.pl;
+    if (!P) return [];
+    return P.filas.filter(f => !E.plProfe || f.profe_dni === E.plProfe);
+  }
+  function plVisibles() {
+    const sinTildes = x => String(x || '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '');
+    const hoy = E.pl.hoy, q = sinTildes(E.plBusca).trim();
+    return plBase().filter(f => plFiltra(f, E.plFiltro || 'todos', hoy) && (!q || sinTildes(f.nombre).indexOf(q) >= 0));
+  }
+
+  function plContadores(filas, hoy, cupo) {
+    const n = fn => filas.filter(fn).length;
+    const activos = n(f => f.condicion === 'ACTIVO');
+    const bajasMes = n(f => f.mov_mes === 'baja');
+    const desercion = activos + bajasMes ? Math.round(1000 * bajasMes / (activos + bajasMes)) / 10 : null;
+    const c = (v, txt, clase, titulo) => `<div class="${clase || ''}"${titulo ? ` title="${esc(titulo)}"` : ''}><strong>${v}</strong><span>${txt}</span></div>`;
+    return `<div class="pl-contadores">
+      ${c(activos + (cupo ? `<small>/${cupo}</small>` : ''), cupo ? 'activos / cupo' : 'activos', cupo && activos >= cupo ? 'mal' : 'bien')}
+      ${c(n(f => f.mov_mes === 'renovo'), 'renovaron este mes', 'bien')}
+      ${c(n(f => plFiltra(f, 'semana', hoy)), 'vencen en 7 días', 'aviso')}
+      ${c(n(f => f.mov_mes === 'no_renovo'), 'no renovaron', n(f => f.mov_mes === 'no_renovo') ? 'mal' : '')}
+      ${c(n(f => f.condicion === 'VACACIONES'), 'de vacaciones')}
+      ${c(bajasMes, 'bajas del mes', bajasMes ? 'mal' : '')}
+      ${c(desercion == null ? '—' : num1(desercion) + '%', 'deserción del mes', desercion > 25 ? 'mal' : desercion != null && desercion <= 10 ? 'bien' : '', 'Bajas del mes sobre activos + bajas del mes')}
+      ${n(f => f.profe_move) ? c(n(f => f.profe_move), 'mal asignados en MOVE', 'aviso', 'MOVE los tiene con otro profe: hay que corregirlo en MOVE') : ''}
+    </div>`;
+  }
+
+  function plFila(f, i, hoy, conProfe) {
+    const dv = plDias(f.vence, hoy), dp = plDias(f.plan_proximo, hoy), de = plDias(f.ultima_eval, hoy);
+    const anio = hoy.slice(0, 4), mesHoy = hoy.slice(0, 7);
+    const ep = PL_ESTADO_PLAN[f.plan_estado];
+    const meses = MES_CORTO.map((m, k) => {
+      const clave = anio + '-' + String(k + 1).padStart(2, '0');
+      const v = (f.meses || {})[clave];
+      const x = plMes(v);
+      return `<td class="pl-mes${x ? ' mes-' + x[0] : ''}${clave === mesHoy ? ' mes-actual' : ''}"${v ? ` title="${esc(m + ': ' + v)}"` : ''}>${x ? esc(x[1]) : ''}</td>`;
+    }).join('');
+    const contacto = plContactoTxt(f);
+    return `<tr class="pl-fila" data-accion="pl-ficha" data-id="${esc(f.socio_id)}" tabindex="0">
+      <td class="pl-socio${f.profe_move ? ' pl-socio-mal' : ''}"${f.profe_move ? ` title="${esc(plMalMove(f))}"` : ''}><span class="pl-n">${i}</span><b>${esc(f.nombre)}</b>${f.profe_move ? ' <span class="pl-mal" aria-label="Mal asignado en MOVE">⚠️</span>' : ''}${f.nombre_planilla ? ` <span class="pl-mal" title="${esc(plNombreViejo(f))}" aria-label="${esc(plNombreViejo(f))}">✏️</span>` : ''}${f.origen === 'move' ? ' <span class="pl-desde-move" title="Entró desde MOVE: no estaba en la planilla vieja">🆕 MOVE</span>' : ''}${conProfe ? `<small>${esc(f.profe_nombre || 'Sin profe')}</small>` : ''}</td>
+      <td class="pl-c">${plCond(f.condicion)}${f.condicion_manual ? '<small class="pl-amano" title="Puesta a mano">✋</small>' : ''}</td>
+      <td class="pl-fecha ${f.condicion === 'ACTIVO' ? plSemVence(dv) : ''}" title="${esc(f.vence ? 'Vence ' + plCuando(dv) : 'Sin vencimiento en MOVE')}">${esc(plFecha(f.vence)) || '—'}</td>
+      <td class="pl-contacto" title="${esc(contacto)}">${f.contacto_fecha ? `${PL_CANAL[f.contacto_canal] || ''} ${esc(plFecha(f.contacto_fecha))}<small>${esc(f.contacto_resultado || '')}</small>` : '<span class="pl-nada">—</span>'}</td>
+      <td class="pl-fecha ${plSemPlan(dp)}" title="${esc((f.plan_proximo ? 'Próximo cambio ' + plCuando(dp) : 'Sin fecha') + (ep ? ' · ' + ep[1] : ''))}">${esc(plFecha(f.plan_proximo)) || '—'}${ep && ep[0] ? ` <span class="pl-icono">${ep[0]}</span>` : ''}</td>
+      <td class="pl-fecha ${plSemEval(de)}" title="${esc(f.ultima_eval ? 'Evaluado ' + plCuando(de) : 'Sin evaluación')}">${esc(plFecha(f.ultima_eval)) || '—'}</td>
+      ${meses}
+      <td class="pl-obs" title="${esc(f.observaciones || '')}">${esc(f.observaciones || '')}</td>
+    </tr>`;
+  }
+
+  function plTabla() {
+    const P = E.pl, hoy = P.hoy;
+    const filas = plVisibles();
+    if (!filas.length) return `<div class="vacio">${P.filas.length ? 'Nadie con este filtro.' : 'Todavía no hay planilla cargada: la arma la PC cada mañana.'}</div>`;
+    const conProfe = P.modo === 'equipo' && !E.plProfe;
+    let n = 0;
+    const cols = 6 + 12 + 1;
+    const cuerpo = PL_GRUPOS.concat([['', 'Otros']]).map(([c, titulo]) => {
+      const del = filas.filter(f => (c ? f.condicion === c : PL_CONDICIONES.indexOf(f.condicion) < 0)).sort((a, b) => String(a.nombre).localeCompare(String(b.nombre)));
+      if (!del.length) return '';
+      return `<tr class="pl-grupo"><td colspan="${cols}"><span>${esc(titulo)} <small>${del.length}</small></span></td></tr>${del.map(f => plFila(f, ++n, hoy, conProfe)).join('')}`;
+    }).join('');
+    return `<p class="aclara pl-cuenta">${filas.length} ${filas.length === 1 ? 'socio' : 'socios'} · tocá uno para ver su ficha y corregir la condición</p>
+      <div class="pl-envoltura"><table class="pl-tabla"><thead><tr><th class="pl-socio">N° · Socio</th><th>Condición</th><th>Vence</th><th>Últ. contacto</th><th>Cambio de plan</th><th>Evaluación</th>
+      ${MES_CORTO.map(m => `<th class="pl-mes">${m}</th>`).join('')}<th class="pl-obs">Observaciones</th></tr></thead><tbody>${cuerpo}</tbody></table></div>`;
+  }
+
+  function vistaPlanilla() {
+    const P = E.pl;
+    if (!P) return '<div class="cargando">Cargando la planilla…</div>';
+    const equipo = P.modo === 'equipo';
+    const base = plBase();
+    const hoy = P.hoy;
+    const profeSel = equipo && P.profes.length ? `<select data-accion="pl-profe" aria-label="Profe"><option value="">Todos los profes (${P.filas.length})</option>${P.profes.map(p => `<option value="${esc(p.dni)}"${p.dni === E.plProfe ? ' selected' : ''}>${esc(p.nombre)} (${P.filas.filter(f => f.profe_dni === p.dni).length})</option>`).join('')}</select>` : '';
+    const sedes = equipo && tiene('admin') ? Object.keys(SEDES).map(k => `<button class="chip" data-accion="pl-sede" data-s="${k}" aria-pressed="${(E.plSede || '') === k}">${SEDES[k]}</button>`).join('') + `<button class="chip" data-accion="pl-sede" data-s="" aria-pressed="${!E.plSede}">Todas</button>` : '';
+    const elegido = equipo && E.plProfe ? (P.profes.find(p => p.dni === E.plProfe) || {}).nombre : '';
+    const cupo = equipo ? (E.plProfe ? P.cupos[(base[0] || {}).sede] : null) : P.cupo;
+    const filtro = E.plFiltro || 'todos';
+    const cuenta = k => base.filter(f => plFiltra(f, k, hoy)).length;
+    return `<h1 class="titulo">📋 Planilla <span>·</span> ${esc(equipo ? (elegido || (P.sede ? SEDES[P.sede] : 'todas las sedes')) : 'tus socios')}</h1>
+      <p class="bajada">Como la planilla de siempre, pero se arma sola con lo que muestra MOVE${P.cargada ? ` (datos del ${esc(plFecha(P.cargada))})` : ''}. La condición y las observaciones se pueden corregir desde la ficha del socio.</p>
+      ${sedes || profeSel ? `<div class="filtros">${sedes}${profeSel}</div>` : ''}
+      ${plContadores(base, hoy, cupo)}
+      <div class="filtros pl-filtros">${PL_FILTROS.filter(([k]) => ['mal_move', 'nombre', 'desde_move'].indexOf(k) < 0 || cuenta(k)).map(([k, t]) => `<button class="chip${k === 'mal_move' || k === 'nombre' ? ' chip-mal' : ''}" data-accion="pl-filtro" data-f="${k}" aria-pressed="${filtro === k}">${esc(t)} <small>${cuenta(k)}</small></button>`).join('')}</div>
+      <div class="pl-herramientas"><input class="buscador" type="search" placeholder="Buscar socio por nombre" data-pl-buscar value="${esc(E.plBusca || '')}" aria-label="Buscar socio">
+        <button class="boton claro" data-accion="pl-excel">⬇️ Excel</button></div>
+      <div id="pl-cuerpo">${plTabla()}</div>
+      <details class="catalogo pl-leyenda"><summary>Qué significa cada color</summary>
+        <p><b>Vence:</b> <span class="pl-ley sem-amarillo">vence en 1 a 3 días</span> <span class="pl-ley sem-naranja">vencido hasta 4 días</span> <span class="pl-ley sem-rojo">vencido 5 días o más</span>. A los 7 días sin renovar pasa solo a BAJA, salvo que tenga otra condición puesta a mano (por ejemplo vacaciones). El color se muestra en los activos.</p>
+        <p><b>Cambio de plan:</b> <span class="pl-ley sem-amarillo">toca en 1 a 3 días</span> <span class="pl-ley sem-naranja">atrasado hasta 2 días</span> <span class="pl-ley sem-rojo">atrasado 3 días o más</span> · 🧩 incompleto (menos de 2 rutinas) · 🎨 fuera del 30–80% de cambio.</p>
+        <p><b>Evaluación:</b> <span class="pl-ley sem-naranja">45 días o más</span> <span class="pl-ley sem-rojo">60 días o más</span>.</p>
+        <p><b>Meses:</b> ${[['renueva', 'REN', 'renovó'], ['x2', 'X2', 'renovó doble'], ['nuevo', 'NUEVO', 'socio nuevo (o quién lo vendió)'], ['baja', 'BAJA', 'baja'], ['liberado', 'LIB', 'liberado'], ['vacaciones', 'VAC', 'vacaciones'], ['novino', 'NV', 'pagó y no vino'], ['derivado', 'DER', 'derivado'], ['online', 'OL', 'online']].map(([c, t, d]) => `<span class="pl-ley pl-mes mes-${c}">${t}</span> ${d}`).join(' · ')}</p>
+        <p>⚠️ junto al nombre: en MOVE figura con otro profe. La planilla manda: hay que corregirlo en MOVE. ✏️: en la planilla vieja estaba escrito con otro nombre (se muestra el de MOVE). 🆕 MOVE: no estaba en la planilla vieja y entró desde MOVE. ✋: condición puesta a mano.</p>
+      </details>`;
+  }
+
+  function plFicha(id) {
+    const P = E.pl;
+    const f = P && P.filas.find(x => x.socio_id === id);
+    if (!f) return;
+    const hoy = P.hoy, anio = hoy.slice(0, 4);
+    const dv = plDias(f.vence, hoy), dp = plDias(f.plan_proximo, hoy), de = plDias(f.ultima_eval, hoy), du = plDias(f.ultima_visita, hoy);
+    const ep = PL_ESTADO_PLAN[f.plan_estado];
+    const dato = (t, v, clase) => `<div class="${clase || ''}"><span>${t}</span><b>${v || '—'}</b></div>`;
+    const meses = MES_CORTO.map((m, k) => { const v = (f.meses || {})[anio + '-' + String(k + 1).padStart(2, '0')]; const x = plMes(v); return `<div class="pl-mes${x ? ' mes-' + x[0] : ''}" title="${esc(v || '')}"><small>${m}</small>${x ? esc(x[1]) : '·'}</div>`; }).join('');
+    const man = f.condicion_manual;
+    const autoTxt = man ? 'vuelve a la que calcula la planilla' : f.condicion;
+    const sel = man ? man.valor : '';
+    const formEdit = f.editable ? `<form class="marca-form pl-editar" style="border:0;padding:0">
+        <label class="campo">Condición<select name="condicion"><option value=""${!sel ? ' selected' : ''}>Automática (${esc(autoTxt)})</option>${PL_CONDICIONES.map(c => `<option value="${c}"${c === sel ? ' selected' : ''}>${c}</option>`).join('')}</select></label>
+        <label class="campo" data-hasta${sel === 'VACACIONES' ? '' : ' hidden'}>Vuelve el (hasta)<input type="date" name="hasta" min="${hoy}" value="${esc(man && man.hasta ? man.hasta : '')}"></label>
+        <p class="aclara" data-aclara-cond>${sel === 'VACACIONES' ? 'Hasta esa fecha no se le da de baja automática.' : sel ? 'Puesta a mano, vale hasta que MOVE cambie el vencimiento (por ejemplo, cuando renueva).' : 'La calcula la planilla con los datos de MOVE. Cambiala solo si hace falta.'}</p>
+        ${f.puede_profe && (P.equipo || []).length ? `<label class="campo">Profe (dueño del socio)<select name="profe_dni">${P.equipo.map(p => `<option value="${esc(p.dni)}"${p.dni === f.profe_dni ? ' selected' : ''}>${esc(p.nombre)}</option>`).join('')}${P.equipo.some(p => p.dni === f.profe_dni) ? '' : `<option value="" selected>${esc(f.profe_nombre || 'Sin profe')}</option>`}</select></label>` : ''}
+        <label class="campo">Observaciones<textarea name="observaciones" maxlength="300" rows="3">${esc(f.observaciones || '')}</textarea></label>
+        <div class="botones"><button class="boton verde">Guardar</button><button type="button" class="boton claro" data-cerrar>Cerrar</button></div>
+      </form>` : '<div class="botones"><button type="button" class="boton claro" data-cerrar>Cerrar</button></div>';
+    dialogo(`<h3>${esc(f.nombre)}</h3>
+      <div class="pl-ficha-cab">${plCond(f.condicion)}${man ? `<small>✋ puesta a mano por ${esc(man.quien)}${man.hasta ? ' hasta el ' + esc(plFecha(man.hasta)) : ''}</small>` : ''}<small>${esc(f.profe_nombre || '')} · ${esc(SEDES[f.sede] || f.sede)}</small>${f.origen === 'move' ? '<span class="pl-desde-move">🆕 Entró desde MOVE</span>' : ''}</div>
+      ${f.profe_move ? `<div class="pl-aviso-move">⚠️ ${esc(plMalMove(f))}</div>` : ''}
+      ${f.nombre_planilla ? `<div class="pl-aviso-move">✏️ ${esc(plNombreViejo(f))}</div>` : ''}
+      <div class="pl-datos">
+        ${dato('Vence', f.vence ? esc(plFecha(f.vence)) + ' <small>' + esc(plCuando(dv)) + '</small>' : '', plSemVence(dv))}
+        ${dato('Plan', [f.plan_meses ? f.plan_meses + (f.plan_meses === '1' ? ' mes' : ' meses') : '', f.plan_tipo].filter(Boolean).map(esc).join(' · '))}
+        ${dato('Último cambio de plan', esc(plFecha(f.plan_fecha)) + (f.plan_rutinas ? ` <small>${esc(f.plan_rutinas)} rutinas${f.plan_pct ? ' · ' + esc(f.plan_pct) + '% de cambio' : ''}</small>` : ''))}
+        ${dato('Próximo cambio', f.plan_proximo ? esc(plFecha(f.plan_proximo)) + ' <small>' + esc(plCuando(dp)) + '</small>' : '', plSemPlan(dp))}
+        ${ep ? dato('Estado del plan', esc(ep[0] + ' ' + ep[1])) : ''}
+        ${dato('Última evaluación', f.ultima_eval ? esc(plFecha(f.ultima_eval)) + ' <small>' + esc(plCuando(de)) + '</small>' : '', plSemEval(de))}
+        ${dato('Perfil del socio', esc(f.perfil))}
+        ${dato('Última vez que vino', f.ultima_visita ? esc(plFecha(f.ultima_visita)) + ' <small>' + esc(plCuando(du)) + '</small>' : '')}
+      </div>
+      <div class="pl-meses-ficha">${meses}</div>
+      <div><b>Contactos de recepción</b>${f.contactos && f.contactos.length ? `<ul class="pl-contactos">${f.contactos.map(c => `<li><b>${esc(plFecha(c.fecha))}</b> ${PL_CANAL[c.canal] || ''} ${esc([NOMBRE_CANAL[c.canal] || c.canal, c.resultado, c.quien].filter(Boolean).join(' · '))}${c.nota ? `<br><small>“${esc(c.nota)}”</small>` : ''}</li>`).join('')}</ul>`
+        : f.contacto_fecha ? `<p class="aclara">${esc(plFecha(f.contacto_fecha))} · ${esc(plContactoTxt(f))}${Number(f.contactos_n) > 1 ? ` · ${esc(f.contactos_n)} contactos en 60 días` : ''}</p>` : '<p class="aclara">Sin contactos de recepción registrados.</p>'}</div>
+      ${f.obs_editada ? `<p class="aclara">Observaciones editadas por ${esc(f.obs_editada.quien)} el ${esc(ddmmDe(f.obs_editada.ts))}.</p>` : ''}
+      ${formEdit}`, d => {
+      d.querySelectorAll('[data-cerrar]').forEach(b => { b.onclick = () => d.close(); });
+      d.addEventListener('click', ev => { if (tocoAfuera(ev, d)) d.close(); });
+      const form = d.querySelector('form.pl-editar');
+      if (!form) return;
+      const selCond = form.querySelector('[name=condicion]');
+      selCond.onchange = () => {
+        const vac = selCond.value === 'VACACIONES';
+        form.querySelector('[data-hasta]').hidden = !vac;
+        form.querySelector('[name=hasta]').required = vac;
+        form.querySelector('[data-aclara-cond]').textContent = vac ? 'Hasta esa fecha no se le da de baja automática.' : selCond.value ? 'Puesta a mano, vale hasta que MOVE cambie el vencimiento (por ejemplo, cuando renueva).' : 'La calcula la planilla con los datos de MOVE. Cambiala solo si hace falta.';
+      };
+      form.querySelector('[name=hasta]').required = sel === 'VACACIONES';
+      form.onsubmit = async ev => {
+        ev.preventDefault();
+        const fd = new FormData(form);
+        const cambios = [];
+        const cond = String(fd.get('condicion') || ''), hasta = cond === 'VACACIONES' ? String(fd.get('hasta') || '') : '';
+        if (cond !== sel || (cond === 'VACACIONES' && hasta !== ((man && man.hasta) || ''))) cambios.push({ campo: 'condicion', valor: cond, hasta: hasta });
+        const obs = String(fd.get('observaciones') || '').trim();
+        if (obs !== String(f.observaciones || '').trim()) cambios.push({ campo: 'observaciones', valor: obs });
+        const pd = fd.get('profe_dni');
+        if (pd && pd !== f.profe_dni) cambios.push({ campo: 'profe_dni', valor: String(pd) });
+        if (!cambios.length) { d.close(); return; }
+        const btn = form.querySelector('button.verde');
+        btn.disabled = true;
+        try {
+          let nueva = null;
+          for (const c of cambios) nueva = (await cliente.llamar('profe_planilla_editar', Object.assign({ socio_id: f.socio_id }, c))).fila;
+          const k = P.filas.findIndex(x => x.socio_id === f.socio_id);
+          // si el socio pasó a otro profe, el profe deja de verlo
+          if (k >= 0) { if (P.modo === 'mio' && nueva.profe_dni !== f.profe_dni) P.filas.splice(k, 1); else P.filas[k] = nueva; }
+          d.close();
+          render();
+          aviso('✅ Guardado en la planilla.');
+        } catch (e) { btn.disabled = false; falla(e); }
+      };
+    });
+  }
+
+  // Lo filtrado, para abrir en Excel: CSV con BOM y punto y coma (Excel en castellano lo abre directo)
+  function plExcel() {
+    const P = E.pl;
+    const filas = plVisibles();
+    const anio = P.hoy.slice(0, 4);
+    const cab = ['N°', 'Condición', 'Socio', 'Profe', 'Vence', 'Último contacto', 'Contacto', 'Próximo cambio de plan', 'Estado del plan', 'Última evaluación', 'Perfil', 'Última visita'].concat(MES_CORTO, ['Observaciones', 'En MOVE figura con', 'Nombre en la planilla vieja', 'Origen']);
+    const celda = v => { const s = String(v == null ? '' : v); return /[;"\n\r]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s; };
+    const dmy = iso => (iso ? iso.slice(8, 10) + '/' + iso.slice(5, 7) + '/' + iso.slice(0, 4) : '');
+    let n = 0;
+    const orden = PL_CONDICIONES.concat(['']);
+    const ordenadas = filas.slice().sort((a, b) => { const x = orden.indexOf(a.condicion), y = orden.indexOf(b.condicion); return ((x < 0 ? 99 : x) - (y < 0 ? 99 : y)) || String(a.nombre).localeCompare(String(b.nombre)); });
+    const lineas = [cab].concat(ordenadas.map(f => [++n, f.condicion, f.nombre, f.profe_nombre, dmy(f.vence), dmy(f.contacto_fecha), plContactoTxt(f), dmy(f.plan_proximo), f.plan_estado, dmy(f.ultima_eval), f.perfil, dmy(f.ultima_visita)]
+      .concat(MES_CORTO.map((m, k) => (f.meses || {})[anio + '-' + String(k + 1).padStart(2, '0')] || ''), [f.observaciones, f.profe_move, f.nombre_planilla, f.origen === 'move' ? 'Entró desde MOVE' : 'Planilla'])));
+    const csv = '﻿' + lineas.map(l => l.map(celda).join(';')).join('\r\n');
+    const quien = P.modo === 'equipo' ? ((P.profes.find(p => p.dni === E.plProfe) || {}).nombre || P.sede || 'todas') : 'mis-socios';
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(new Blob([csv], { type: 'text/csv;charset=utf-8' }));
+    a.download = 'planilla-' + String(quien).toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/[^a-z0-9]+/g, '-') + '-' + P.hoy + '.csv';
+    document.body.appendChild(a);
+    a.click();
+    setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 1000);
+    aviso(`⬇️ ${filas.length} socios bajados para Excel.`);
+  }
+
   // ---------- Rendimiento ----------
 
   const MESES =['enero', 'febrero', 'marzo', 'abril', 'mayo', 'junio', 'julio', 'agosto', 'septiembre', 'octubre', 'noviembre', 'diciembre'];
@@ -2592,6 +2847,12 @@ ${p.tareas_mes ? `<span class="uso-hoy">📋 Tareas del mes: ${p.tareas_mes.hech
         E.planes = await cliente.llamar('profe_tareas', ['profes', 'phor', 'pliq'].indexOf(vistaPlanes) >= 0 && tiene('admin') ? { sede: E.sedeElegida } : {});
         recordar(clavePlanes(vistaPlanes), E.planes);
         if (E.vista === 'planes') programarConsejos();
+      } else if (E.vista === 'ppl') {
+        const coordina = tiene('coordinador') || tiene('admin');
+        const P = await cliente.llamar('profe_planilla', coordina ? (tiene('admin') ? { sede: E.plSede == null ? E.sedeElegida : E.plSede } : {}) : { mio: true });
+        if (E.plSede == null && tiene('admin')) E.plSede = P.sede;
+        if (E.plProfe && !P.profes.some(x => x.dni === E.plProfe)) E.plProfe = '';
+        E.pl = P;
       } else if (E.vista === 'pres') {
         E.estado = await cliente.llamar('profe_estado', {});
       } else if (E.vista === 'admin') {
@@ -2921,10 +3182,11 @@ ${p.tareas_mes ? `<span class="uso-hoy">📋 Tareas del mes: ${p.tareas_mes.hech
       : E.vista === 'chat' ? vistaChat()
       : E.vista === 'planes' ? vistaPlanes() : E.vista === 'profes' ? vistaProfes() : E.vista === 'pmes' ? vistaMesProfe()
       : E.vista === 'pres' ? vistaResumenProfes()
+      : E.vista === 'ppl' ? vistaPlanilla()
       : E.vista === 'phor' ? (E.planes ? vistaAgendaEquipo(true) : '<div class="cargando">Cargando…</div>')
       : E.vista === 'pliq' ? (E.planes ? `<h1 class="titulo">${tiene('admin') ? 'Comisiones y tareas del mes' : 'Tareas del mes'} <span>·</span> profes</h1>${vistaTareasMesCoord()}${tablaComisiones()}` : '<div class="cargando">Cargando…</div>')
       : '<div class="vacio">Tu usuario no tiene ninguna vista asignada. Avisale a Emanuel.</div>';
-    const sinDatos = { hoy: !E.tareas, sede: E.personaDni ? !E.persona : !E.sede, mes: !E.rend, rend: !E.rend, admin: !E.usuarios, reservas: !E.ocupacion, liq: !E.liq, resumen: !E.resumen, consultas: !E.cons, pase: !E.pase, chat: !E.chat, planes: !E.planes, profes: !E.planes, pmes: !E.planes, phor: !E.planes, pliq: !E.planes, pres: !E.estado }[E.vista];
+    const sinDatos = { hoy: !E.tareas, sede: E.personaDni ? !E.persona : !E.sede, mes: !E.rend, rend: !E.rend, admin: !E.usuarios, reservas: !E.ocupacion, liq: !E.liq, resumen: !E.resumen, consultas: !E.cons, pase: !E.pase, chat: !E.chat, planes: !E.planes, profes: !E.planes, pmes: !E.planes, phor: !E.planes, pliq: !E.planes, pres: !E.estado, ppl: !E.pl }[E.vista];
     const mostrar = E.errorCarga && sinDatos ? `<div class="vacio" style="margin-top:18px"><p>${esc(E.errorCarga)}</p><p>La pantalla vuelve a intentarlo sola. Tus marcas no se pierden.</p><button class="boton" data-accion="reintentar">Reintentar ahora</button></div>` : cuerpo;
     const bandas = E.vista === 'hoy' ? bandaPase() + bandaVentas() + bandaFichajes() + bandaReservas() : '';
     app.innerHTML = encabezado() + `<main class="contenedor">${bandas}${mostrar}</main>` + (E.vista === 'hoy' && turnoTerminando() ? `<button class="cerrar-app-fijo${DEMO ? ' con-cinta' : ''}" data-accion="cerrar-app">🚪 ${E.dia && E.dia.cierre_hecho ? 'Listo por hoy' : 'Se termina tu turno'}: cerrá la app antes de irte</button>` : '') + (DEMO ? '<div class="cinta-practica">Modo práctica · datos inventados</div>' : '') + botonRanking() + panelRanking();
@@ -3171,8 +3433,20 @@ ${p.tareas_mes ? `<span class="uso-hoy">📋 Tareas del mes: ${p.tareas_mes.hech
   window.addEventListener('focus', () => revisarMensajes());
   setTimeout(revisarMensajes, 2500);
 
+  // la fila de la planilla también se abre con el teclado
+  app.addEventListener('keydown', ev => {
+    const tr = ev.target.closest && ev.target.closest('tr.pl-fila');
+    if (tr && (ev.key === 'Enter' || ev.key === ' ')) { ev.preventDefault(); plFicha(tr.dataset.id); }
+  });
+
   app.addEventListener('input', ev => {
     const t = ev.target;
+    if (t.matches && t.matches('[data-pl-buscar]')) {
+      E.plBusca = t.value;
+      const c = document.getElementById('pl-cuerpo');
+      if (c && E.pl) c.innerHTML = plTabla();
+      return;
+    }
     if (t.matches && t.matches('textarea[data-chat-texto]') && E.chatAbierta) E.chatBorrador = t.value;
     else if (t.matches && t.matches('[data-chat-buscar]')) {
       const q = t.value.trim().toLowerCase();
@@ -3454,6 +3728,7 @@ ${p.tareas_mes ? `<span class="uso-hoy">📋 Tareas del mes: ${p.tareas_mes.hech
         aviso(s.profe ? `✅ El sábado ${ddmm(s.fecha)} en ${SEDES[s.sede]} va ${s.profe}.` : `Sábado ${ddmm(s.fecha)} sin nadie cargado.`);
       }).catch(e => { el.disabled = false; aviso(PulsoApi.mensaje(e.codigo || e.message), true); });
     }
+    if (el.dataset.accion === 'pl-profe') { E.plProfe = el.value; render(); }
     if (el.dataset.accion === 'reeval-buscar') { E.reevalBusca = el.value; E.reevalAbierto = true; render(); }
     if (el.dataset.accion === 'resultado') {
       const form = el.closest('form');
@@ -3521,6 +3796,10 @@ ${p.tareas_mes ? `<span class="uso-hoy">📋 Tareas del mes: ${p.tareas_mes.hech
     else if (a === 'estado-mes') { E.estadoMes = el.dataset.m; render(); }
     else if (a === 'alm-dia') { E.almDia = E.almDia === el.dataset.f ? '' : el.dataset.f; render(); }
     else if (a === 'memb-mes') { E.membMes = el.dataset.m; render(); }
+    else if (a === 'pl-ficha') plFicha(el.dataset.id);
+    else if (a === 'pl-filtro') { E.plFiltro = el.dataset.f; render(); }
+    else if (a === 'pl-sede') { E.plSede = el.dataset.s; E.plProfe = ''; E.pl = null; render(); cargarVista(); }
+    else if (a === 'pl-excel') plExcel();
     else if (a === 'tmes-quitar') { el.closest('[data-tmes-fila]').remove(); }
     else if (a === 'tmes-agregar') { app.querySelector('.tmes-editor').insertAdjacentHTML('beforeend', app.querySelector('#tpl-tmes').innerHTML); }
     else if (a === 'tmes-guardar') {
