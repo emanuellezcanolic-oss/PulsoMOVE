@@ -1691,14 +1691,49 @@ ${p.tareas_mes ? `<span class="uso-hoy">📋 Tareas del mes: ${p.tareas_mes.hech
     const conProfe = P.modo === 'equipo' && !E.plProfe;
     let n = 0;
     const cols = 6 + 12 + 1;
-    const cuerpo = PL_GRUPOS.concat([['', 'Otros']]).map(([c, titulo]) => {
-      const del = filas.filter(f => (c ? f.condicion === c : PL_CONDICIONES.indexOf(f.condicion) < 0)).sort((a, b) => String(a.nombre).localeCompare(String(b.nombre)));
+    const orden = E.plOrden || null;   // {c: columna, dir: -1 mayor a menor | 1 menor a mayor}
+    const grupos = PL_GRUPOS.concat([['', 'Otros']]);
+    if (orden && orden.c === 'condicion' && orden.dir < 0) grupos.reverse();
+    const cuerpo = grupos.map(([c, titulo]) => {
+      const del = filas.filter(f => (c ? f.condicion === c : PL_CONDICIONES.indexOf(f.condicion) < 0)).sort((a, b) => plCompara(a, b, orden, hoy));
       if (!del.length) return '';
       return `<tr class="pl-grupo"><td colspan="${cols}"><span>${esc(titulo)} <small>${del.length}</small></span></td></tr>${del.map(f => plFila(f, ++n, hoy, conProfe)).join('')}`;
     }).join('');
-    return `<p class="aclara pl-cuenta">${filas.length} ${filas.length === 1 ? 'socio' : 'socios'} · tocá uno para ver su ficha y corregir la condición</p>
-      <div class="pl-envoltura"><table class="pl-tabla"><thead><tr><th class="pl-socio">N° · Socio</th><th>Condición</th><th>Vence</th><th>Últ. contacto</th><th>Cambio de plan</th><th>Evaluación</th>
-      ${MES_CORTO.map(m => `<th class="pl-mes">${m}</th>`).join('')}<th class="pl-obs">Observaciones</th></tr></thead><tbody>${cuerpo}</tbody></table></div>`;
+    const anio = hoy.slice(0, 4);
+    const th = (c, txt, clase) => {
+      const activo = orden && orden.c === c;
+      const flecha = activo ? (orden.dir < 0 ? ' ▼' : ' ▲') : '';
+      const aria = activo ? (orden.dir < 0 ? 'descending' : 'ascending') : 'none';
+      return `<th class="${clase || ''}${activo ? ' pl-ordenada' : ''}" aria-sort="${aria}"><button type="button" class="pl-orden" data-accion="pl-orden" data-c="${c}" title="Ordenar de mayor a menor (otro toque: de menor a mayor; otro más: como estaba)">${txt}${flecha}</button></th>`;
+    };
+    return `<p class="aclara pl-cuenta">${filas.length} ${filas.length === 1 ? 'socio' : 'socios'} · tocá uno para ver su ficha y corregir la condición · tocá el título de una columna para ordenar</p>
+      <div class="pl-envoltura"><table class="pl-tabla"><thead><tr>${th('socio', 'N° · Socio', 'pl-socio')}${th('condicion', 'Condición')}${th('vence', 'Vence')}${th('contacto', 'Últ. contacto')}${th('plan', 'Cambio de plan')}${th('eval', 'Evaluación')}
+      ${MES_CORTO.map((m, k) => th('mes:' + anio + '-' + String(k + 1).padStart(2, '0'), m, 'pl-mes')).join('')}${th('obs', 'Observaciones', 'pl-obs')}</tr></thead><tbody>${cuerpo}</tbody></table></div>`;
+  }
+
+  // Orden por columna (Emanuel 17/11): primer toque de mayor a menor, segundo de menor a mayor, tercero vuelve al
+  // orden de siempre (por nombre). Se ordena dentro de cada grupo de condición; los vacíos siempre van al final.
+  // En los meses "mayor" es lo que más suma: X2, renueva, nuevo, liberado… y la baja al último.
+  const PL_RANGO_MES = { x2: 9, renueva: 8, nuevo: 7, liberado: 6, vacaciones: 5, derivado: 4, online: 3, novino: 2, otro: 1, baja: 0 };
+  function plValorOrden(f, c) {
+    if (c === 'socio') return String(f.nombre || '').toLowerCase();
+    if (c === 'vence') return f.vence || null;
+    if (c === 'contacto') return f.contacto_fecha || null;
+    if (c === 'plan') return f.plan_proximo || null;
+    if (c === 'eval') return f.ultima_eval || null;
+    if (c === 'obs') return String(f.observaciones || '').trim().toLowerCase() || null;
+    if (c.indexOf('mes:') === 0) { const x = plMes((f.meses || {})[c.slice(4)]); return x ? PL_RANGO_MES[x[0]] : null; }
+    return null;
+  }
+  function plCompara(a, b, orden, hoy) {
+    const porNombre = String(a.nombre).localeCompare(String(b.nombre));
+    if (!orden || orden.c === 'condicion') return porNombre;
+    const va = plValorOrden(a, orden.c), vb = plValorOrden(b, orden.c);
+    if (va == null && vb == null) return porNombre;
+    if (va == null) return 1;
+    if (vb == null) return -1;
+    const d = typeof va === 'number' ? va - vb : String(va).localeCompare(String(vb));
+    return d ? d * orden.dir : porNombre;
   }
 
   function vistaPlanilla() {
@@ -3798,6 +3833,12 @@ ${p.tareas_mes ? `<span class="uso-hoy">📋 Tareas del mes: ${p.tareas_mes.hech
     else if (a === 'memb-mes') { E.membMes = el.dataset.m; render(); }
     else if (a === 'pl-ficha') plFicha(el.dataset.id);
     else if (a === 'pl-filtro') { E.plFiltro = el.dataset.f; render(); }
+    else if (a === 'pl-orden') {
+      const c = el.dataset.c, o = E.plOrden;
+      E.plOrden = !o || o.c !== c ? { c: c, dir: -1 } : o.dir < 0 ? { c: c, dir: 1 } : null;
+      const cuerpo = document.getElementById('pl-cuerpo');
+      if (cuerpo && E.pl) cuerpo.innerHTML = plTabla(); else render();
+    }
     else if (a === 'pl-sede') { E.plSede = el.dataset.s; E.plProfe = ''; E.pl = null; render(); cargarVista(); }
     else if (a === 'pl-excel') plExcel();
     else if (a === 'tmes-quitar') { el.closest('[data-tmes-fila]').remove(); }

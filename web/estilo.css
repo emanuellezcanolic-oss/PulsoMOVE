@@ -865,6 +865,10 @@ details.espera summary { cursor: pointer; font-weight: 700; font-size: 13px; pad
 .pl-tabla td { padding: 4px 6px; border-bottom: 1px solid #e3e3e3; border-right: 1px solid #ededed; white-space: nowrap; vertical-align: middle; background: #fff; }
 .pl-tabla .pl-socio { position: sticky; left: 0; z-index: 1; text-align: left; min-width: 170px; max-width: 220px; border-right: 2px solid #999; }
 .pl-tabla th.pl-socio { z-index: 3; }
+.pl-tabla th .pl-orden { all: unset; cursor: pointer; display: block; width: 100%; text-align: inherit; font: inherit; color: inherit; white-space: nowrap; }
+.pl-tabla th .pl-orden:focus-visible { outline: 2px solid #1f6feb; outline-offset: 2px; }
+.pl-tabla th:hover { background: #c9c9c9; }
+.pl-tabla th.pl-ordenada { background: #fff2b3; }
 .pl-tabla td.pl-socio { white-space: normal; }
 .pl-tabla td.pl-socio b { font-weight: 700; }
 .pl-tabla td.pl-socio small { display: block; color: #666; font-size: 11px; }
