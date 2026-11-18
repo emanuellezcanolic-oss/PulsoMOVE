@@ -77,6 +77,11 @@ const COLUMNAS = {
   chat_msg: ['id', 'conv_id', 'ts', 'dni', 'nombre', 'texto', 'ref'],
   chat_lect: ['conv_id', 'dni', 'ts'],
   chat_aviso: ['dni', 'sin_leer', 'ts'],
+  // Pedidos de coordinación (Pedidos.js): tareas sueltas y listas con fecha de cierre. para_* separados por coma; los artículos y las marcas
+  // llevan el cierre ("ciclo") al que pertenecen, así un pedido que se repite conserva el historial.
+  pedidos: ['id', 'tipo', 'titulo', 'detalle', 'para_roles', 'para_sedes', 'para_dnis', 'de_dni', 'de_nombre', 'cierra', 'avisar_dias', 'repite', 'estado', 'creado', 'actualizado'],
+  pedidos_items: ['id', 'pedido_id', 'ciclo', 'sede', 'dni', 'nombre', 'texto', 'cantidad', 'ts'],
+  pedidos_hechos: ['pedido_id', 'ciclo', 'dni', 'nombre', 'sede', 'nota', 'ts'],
   garantia: ['id', 'ts', 'sede', 'socio_id', 'socio_nombre', 'profe', 'motivo', 'registra_dni', 'estado', 'decide_dni',
              'comentario', 'decidido_en'],
 };

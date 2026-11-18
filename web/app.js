@@ -185,6 +185,7 @@
     if (tiene('admin') || tiene('recepcion') || coord) p.push(['liq', tiene('admin') ? 'Liquidación' : 'Mis ingresos', coord ? 'Recepción' : 'Mi día']);   // cada una ve lo suyo; admin ve a todas
     if (coord) p.push(['pres', 'Resumen', 'Profes'], ['profes', 'Planes y llegadas', 'Profes'], ['ppl', '📋 Planilla', 'Profes'], ['phor', 'Horarios y sábados', 'Profes'], ['pliq', tiene('admin') ? 'Comisiones y tareas' : 'Tareas del mes', 'Profes']);
     if (tiene('admin')) p.push(['resumen', 'Resumen semanal', 'Gestión'], ['admin', 'Equipo', 'Gestión']);
+    if (coord) p.push(['ped', '📌 Pedidos', 'Gestión']);   // pedidos de coordinación a recepción y profes (18/11/2026)
     p.push(['chat', chatEtiqueta(), coord ? 'Gestión' : 'Mi día']);   // mensajes entre el equipo: todos
     return p;
   }
@@ -570,6 +571,94 @@
     if (p) partes.push(`<div class="banda-ventas pide"><span>🔔 Tenés <b>${p.total}</b> ${p.total === 1 ? 'pedido de venta sin responder' : 'pedidos de venta sin responder'}${p.dias ? `, el más viejo hace ${p.dias} ${p.dias === 1 ? 'día' : 'días'}` : ''}. Hasta que respondas, esas ventas no se suman a quien las vendió.</span><button class="chip" data-accion="ir-ventas">Responder</button></div>`);
     if (e) partes.push(`<div class="banda-ventas"><span>⏳ <b>${e.total}</b> ${e.total === 1 ? 'venta tuya espera' : 'ventas tuyas esperan'} la confirmación de ${esc((e.de_quienes || []).join(' y '))} (${e.nuevos} ${e.nuevos === 1 ? 'socio nuevo' : 'socios nuevos'} · ${e.largos} ${e.largos === 1 ? 'plan' : 'planes'} de 3 meses). La más vieja, hace ${e.dias} ${e.dias === 1 ? 'día' : 'días'}. No se actualizan por semana: se suman apenas las confirme.</span></div>`);
     return partes.join('');
+  }
+
+  // ---------- Pedidos de coordinación (cómo se ven: web/pedidos.js) ----------
+  E.pedMios = null; E.ped = null; E.pedForm = null;
+  const bandaPedidos = () => PulsoPedidos.bandaMios(E.pedMios, esc);
+
+  function cargarPedidosMios() {
+    cliente.llamar('pedidos_mios').then(r => {
+      const igual = E.pedMios && JSON.stringify(E.pedMios) === JSON.stringify(r);
+      E.pedMios = r;
+      avisarPedidos(r);
+      const escribiendo = document.activeElement && document.activeElement.closest && document.activeElement.closest('.pedidos-mios');
+      if (!igual && !escribiendo && (E.vista === 'hoy' || E.vista === 'planes')) render();
+    }).catch(() => {});
+  }
+
+  // Aviso del navegador una vez por día por pedido, cuando falta poco (o ya venció)
+  function avisarPedidos(r) {
+    if (DEMO) return;
+    const alm = almacenSeguro();
+    r.pedidos.filter(p => !p.hecho && (p.atrasado || (p.faltan != null && p.faltan <= 3))).forEach(p => {
+      const k = 'pulso_ped_' + p.id + '_' + r.hoy;
+      if (alm.getItem(k)) return;
+      alm.setItem(k, '1');
+      push('📌 ' + p.titulo, PulsoPedidos.cuando(p));
+    });
+  }
+
+  function pedExcel(id) {
+    const p = E.ped && E.ped.pedidos.find(x => x.id === id);
+    if (!p) return;
+    const celda = v => { const s = String(v == null ? '' : v); return /[;"\n\r]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s; };
+    const csv = '﻿' + PulsoPedidos.filasExcel(p).map(l => l.map(celda).join(';')).join('\r\n');
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(new Blob([csv], { type: 'text/csv;charset=utf-8' }));
+    a.download = 'pedido-' + p.titulo.toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/[^a-z0-9]+/g, '-') + '-' + p.ciclo + '.csv';
+    document.body.appendChild(a);
+    a.click();
+    setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 1000);
+    aviso('⬇️ Pedido bajado para Excel.');
+  }
+
+  async function accionPedido(a, el) {
+    const id = el.dataset.id;
+    try {
+      if (a === 'ped-nuevo') { E.pedForm = PulsoPedidos.vacio(); render(); window.scrollTo(0, 0); }
+      else if (a === 'ped-cancelar') { E.pedForm = null; render(); }
+      else if (a === 'ped-editar') { E.pedForm = Object.assign({}, E.ped.pedidos.find(x => x.id === id)); render(); window.scrollTo(0, 0); }
+      else if (a === 'ped-borrar') {
+        if (!confirm('¿Borrar este pedido? Se saca de la pantalla de todos y se pierde lo que cargaron.')) return;
+        E.ped = await cliente.llamar('pedido_borrar', { id });
+        render();
+        aviso('🗑️ Pedido borrado.');
+      }
+      else if (a === 'ped-excel') pedExcel(id);
+      else if (a === 'ped-hecho') {
+        const campo = [...app.querySelectorAll('[data-ped-nota]')].find(x => x.dataset.pedNota === id);
+        el.disabled = true;
+        E.pedMios = await cliente.llamar('pedido_hecho', { pedido_id: id, nota: campo ? campo.value.trim() : '' });
+        render();
+        aviso('✅ Anotado: coordinación lo ve.');
+      }
+      else if (a === 'ped-deshacer') { E.pedMios = await cliente.llamar('pedido_hecho', { pedido_id: id, hecho: false }); render(); }
+      else if (a === 'ped-quitar') { E.pedMios = await cliente.llamar('pedido_item_quitar', { item_id: el.dataset.item }); render(); }
+    } catch (e) { el.disabled = false; falla(e); }
+  }
+
+  async function enviarFormPedido(tipo, form, btn) {
+    btn.disabled = true;
+    try {
+      if (tipo === 'ped-item') {
+        const f = new FormData(form);
+        E.pedMios = await cliente.llamar('pedido_item_agregar', { pedido_id: form.dataset.id, texto: String(f.get('texto') || '').trim(), cantidad: String(f.get('cantidad') || '').trim() });
+        render();
+        aviso('➕ Agregado a la lista.');
+        const campo = [...app.querySelectorAll('form[data-form="ped-item"]')].find(x => x.dataset.id === form.dataset.id);
+        if (campo) campo.querySelector('input[name=texto]').focus();
+        return;
+      }
+      const d = PulsoPedidos.leerFormulario(form);
+      const mal = !d.titulo ? 'Poné un título.' : !d.para_roles.length && !d.para_dnis.length ? 'Elegí a quién le llega: recepción, profes o alguna persona.'
+        : !d.cierra ? 'Poné la fecha límite.' : '';
+      if (mal) { aviso(mal, true); btn.disabled = false; return; }
+      E.ped = await cliente.llamar('pedido_guardar', d);
+      E.pedForm = null;
+      render();
+      aviso('✅ Pedido guardado. Les aparece desde el día de aviso.');
+    } catch (e) { btn.disabled = false; falla(e); }
   }
 
   function vistaHoy() {
@@ -2838,7 +2927,11 @@ ${p.tareas_mes ? `<span class="uso-hoy">📋 Tareas del mes: ${p.tareas_mes.hech
     revisarFichajes();
     E.errorCarga = '';
     try {
-      if (E.vista === 'hoy') {
+      if (E.vista === 'hoy' || E.vista === 'planes') cargarPedidosMios();   // por detrás: la pantalla no espera
+      if (E.vista === 'ped') {
+        if (E.pedForm) return;   // se está escribiendo un pedido: no pisarlo
+        E.ped = await cliente.llamar('pedidos_ver');
+      } else if (E.vista === 'hoy') {
         // los dos pedidos a la vez: antes uno esperaba al otro
         const [r, dia] = await Promise.all([cliente.llamar('mis_tareas', E.adelantar ? { adelantar: true } : {}), cliente.llamar('mi_dia')]);
         E.paraAdelantar = r.para_adelantar || 0;
@@ -3222,12 +3315,13 @@ ${p.tareas_mes ? `<span class="uso-hoy">📋 Tareas del mes: ${p.tareas_mes.hech
       : E.vista === 'planes' ? vistaPlanes() : E.vista === 'profes' ? vistaProfes() : E.vista === 'pmes' ? vistaMesProfe()
       : E.vista === 'pres' ? vistaResumenProfes()
       : E.vista === 'ppl' ? vistaPlanilla()
+      : E.vista === 'ped' ? PulsoPedidos.vistaCoord(E.ped, E.pedForm, esc)
       : E.vista === 'phor' ? (E.planes ? vistaAgendaEquipo(true) : '<div class="cargando">Cargando…</div>')
       : E.vista === 'pliq' ? (E.planes ? `<h1 class="titulo">${tiene('admin') ? 'Comisiones y tareas del mes' : 'Tareas del mes'} <span>·</span> profes</h1>${vistaTareasMesCoord()}${tablaComisiones()}` : '<div class="cargando">Cargando…</div>')
       : '<div class="vacio">Tu usuario no tiene ninguna vista asignada. Avisale a Emanuel.</div>';
-    const sinDatos = { hoy: !E.tareas, sede: E.personaDni ? !E.persona : !E.sede, mes: !E.rend, rend: !E.rend, admin: !E.usuarios, reservas: !E.ocupacion, liq: !E.liq, resumen: !E.resumen, consultas: !E.cons, pase: !E.pase, chat: !E.chat, planes: !E.planes, profes: !E.planes, pmes: !E.planes, phor: !E.planes, pliq: !E.planes, pres: !E.estado, ppl: !E.pl }[E.vista];
+    const sinDatos = { hoy: !E.tareas, sede: E.personaDni ? !E.persona : !E.sede, mes: !E.rend, rend: !E.rend, admin: !E.usuarios, reservas: !E.ocupacion, liq: !E.liq, resumen: !E.resumen, consultas: !E.cons, pase: !E.pase, chat: !E.chat, planes: !E.planes, profes: !E.planes, pmes: !E.planes, phor: !E.planes, pliq: !E.planes, pres: !E.estado, ppl: !E.pl, ped: !E.ped }[E.vista];
     const mostrar = E.errorCarga && sinDatos ? `<div class="vacio" style="margin-top:18px"><p>${esc(E.errorCarga)}</p><p>La pantalla vuelve a intentarlo sola. Tus marcas no se pierden.</p><button class="boton" data-accion="reintentar">Reintentar ahora</button></div>` : cuerpo;
-    const bandas = E.vista === 'hoy' ? bandaPase() + bandaVentas() + bandaFichajes() + bandaReservas() : '';
+    const bandas = E.vista === 'hoy' ? bandaPedidos() + bandaPase() + bandaVentas() + bandaFichajes() + bandaReservas() : E.vista === 'planes' ? bandaPedidos() : '';
     app.innerHTML = encabezado() + `<main class="contenedor">${bandas}${mostrar}</main>` + (E.vista === 'hoy' && turnoTerminando() ? `<button class="cerrar-app-fijo${DEMO ? ' con-cinta' : ''}" data-accion="cerrar-app">🚪 ${E.dia && E.dia.cierre_hecho ? 'Listo por hoy' : 'Se termina tu turno'}: cerrá la app antes de irte</button>` : '') + (DEMO ? '<div class="cinta-practica">Modo práctica · datos inventados</div>' : '') + botonRanking() + panelRanking();
     const abierto = app.querySelector('.marca-form select');
     if (abierto && !E.errorForm) abierto.focus({ preventScroll: true });
@@ -3656,6 +3750,7 @@ ${p.tareas_mes ? `<span class="uso-hoy">📋 Tareas del mes: ${p.tareas_mes.hech
     const f = new FormData(form);
     const btn = form.querySelector('button:not([type=button])');
     if (tipo.indexOf('chat-') === 0) { await enviarFormChat(tipo, form); return; }
+    if (tipo.indexOf('ped-') === 0) { await enviarFormPedido(tipo, form, btn); return; }
     if (tipo === 'login') {
       btn.disabled = true;
       try {
@@ -3791,6 +3886,7 @@ ${p.tareas_mes ? `<span class="uso-hoy">📋 Tareas del mes: ${p.tareas_mes.hech
       if (faltaElCierre()) recordarCierre(irse); else irse();
     } else if (a === 'cerrar-app') cerrarApp();
     else if (a.indexOf('chat-') === 0) accionChat(a, el);
+    else if (a.indexOf('ped-') === 0) await accionPedido(a, el);
     else if (a === 'fichaje') {
       el.disabled = true;
       try {
