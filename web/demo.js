@@ -326,14 +326,14 @@
         const d = serie[m];
         const ren = Math.round((d.activos || 100) * 0.72), baj = Math.max(1, Math.round(ren * 0.12)), nue = Math.round((d.altas || 20) * 0.25);
         const enCurso = m === hoy.slice(0, 7);
-        d.desercion_move = d.desercion; d.desercion = Math.round(baj / ren * 1000) / 10;
-        d.real = { renuevan: ren, bajas: baj, nuevos: nue, pendientes: enCurso ? 9 : 0, desercion: d.desercion, a_liquidar: ren + baj + (enCurso ? 9 : 0), liquidados: ren,
+        const rea = Math.round(ren * 0.08); d.desercion_move = d.desercion; d.desercion = Math.round(baj / (ren + baj) * 1000) / 10;
+        d.real = { renuevan: ren, bajas: baj, reactivados: rea, bajas_7: baj + rea, vencian: ren + baj, desercion_neta: Math.round(baj / (ren + baj) * 1000) / 10, nuevos: nue, pendientes: enCurso ? 9 : 0, desercion: Math.round((baj + rea) / (ren + baj) * 1000) / 10, a_liquidar: ren + baj + (enCurso ? 9 : 0), liquidados: ren,
           pagos_renov: ren, atrasados: Math.round(ren * 0.3), pct_atrasados: 30, dias_prom: 9.5, atraso_hasta_7: Math.round(ren * 0.2), atraso_8_15: Math.round(ren * 0.06), atraso_16: Math.round(ren * 0.04),
           uso_socios: ren + nue, uso_visitas: (ren + nue) * 6, uso_prom: 6, uso_0: 4, uso_1_4: 20, uso_5_8: 40, uso_9_12: 25, uso_13: 10 };
         if (tipo === 'sede' && k >= Object.keys(serie).length - 2) d.real.lista = {
           pendientes: [['PL4', 'Domínguez Paula', 'Profe', hoy], ['PL5', 'Escobar Martín', 'Profe', hoy]],
           bajas: [['PL7', 'Giménez Hugo', 'Profe', hoy]], atrasados: [['PL6', 'Ferreyra Daniela', 'Profe', 12], ['PL1', 'Acosta Valeria', 'Profe', 4]],
-          nuevos: [['PL11', 'Ledesma Nicolás', 'Profe', '']], sin_venir: [['PL3', 'Cabrera Luján', 'Profe', '']] };
+          nuevos: [['PL11', 'Ledesma Nicolás', 'Profe', '']], reactivados: [['PL6', 'Ferreyra Daniela', 'Profe', 12]], sin_venir: [['PL3', 'Cabrera Luján', 'Profe', '']] };
       });
       return serie;
     }
