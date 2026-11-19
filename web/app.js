@@ -2752,6 +2752,14 @@ ${p.tareas_mes ? `<span class="uso-hoy">📋 Tareas del mes: ${p.tareas_mes.hech
       ${lista ? `<div class="lista-cob">${lista}</div>` : '<div class="vacio">No hay coberturas cargadas este mes.</div>'}</section>`;
   }
 
+  // A quién se le puede pasar una tarea: la gente de la sede y, aparte, las demás sedes
+  function opcionesDestino(S, actual) {
+    const lista = (S.destinos || S.personas.map(p => ({ dni: p.dni, nombre: p.nombre, sede: S.sede }))).filter(p => p.dni !== actual);
+    const grupo = (rotulo, ps) => ps.length ? `<optgroup label="${esc(rotulo)}">${ps.map(p => `<option value="${esc(p.dni)}">Pasar a ${esc(p.nombre)}</option>`).join('')}</optgroup>` : '';
+    return grupo('De ' + (SEDES[S.sede] || 'esta sede'), lista.filter(p => p.sede === S.sede))
+      + Object.keys(SEDES).filter(k => k !== S.sede).map(k => grupo('De ' + SEDES[k], lista.filter(p => p.sede === k))).join('');
+  }
+
   function vistaSede() {
     if (E.personaDni) return vistaPersona();
     const selector = tiene('admin') ? `<div class="filtros">${Object.keys(SEDES).map(k => `<button class="chip" data-accion="sede-elegir" data-s="${k}" aria-pressed="${E.sedeElegida === k}">${SEDES[k]}</button>`).join('')}</div>` : '';
@@ -2771,7 +2779,7 @@ ${p.tareas_mes ? `<span class="uso-hoy">📋 Tareas del mes: ${p.tareas_mes.hech
           <span class="socio">${esc(t.socio_nombre)}</span><span class="estado atrasada">${t.dias_pendiente} días</span>
           <span class="profe">${esc(t.tipo)} · tiene ${esc(t.asignado_nombre || nombre(t.asignado_dni))}</span>
           <span class="accion">${conLinks(t.accion)}</span></div>
-        <div class="fila-accion"><select data-reasignar="${esc(t.id)}" aria-label="Pasar a">${S.personas.filter(p => p.dni !== t.asignado_dni).map(p => `<option value="${esc(p.dni)}">Pasar a ${esc(p.nombre)}</option>`).join('')}</select>
+        <div class="fila-accion"><select data-reasignar="${esc(t.id)}" aria-label="Pasar a">${opcionesDestino(S, t.asignado_dni)}</select>
           <button class="boton claro" data-accion="reasignar" data-id="${esc(t.id)}">Reasignar</button></div></article>`).join('')
       : '<div class="vacio">Sin tareas atrasadas. Todo al día.</div>';
     const garantias = S.garantias.length ? S.garantias.map(g => `<article class="tarjeta">

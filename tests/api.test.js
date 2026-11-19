@@ -405,12 +405,16 @@ test('sede: permisos', () => {
 test('reasignar', () => {
   const d = equipo({ tareas: [tarea({ pendiente_desde: '2026-11-05' })] });
   const c = entrar(d, '25111222', '0907');
-  assert.equal(pedir(d, { accion: 'reasignar', token: c, tarea_id: 'T1', dni: '26555666' }).error, 'datos_invalidos');
+  assert.equal(pedir(d, { accion: 'reasignar', token: c, tarea_id: 'T1', dni: '00000000' }).error, 'datos_invalidos');
   assert.equal(pedir(d, { accion: 'reasignar', token: entrar(d, '25333444', '0907'), tarea_id: 'T1', dni: '28999888' }).error, 'prohibido');
   assert.equal(pedir(d, { accion: 'reasignar', token: entrar(d), tarea_id: 'T1', dni: '28999888' }).error, 'prohibido');
   assert.ok(pedir(d, { accion: 'reasignar', token: c, tarea_id: 'T1', dni: '28999888' }).ok);
   assert.equal(d.repo.hojas.tareas[0].asignado_dni, '28999888');
   assert.equal(d.repo.hojas.tareas[0].pendiente_desde, '2026-11-05');
+  // también se puede pasar a alguien de otra sede
+  assert.ok(pedir(d, { accion: 'reasignar', token: c, tarea_id: 'T1', dni: '26555666' }).ok);
+  assert.equal(d.repo.hojas.tareas[0].asignado_dni, '26555666');
+  assert.ok(pedir(d, { accion: 'sede', token: c }).data.destinos.some(x => x.dni === '26555666'));
 });
 
 test('garantía: crear y decidir', () => {
@@ -851,7 +855,8 @@ test('venta de 3 meses: queda para quien cobró, se puede dar o pedir, y suma a 
   assert.equal(pedir(d, { accion: 'venta_larga_responder', token: ana, id: '1', acepta: true }).ok, true);
   const r = pedir(d, { accion: 'rendimiento', token: admin, sede: 'bolson', mes: '2026-11' }).data.personas;
   assert.equal(r.find(p => p.dni === '30123456').valores.planes_largos, 1);
-  assert.equal(r.find(p => p.dni === TARDE.dni).valores.planes_largos, 1);
+  // Se cuenta de las filas, no del cálculo del día: cobró 3, dio 1, le quedan 2
+  assert.equal(r.find(p => p.dni === TARDE.dni).valores.planes_largos, 2);
   // La otra persona la pide; quien cobró la rechaza: deciden Lucía y Emanuel
   assert.equal(pedir(d, { accion: 'venta_larga_pedir', token: ana, id: '2' }).ok, true);
   assert.equal(pedir(d, { accion: 'venta_larga_responder', token: tarde, id: '2', acepta: false }).ok, true);
@@ -862,6 +867,15 @@ test('venta de 3 meses: queda para quien cobró, se puede dar o pedir, y suma a 
   pedir(d, { accion: 'venta_larga_pedir', token: tarde, id: '3', dni: '30123456' });
   pedir(d, { accion: 'venta_larga_responder', token: ana, id: '3', acepta: false });
   assert.deepEqual(diaDe(tarde).cobradas.map(v => v.id), ['3']);
+});
+
+test('planes de 3 meses: cuentan para quien cobró aunque el cálculo del día vaya atrasado en 0', () => {
+  const fila = id => ({ id, fecha: '2026-11-08', sede: 'bolson', dni_cobro: TARDE.dni, nombre_cobro: TARDE.nombre, socio_id: '5', socio_nombre: 'Socia', plan: 'plan de 3 meses', tipo: 'renovacion', sugerido_dni: '' });
+  const d = equipo({ rendimiento: [{ mes: '2026-11', dni: TARDE.dni, datos: JSON.stringify({ planes_largos: 0 }), actualizado: '' }] });
+  pedir(d, { accion: 'cargar_ventas_largas', clave: 'clave-prueba', filas: [fila('a'), fila('b'), fila('c'), { ...fila('d'), plan: 'ingreso', largo: 'no' }] });
+  const admin = entrar(d, '20000001', '0907');
+  const r = pedir(d, { accion: 'rendimiento', token: admin, sede: 'bolson', mes: '2026-11' }).data.personas;
+  assert.equal(r.find(p => p.dni === TARDE.dni).valores.planes_largos, 3);
 });
 
 test('fichaje: recepción en turno ve el recordatorio, se cierra solo y se puede marcar', () => {

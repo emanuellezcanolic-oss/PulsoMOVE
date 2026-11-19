@@ -370,6 +370,8 @@ test('resultados: cada tarea muestra solo los que le corresponden, y todos son v
   assert.ok(!valores('Socio nuevo · semana 1: confirmar rutina y turnos fijos').includes('PAGÓ'));
   assert.ok(valores('Socio nuevo · semana 2: mensaje de recepción (obligatorio)').includes('RESPONDIÓ'));
   assert.ok(valores('Algo nuevo').includes('VOLVIÓ'));
+  assert.deepEqual(valores('Socio nuevo · semana 3: encuesta de satisfacción'), ['ENCUESTA ENVIADA', 'RESPONDIÓ', 'NO CONTESTA', 'TEL MAL']);
+  assert.deepEqual(valores('Premio a la constancia'), ['SALUDADO', 'RESPONDIÓ']);
   ['Socio nuevo · semana 2', 'Socio nuevo · semana 1', 'Le vence el plan', 'Vence en 7 días', 'Vencieron y no renovaron', 'Socio antiguo', 'Para hablar cuando vengan', 'De vacaciones', 'Riesgo alto', 'Pagó y no viene', 'Faltó toda la semana', 'Viene menos que antes'].forEach(t => valores(t).forEach(v => assert.ok(L.RESULTADOS.includes(v), t + ': ' + v)));
 });
 

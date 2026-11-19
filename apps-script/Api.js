@@ -213,7 +213,11 @@ function vistaSede(req, deps) {
   const hoyVentas = deps.repo.leer('ventas_largas').filter(v => v.sede === sede && v.estado === 'pedida');
   const pedidosSinResponder = Object.keys(hoyVentas.reduce((o, v) => { o[v.responde_dni] = 1; return o; }, {})).map(dni => Object.assign({ nombre: nombre(dni) }, resumenVentasPendientes(hoyVentas.filter(v => v.responde_dni === dni), hoy)))
     .sort((a, b) => b.dias - a.dias);
-  return { hoy: hoy, sede: sede, personas: personas, pedidos_sin_responder: pedidosSinResponder, alertas: alertas, garantias: garantias, beneficios: beneficiosParaAutorizar(usuario, deps), stock: ultimoStock(usuario, sede, deps), ventas: ventasDeSede(usuario, sede, deps), ventas_largas: ventasLargasDeSede(usuario, usuarios, sede, deps) };
+  // A quién se le puede pasar una tarea: todo el equipo activo, primero la gente de la sede
+  const destinos = usuarios.filter(u => esVerdad(u.activo) && (tieneRol(u, 'recepcion') || tieneRol(u, 'coordinador') || tieneRol(u, 'admin')))
+    .map(u => ({ dni: u.dni, nombre: u.nombre, sede: u.sede }))
+    .sort((a, b) => (a.sede === sede ? 0 : 1) - (b.sede === sede ? 0 : 1) || String(a.sede).localeCompare(String(b.sede)) || String(a.nombre).localeCompare(String(b.nombre)));
+  return { hoy: hoy, sede: sede, personas: personas, destinos: destinos, pedidos_sin_responder: pedidosSinResponder, alertas: alertas, garantias: garantias, beneficios: beneficiosParaAutorizar(usuario, deps), stock: ultimoStock(usuario, sede, deps), ventas: ventasDeSede(usuario, sede, deps), ventas_largas: ventasLargasDeSede(usuario, usuarios, sede, deps) };
 }
 
 // Lista de una persona tal como la ve ella, con lo que marcó en cada tarea. Admin: cualquiera; coordinador: su sede.
@@ -240,7 +244,8 @@ function reasignar(req, deps) {
   if (!t) falla('no_existe');
   sedePermitida(usuario, t.sede);
   const destino = usuarios.find(u => u.dni === normalizarDni(req.dni));
-  if (!destino || destino.sede !== t.sede || !esVerdad(destino.activo) || !tieneRol(destino, 'recepcion')) falla('datos_invalidos');
+  // Se puede pasar a cualquier persona del equipo, de la sede que sea (Emanuel, 19/11/2026)
+  if (!destino || !esVerdad(destino.activo) || !(tieneRol(destino, 'recepcion') || tieneRol(destino, 'coordinador') || tieneRol(destino, 'admin'))) falla('datos_invalidos');
   t.asignado_dni = destino.dni;
   deps.repo.escribir('tareas', tareas);
   return {};
@@ -411,7 +416,16 @@ function ventaLargaDecidir(req, deps) {
 }
 
 // La venta suma a quien vendió y se le saca a quien solo cobró
+// Los planes de 3 meses se cuentan de las propias filas de ventas_largas (no del cálculo del día, que puede ir atrasado):
+// cada plan es de quien cobró, salvo que otra persona lo haya reclamado y se le haya asignado (Emanuel, 18/11/2026).
+function largosDeFilas(dni, mes, filas) {
+  const delMes = filas.filter(v => String(v.fecha).indexOf(mes) === 0 && String(v.fecha) >= INICIO_REAL && v.largo !== 'no');
+  if (!delMes.length) return null;
+  return delMes.filter(v => (v.estado === 'asignada' ? v.dni_vendio : v.dni_cobro) === dni).length;
+}
+
 function ajustarVentasLargas(valores, dni, mes, filas) {
+  const propios = largosDeFilas(dni, mes, filas);
   filas.filter(v => v.estado === 'asignada' && v.dni_vendio !== v.dni_cobro && String(v.fecha).indexOf(mes) === 0 && String(v.fecha) >= INICIO_REAL).forEach(v => {
     const signo = dni === v.dni_vendio ? 1 : dni === v.dni_cobro ? -1 : 0;
     if (!signo) return;
@@ -421,6 +435,7 @@ function ajustarVentasLargas(valores, dni, mes, filas) {
     if (v.largo !== 'no') valores.planes_largos = Math.max(0, (Number(valores.planes_largos) || 0) + signo);
     valores[clave] = Math.max(0, (Number(valores[clave]) || 0) + signo);
   });
+  if (propios !== null) valores.planes_largos = propios;
   return valores;
 }
 
