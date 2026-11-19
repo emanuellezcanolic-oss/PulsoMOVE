@@ -320,9 +320,26 @@
     // Estado del gym de práctica (números inventados): 18 meses por sede y por profe
     const serieDemo = (base, desc, semilla) => { const o = {}; const d0 = new Date(hoy.slice(0, 7) + '-15T12:00:00Z'); for (let k = 17; k >= 0; k--) { const d = new Date(d0); d.setUTCMonth(d.getUTCMonth() - k); const m = d.toISOString().slice(0, 7); const mm = d.getUTCMonth();
       const est = [1.1, 1.3, 1, 0.9, 0.9, 1, 1.2, 0.9, 0.8, 0.9, 1.1, 1.4][mm]; o[m] = { tipo: k ? 'cierre' : 'en_curso', activos: Math.round(base * (1 + ((k * semilla) % 7) / 40)), altas: Math.round(base * (k ? 0.92 : 0.45) - (k * semilla) % 9), desercion: Math.round(desc * est * (1 + ((k + semilla) % 5) / 12) * 10) / 10, reeval: 10 + (k * 3 + semilla) % 25, perfil: 80 + (k + semilla) % 15, objetivo: 70 + (k * 2 + semilla) % 25 }; } return o; };
+    // Deserción real, atrasos, uso y listas para desplegar (como los arma la PC con pulso_estado_real.py): nombres inventados
+    function conRealDemo(tipo, serie) {
+      Object.keys(serie).forEach((m, k) => {
+        const d = serie[m];
+        const ren = Math.round((d.activos || 100) * 0.72), baj = Math.max(1, Math.round(ren * 0.12)), nue = Math.round((d.altas || 20) * 0.25);
+        const enCurso = m === hoy.slice(0, 7);
+        d.desercion_move = d.desercion; d.desercion = Math.round(baj / ren * 1000) / 10;
+        d.real = { renuevan: ren, bajas: baj, nuevos: nue, pendientes: enCurso ? 9 : 0, desercion: d.desercion, a_liquidar: ren + baj + (enCurso ? 9 : 0), liquidados: ren,
+          pagos_renov: ren, atrasados: Math.round(ren * 0.3), pct_atrasados: 30, dias_prom: 9.5, atraso_hasta_7: Math.round(ren * 0.2), atraso_8_15: Math.round(ren * 0.06), atraso_16: Math.round(ren * 0.04),
+          uso_socios: ren + nue, uso_visitas: (ren + nue) * 6, uso_prom: 6, uso_0: 4, uso_1_4: 20, uso_5_8: 40, uso_9_12: 25, uso_13: 10 };
+        if (tipo === 'sede' && k >= Object.keys(serie).length - 2) d.real.lista = {
+          pendientes: [['PL4', 'Domínguez Paula', 'Profe', hoy], ['PL5', 'Escobar Martín', 'Profe', hoy]],
+          bajas: [['PL7', 'Giménez Hugo', 'Profe', hoy]], atrasados: [['PL6', 'Ferreyra Daniela', 'Profe', 12], ['PL1', 'Acosta Valeria', 'Profe', 4]],
+          nuevos: [['PL11', 'Ledesma Nicolás', 'Profe', '']], sin_venir: [['PL3', 'Cabrera Luján', 'Profe', '']] };
+      });
+      return serie;
+    }
     const profe_estado = [['sede:bolson', 'sede', 'El Bolsón', 'bolson', 360, 18, 1], ['sede:puelo', 'sede', 'Lago Puelo', 'puelo', 220, 16, 2], ['sede:bariloche', 'sede', 'Bariloche', 'bariloche', 225, 15, 3],
       ['prof:1', 'profe', 'Profe Mañana (práctica)', 'bolson', 95, 14, 4], ['prof:2', 'profe', 'Profe Tarde (práctica)', 'bolson', 85, 22, 5], ['prof:3', 'profe', 'Profe Noche (práctica)', 'bolson', 60, 30, 6], ['prof:4', 'kine', 'Kine (práctica)', 'bolson', 20, 12, 2]]
-      .map(([clave, tipo, nombre, sede, base, desc, sem]) => ({ clave, tipo, nombre, sede, datos: JSON.stringify(serieDemo(base, desc, sem)), cargada: hoy }));
+      .map(([clave, tipo, nombre, sede, base, desc, sem]) => ({ clave, tipo, nombre, sede, datos: JSON.stringify(conRealDemo(tipo, serieDemo(base, desc, sem))), cargada: hoy }));
     // 📋 Planilla de socios de práctica: nombres inventados, un caso de cada cosa (vence, baja automática, vacaciones, derivado, MOVE con otro profe…)
     const enDias = n => { const d = new Date(hoy + 'T12:00:00Z'); d.setUTCDate(d.getUTCDate() + n); return d.toISOString().slice(0, 10); };
     const mesHoy = Number(hoy.slice(5, 7)), anioHoy = hoy.slice(0, 4);

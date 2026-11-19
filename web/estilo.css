@@ -996,3 +996,9 @@ dialog:has(.pl-datos) { width: min(560px, calc(100% - 20px)); max-height: calc(1
 .ped-check { display: inline-flex; gap: 6px; align-items: center; font-size: 14px; }
 .ped-grupo-sede { margin: 8px 0; display: grid; gap: 4px; }
 .ped-fechas { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 10px; }
+
+/* Estado del gym: listas de socios que se despliegan al tocar (Emanuel, 19/11/2026) */
+.lista-estado { margin: .35rem 0; }
+.lista-estado summary { cursor: pointer; font-weight: 600; padding: .2rem 0; }
+.lista-estado ul { max-height: 280px; overflow: auto; margin: .3rem 0 .5rem; padding-left: 1.1rem; font-size: .9rem; }
+.lista-estado li { margin: .15rem 0; }

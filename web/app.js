@@ -1579,6 +1579,7 @@
         <div class="estado-chips"><div><strong>${d.activos ?? '—'}</strong><span>activos</span></div><div><strong class="verde">${d.altas ?? '—'}</strong><span>altas</span></div><div><strong class="amarillo">${prom != null ? Math.round(prom) + '%' : '—'}</strong><span>prom. año</span></div>
           ${dif != null && Math.abs(dif) >= 0.5 ? `<div><strong class="${dif > 0 ? 'rojo' : 'verde'}">${dif > 0 ? '↑' : '↓'} ${num1(Math.abs(dif))}%</strong><span>vs ${esc(MES_CORTO[Number(prev(mes).slice(5, 7)) - 1])}</span></div>` : ''}</div>
         ${vs25 != null ? `<div class="estado-vs">vs ${esc(haceUnAnio(mes).slice(0, 4))}: <b class="${vs25 >= 0 ? 'verde' : 'rojo'}">${d.altas - d25.altas >= 0 ? '+' : ''}${d.altas - d25.altas} altas (${vs25 >= 0 ? '+' : ''}${vs25}%)</b></div>` : ''}
+        ${d.desercion_move != null && Math.abs(d.desercion_move - (d.desercion || 0)) >= 1 ? `<div class="estado-vs">Deserción según MOVE: ${num1(d.desercion_move)}% (cuenta como baja al que paga tarde)</div>` : ''}
         ${d.reeval != null ? `<div class="estado-vs">Reevaluó al ${num1(d.reeval)}% · perfil ${num1(d.perfil)}% · objetivo ${num1(d.objetivo)}%</div>` : ''}</div>`;
     };
 
@@ -1589,15 +1590,31 @@
       const prom = Math.round(cerrados.reduce((a, m) => a + s.datos[m].altas, 0) / cerrados.length);
       const mejor = cerrados.reduce((a, m) => (s.datos[m].altas > s.datos[a].altas ? m : a), cerrados[0]);
       const mv = s.datos[mejor].altas, act = d.altas || 0;
-      if (!enCurso) return `<div class="meta-sede"><b>Ventas · ${esc(mesTxt(mes))}</b><div class="estado-chips"><div><strong>${act}</strong><span>altas del mes</span></div><div><strong class="${act >= prom ? 'verde' : 'rojo'}">${act - prom >= 0 ? '+' : ''}${act - prom}</strong><span>vs promedio (${prom})</span></div><div><strong>${mv}</strong><span>mejor mes (${esc(mesTxt(mejor))})</span></div></div></div>`;
-      const techo = d.activos || 0, falta = Math.max(0, techo - act), pct = techo ? Math.round(act / techo * 100) : 0;
-      const frase = techo >= mv ? `Si renuevan los <b>${techo}</b> activos sería <b class="verde">récord</b> (supera a ${esc(mesTxt(mejor))}: ${mv}).`
+      const r = d.real || null;
+      // Las listas se despliegan tocando el número (Emanuel, 19/11/2026): quiénes son, con su profe y el dato que importa
+      const lista = (tipo, titulo, extra) => {
+        const xs = (r && r.lista && r.lista[tipo]) || [];
+        if (!xs.length) return '';
+        return `<details class="lista-estado"><summary>${titulo} (${xs.length})</summary><ul>${xs.map(x => `<li><b>${esc(x[1])}</b> <small>N° ${esc(x[0])} · ${esc(x[2])}${extra(x[3]) ? ' · ' + esc(extra(x[3])) : ''}</small></li>`).join('')}</ul></details>`;
+      };
+      const fechaCorta = v => (v ? ddmm(String(v)) : '');
+      const listas = r ? lista('pendientes', '⏳ Faltan renovar', v => (v ? 'vence ' + fechaCorta(v) : '')) + lista('bajas', '🚪 Bajas', v => (v ? 'venció ' + fechaCorta(v) : ''))
+        + lista('atrasados', '💸 Pagaron atrasados', v => v + ' días tarde') + lista('nuevos', '🆕 Nuevos', () => '') + lista('sin_venir', '😴 Activos que no vinieron', v => (v ? 'última visita ' + fechaCorta(v) : 'sin visitas')) : '';
+      const atraso = r && r.pagos_renov ? `<p class="aclara">💸 <b>Pagan atrasados:</b> ${r.atrasados} de ${r.pagos_renov} renovaciones pagas (${num1(r.pct_atrasados)}%)${r.dias_prom != null ? `, ${num1(r.dias_prom)} días de atraso en promedio` : ''} · hasta 7 días: ${r.atraso_hasta_7} · 8 a 15: ${r.atraso_8_15} · más de 15: ${r.atraso_16}. Se cuenta desde el vencimiento, con 2 días de margen. Pagar tarde no es baja: la membresía se renueva desde el vencimiento, pero la plata entra después.</p>` : '';
+      const uso = r && r.uso_socios ? `<p class="aclara">🏋️ <b>Uso del gimnasio${enCurso ? ' (hasta hoy)' : ''}:</b> ${num1(r.uso_prom)} visitas por socio activo (${r.uso_visitas} visitas de ${r.uso_socios} socios) · sin venir: ${r.uso_0} · 1 a 4: ${r.uso_1_4} · 5 a 8: ${r.uso_5_8} · 9 a 12: ${r.uso_9_12} · 13 o más: ${r.uso_13}. Cuenta las asistencias con QR: quien entrena sin escanear figura como que no vino.</p>` : '';
+      if (!enCurso) return `<div class="meta-sede"><b>Ventas · ${esc(mesTxt(mes))}</b><div class="estado-chips"><div><strong>${act}</strong><span>altas del mes</span></div><div><strong class="${act >= prom ? 'verde' : 'rojo'}">${act - prom >= 0 ? '+' : ''}${act - prom}</strong><span>vs promedio (${prom})</span></div><div><strong>${mv}</strong><span>mejor mes (${esc(mesTxt(mejor))})</span></div></div>${r ? `<p>Vencían <b>${r.a_liquidar}</b> socios: renovaron <b>${r.liquidados}</b> y se dieron de baja <b>${r.bajas}</b> (deserción real ${num1(r.desercion)}%). Entraron <b>${r.nuevos}</b> nuevos.</p>` : ''}${atraso}${uso}${listas}</div>`;
+      // A liquidar = los que tenían que renovar este mes (renovaron + bajas + los que vencen y todavía no renovaron); liquidados = los que
+      // renovaron. Los nuevos no entran: no se les dio tiempo de irse (Emanuel, 19/11/2026). Sin dato real, el viejo techo de activos.
+      const techo = r ? r.a_liquidar : (d.activos || 0), hechos = r ? r.liquidados : act;
+      const falta = r ? r.pendientes : Math.max(0, techo - act), pct = techo ? Math.round(hechos / techo * 100) : 0;
+      const frase = r ? `Este mes vencían <b>${techo}</b> socios: ya renovaron <b>${hechos}</b>, se dieron de baja <b>${r.bajas}</b> y faltan <b class="amarillo">${falta}</b>. Además entraron <b>${r.nuevos}</b> socios nuevos (altas del mes: ${act}; mejor mes ${esc(mesTxt(mejor))}: ${mv}).`
+        : techo >= mv ? `Si renuevan los <b>${techo}</b> activos sería <b class="verde">récord</b> (supera a ${esc(mesTxt(mejor))}: ${mv}).`
         : techo >= prom ? `Si renuevan los <b>${techo}</b> se supera el promedio (${prom}), pero no alcanza el récord de ${esc(mesTxt(mejor))} (${mv}).`
         : `Aun renovando los <b>${techo}</b> queda por debajo del promedio (${prom}): hacen falta <b class="amarillo">${prom - techo} altas nuevas</b> además de las renovaciones.`;
-      return `<div class="meta-sede"><b>🎯 Meta de ventas · ${esc(mesTxt(mes))}</b>
-        <div class="estado-chips"><div><strong>${techo}</strong><span>socios a liquidar (techo)</span></div><div><strong class="${pct >= 80 ? 'verde' : pct >= 50 ? 'amarillo' : 'rojo'}">${act}</strong><span>liquidados · ${pct}%</span></div>
-          <div><strong class="amarillo">${falta || '✓'}</strong><span>faltan · ${restan} días</span></div><div><strong>${mv}</strong><span>mejor mes · prom ${prom}</span></div></div>
-        <p>${frase}${restan && falta ? ` Para que no quede nadie sin renovar hacen falta <b>${num1(falta / restan)} por día</b>.` : ''}</p></div>`;
+      return `<div class="meta-sede"><b>🎯 Renovaciones del mes · ${esc(mesTxt(mes))}</b>
+        <div class="estado-chips"><div><strong>${techo}</strong><span>socios a liquidar</span></div><div><strong class="${pct >= 80 ? 'verde' : pct >= 50 ? 'amarillo' : 'rojo'}">${hechos}</strong><span>liquidados · ${pct}%</span></div>
+          <div><strong class="amarillo">${falta || '✓'}</strong><span>faltan · ${restan} días</span></div><div><strong>${mv}</strong><span>mejor mes de altas · prom ${prom}</span></div></div>
+        <p>${frase}${restan && falta ? ` Para que no quede nadie sin renovar hacen falta <b>${num1(falta / restan)} por día</b>.` : ''}</p>${atraso}${uso}${listas}</div>`;
     };
 
     // Gauss y homogeneidad: profes (no kines) con datos ese mes
@@ -1618,7 +1635,7 @@
 
     const anios = [...new Set(todosMeses.map(m => m.slice(0, 4)))];
     return `<h1 class="titulo">Resumen <span>·</span> estado del gym</h1>
-      <p class="bajada">Con los cierres mensuales de MOVE (Analíticas), no con las planillas. Datos al ${esc(ddmm(sedes[0].cargada))}. El mes en curso se actualiza cada mañana.</p>
+      <p class="bajada">Activos y altas, de los cierres mensuales de MOVE. La deserción es la real, como en la planilla de Excel: bajas sobre los que tenían que renovar, sin contar a los nuevos y con 7 días de changüí para pagar. Datos al ${esc(ddmm(sedes[0].cargada))}. El mes en curso se actualiza cada mañana.</p>
       <div class="filtros">${chips}</div>
       ${raros[mes] ? `<div class="aviso-mes urgente">⚠️ <b>Dato a revisar:</b> en ${esc(mesTxt(mes))} MOVE da una deserción que se despega mucho de lo habitual (${esc(raros[mes].join(' · '))}). Puede ser un problema del cálculo de MOVE ese mes: conviene consultarlo con Teo antes de sacar conclusiones. Este mes no entra en los promedios ni en la estacionalidad.</div>` : ''}
       ${sedes.map(s => `<section class="grupo estado-sede"><h2>📍 ${esc(s.nombre)}</h2>${metaSede(s)}
