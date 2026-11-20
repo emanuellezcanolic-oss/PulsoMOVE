@@ -1567,6 +1567,8 @@
     const diasMes = new Date(Date.UTC(Number(mes.slice(0, 4)), Number(mes.slice(5, 7)), 0)).getUTCDate();
     const restan = enCurso ? Math.max(0, diasMes - Number(D.hoy.slice(8, 10))) : 0;
 
+    // Tentativa del mes en curso (Emanuel, 19/11/2026): solo sobre los socios ya decididos, con "falta cerrar el mes"
+    const tent = d => enCurso && d && d.real && d.real.en_curso && d.real.tentativa != null;
     const tarjetaProfe = p => {
       const d = p.datos[mes] || {}, dp = p.datos[prev(mes)] || {}, d25 = p.datos[haceUnAnio(mes)] || {};
       const [col, txt] = semaforo(d.desercion);
@@ -1575,11 +1577,12 @@
       const dif = d.desercion != null && dp.desercion != null ? d.desercion - dp.desercion : null;
       const vs25 = d25.altas && !enCurso ? Math.round((d.altas - d25.altas) / d25.altas * 100) : null;   // el mes en curso todavía no se compara
       return `<div class="estado-card"><div class="estado-cab"><span class="estado-punto ${col}"></span><div><b>${esc(p.nombre.split(' ')[0])}</b>${p.tipo === 'kine' ? ' <small>kine</small>' : ''}
-          <span class="${col}">${txt} · ${num1(d.desercion)}% deserción ${esc(MES_CORTO[Number(mes.slice(5, 7)) - 1])}</span></div></div>
+          <span class="${col}">${txt} · ${num1(d.desercion)}% ${tent(d) ? 'tentativa' : 'deserción'} ${esc(MES_CORTO[Number(mes.slice(5, 7)) - 1])}</span></div></div>
         <div class="estado-chips"><div><strong>${d.activos ?? '—'}</strong><span>activos</span></div><div><strong class="verde">${d.altas ?? '—'}</strong><span>altas</span></div><div><strong class="amarillo">${prom != null ? Math.round(prom) + '%' : '—'}</strong><span>prom. año</span></div>
           ${dif != null && Math.abs(dif) >= 0.5 ? `<div><strong class="${dif > 0 ? 'rojo' : 'verde'}">${dif > 0 ? '↑' : '↓'} ${num1(Math.abs(dif))}%</strong><span>vs ${esc(MES_CORTO[Number(prev(mes).slice(5, 7)) - 1])}</span></div>` : ''}</div>
         ${vs25 != null ? `<div class="estado-vs">vs ${esc(haceUnAnio(mes).slice(0, 4))}: <b class="${vs25 >= 0 ? 'verde' : 'rojo'}">${d.altas - d25.altas >= 0 ? '+' : ''}${d.altas - d25.altas} altas (${vs25 >= 0 ? '+' : ''}${vs25}%)</b></div>` : ''}
-        ${d.real && d.real.desercion != null ? `<div class="estado-vs">No renovaron a la semana (caja): ${num1(d.real.desercion)}% · ${d.real.reactivados || 0} volvieron después</div>` : ''}
+        ${tent(d) ? `<div class="estado-vs">⏳ Falta cerrar el mes: ${d.real.no_renovaron} de ${d.real.decididos} decididos no renovaron · quedan ${d.real.en_plazo + d.real.por_vencer} por decidir</div>` : ''}
+        ${d.real && d.real.desercion != null && !tent(d) ? `<div class="estado-vs">No renovaron a la semana (caja): ${num1(d.real.desercion)}% · ${d.real.reactivados || 0} volvieron después</div>` : ''}
         ${d.desercion_move != null && Math.abs(d.desercion_move - (d.desercion || 0)) >= 1 ? `<div class="estado-vs">Según MOVE: ${num1(d.desercion_move)}%</div>` : ''}
         ${d.reeval != null ? `<div class="estado-vs">Reevaluó al ${num1(d.reeval)}% · perfil ${num1(d.perfil)}% · objetivo ${num1(d.objetivo)}%</div>` : ''}</div>`;
     };
@@ -1612,7 +1615,13 @@
         : techo >= mv ? `Si renuevan los <b>${techo}</b> activos sería <b class="verde">récord</b> (supera a ${esc(mesTxt(mejor))}: ${mv}).`
         : techo >= prom ? `Si renuevan los <b>${techo}</b> se supera el promedio (${prom}), pero no alcanza el récord de ${esc(mesTxt(mejor))} (${mv}).`
         : `Aun renovando los <b>${techo}</b> queda por debajo del promedio (${prom}): hacen falta <b class="amarillo">${prom - techo} altas nuevas</b> además de las renovaciones.`;
-      return `<div class="meta-sede"><b>🎯 Renovaciones del mes · ${esc(mesTxt(mes))}</b>
+      const tentativa = r && r.en_curso && r.tentativa != null ? (() => {
+        const falta2 = r.en_plazo + r.por_vencer, [col] = semaforo(r.tentativa);
+        return `<div class="tentativa"><b>📉 Tentativa de baja del mes · falta cerrar el mes</b>
+          <div class="estado-chips"><div><strong class="${col}">${num1(r.tentativa)}%</strong><span>hasta hoy · ${r.no_renovaron} de ${r.decididos}</span></div><div><strong class="amarillo">${falta2}</strong><span>por decidir</span></div><div><strong>${num1(r.piso)}%</strong><span>mínimo asegurado</span></div></div>
+          <p class="aclara">De los <b>${r.vencen_mes}</b> socios que vencen este mes ya se decidieron <b>${r.decididos}</b>: renovaron <b>${r.renovaron_dec}</b> y <b>${r.no_renovaron}</b> pasaron la semana sin renovar. Faltan <b>${falta2}</b> (${r.en_plazo} vencidos hace menos de 7 días y ${r.por_vencer} que todavía no vencen). Si los que faltan se comportan como hasta ahora, el mes cerraría cerca del <b>${num1(r.tentativa)}%</b>; aunque renovaran todos, no baja del <b>${num1(r.piso)}%</b>. El semáforo mira solo lo ya decidido.</p>${lista('no_renovaron', '🚪 Pasaron la semana sin renovar', v => (v ? 'venció ' + fechaCorta(v) : ''))}</div>`;
+      })() : '';
+      return `<div class="meta-sede">${tentativa}<b>🎯 Renovaciones del mes · ${esc(mesTxt(mes))}</b>
         <div class="estado-chips"><div><strong>${techo}</strong><span>socios a liquidar</span></div><div><strong class="${pct >= 80 ? 'verde' : pct >= 50 ? 'amarillo' : 'rojo'}">${hechos}</strong><span>liquidados · ${pct}%</span></div>
           <div><strong class="amarillo">${falta || '✓'}</strong><span>faltan · ${restan} días</span></div><div><strong>${mv}</strong><span>mejor mes de altas · prom ${prom}</span></div></div>
         <p>${frase}${restan && falta ? ` Para que no quede nadie sin renovar hacen falta <b>${num1(falta / restan)} por día</b>.` : ''}</p>${atraso}${uso}${listas}</div>`;

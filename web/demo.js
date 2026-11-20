@@ -330,10 +330,16 @@
         d.real = { renuevan: ren, bajas: baj, reactivados: rea, bajas_7: baj + rea, vencian: ren + baj, desercion_neta: Math.round(baj / (ren + baj) * 1000) / 10, nuevos: nue, pendientes: enCurso ? 9 : 0, desercion: Math.round((baj + rea) / (ren + baj) * 1000) / 10, a_liquidar: ren + baj + (enCurso ? 9 : 0), liquidados: ren,
           pagos_renov: ren, atrasados: Math.round(ren * 0.3), pct_atrasados: 30, dias_prom: 9.5, atraso_hasta_7: Math.round(ren * 0.2), atraso_8_15: Math.round(ren * 0.06), atraso_16: Math.round(ren * 0.04),
           uso_socios: ren + nue, uso_visitas: (ren + nue) * 6, uso_prom: 6, uso_0: 4, uso_1_4: 20, uso_5_8: 40, uso_9_12: 25, uso_13: 10 };
+        if (enCurso) {   // tentativa del mes en curso: solo sobre los ya decididos
+          const dec = Math.round(ren * 0.6), nr = Math.max(1, Math.round(dec * 0.1)), ep = 6, pv = Math.round(ren * 0.3), base = dec + ep + pv;
+          Object.assign(d.real, { en_curso: true, vencen_mes: base, decididos: dec, renovaron_dec: dec - nr, no_renovaron: nr, en_plazo: ep, por_vencer: pv,
+            tentativa: Math.round(nr / dec * 1000) / 10, piso: Math.round(nr / base * 1000) / 10, techo: Math.round((nr + ep + pv) / base * 1000) / 10 });
+          d.desercion = d.real.tentativa;
+        }
         if (tipo === 'sede' && k >= Object.keys(serie).length - 2) d.real.lista = {
           pendientes: [['PL4', 'Domínguez Paula', 'Profe', hoy], ['PL5', 'Escobar Martín', 'Profe', hoy]],
           bajas: [['PL7', 'Giménez Hugo', 'Profe', hoy]], atrasados: [['PL6', 'Ferreyra Daniela', 'Profe', 12], ['PL1', 'Acosta Valeria', 'Profe', 4]],
-          nuevos: [['PL11', 'Ledesma Nicolás', 'Profe', '']], reactivados: [['PL6', 'Ferreyra Daniela', 'Profe', 12]], sin_venir: [['PL3', 'Cabrera Luján', 'Profe', '']] };
+          nuevos: [['PL11', 'Ledesma Nicolás', 'Profe', '']], no_renovaron: [['PL7', 'Giménez Hugo', 'Profe', hoy]], reactivados: [['PL6', 'Ferreyra Daniela', 'Profe', 12]], sin_venir: [['PL3', 'Cabrera Luján', 'Profe', '']] };
       });
       return serie;
     }
