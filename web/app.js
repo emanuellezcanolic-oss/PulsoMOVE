@@ -68,6 +68,12 @@
   const app = document.getElementById('app');
   const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
   // Solo los formularios de Google se vuelven link: es lo único que la app le pide mandar
+  // Tocar el nombre de un socio abre su ficha en el panel de MOVE (Emanuel, 21/11/2026: "para ahorrar buscar al socio").
+  // En lo de profes abre directo la pestaña de rutinas (planes). Solo va el número de socio en la dirección.
+  const MOVE_ADMIN = 'https://admin.themoveclub.club/usuarios/';
+  const linkSocio = (id, nombre, tab) => (/^\d+$/.test(String(id == null ? '' : id).trim())
+    ? `<span class="socio-link" data-accion="ir-socio" data-s="${esc(String(id).trim())}"${tab ? ` data-t="${tab}"` : ''} role="link" tabindex="0" title="Abrir en MOVE">${esc(nombre)} ↗</span>` : esc(nombre));
+  const nomSocio = (o, tab) => linkSocio(o && o.socio_id, o && o.socio_nombre, tab);
   const conLinks = s => esc(s).replace(/https:\/\/docs\.google\.com\/forms\/[A-Za-z0-9_\-\/]+/g, u => `<a href="${u}" target="_blank" rel="noopener">${u}</a>`);
   const historialSocio = t => (t.historial && t.historial.length ? `<details class="historial-socio"><summary>Lo que ya sabemos (${t.historial.length})</summary>${t.historial.map(h => `<span class="nota"><b>${esc(ddmmDe(h.ts))} · ${esc(h.tipo)}${h.resultado ? ' · ' + esc(NOMBRE_RESULTADO[h.resultado] || h.resultado) : ''}</b>${h.detalle ? ': “' + esc(h.detalle) + '”' : ''}</span>`).join('')}</details>` : '');
   const ddmmDe = ts => { const d = new Date(ts); return isNaN(d) ? '' : String(d.getDate()).padStart(2, '0') + '/' + String(d.getMonth() + 1).padStart(2, '0'); };
@@ -440,7 +446,7 @@
   // Se cierra sola cuando MOVE muestra el dato: no se marca a mano
   function tarjetaVerificada(t, i) {
     return `<article class="tarjeta${t.estado === 'hecha' ? ' hecha' : ''}" style="--i:${i}"><div class="cabeza">
-        <span class="socio">${esc(t.socio_nombre)}</span>${etiquetaEstado(t)}
+        <span class="socio">${nomSocio(t)}</span>${etiquetaEstado(t)}
         <span class="situacion">${esc(t.situacion)}</span>
         <span class="accion">${conLinks(t.accion)}</span>
         ${t.estado === 'hecha' ? '' : `<span class="nota">Hacelo en MOVE y tocá el botón. Mañana MOVE lo confirma: si sigue igual, la tarea vuelve a aparecer.</span>
@@ -451,7 +457,7 @@
   function tarjetaLectura(t, i) {
     const m = t.marca;
     return `<article class="tarjeta${t.estado === 'hecha' ? ' hecha' : ''}" style="--i:${i}"><div class="cabeza">
-        <span class="socio">${esc(t.socio_nombre)}</span>${etiquetaEstado(t)}
+        <span class="socio">${nomSocio(t)}</span>${etiquetaEstado(t)}
         <span class="profe">Profe: ${esc(t.profe || '—')}</span>
         <span class="situacion">${esc(t.situacion)}</span>
         <span class="accion">${conLinks(t.accion)}</span>
@@ -469,7 +475,7 @@
     const abierta = E.abierta === t.id;
     return `<article class="tarjeta${t.estado === 'hecha' ? ' hecha' : ''}" style="--i:${i}">
       <button class="cabeza" data-accion="abrir" data-id="${esc(t.id)}" aria-expanded="${abierta}">
-        <span class="socio">${esc(t.socio_nombre)}</span>${etiquetaEstado(t)}
+        <span class="socio">${nomSocio(t)}</span>${etiquetaEstado(t)}
         ${t.profe ? `<span class="profe">Profe: ${esc(t.profe)}</span>` : ''}
         ${String(t.tipo).indexOf('Entrena en otra sede') === 0 ? `<span class="cartel-sede">🏠 ${esc(t.situacion)}</span>` : `<span class="situacion">${esc(t.situacion)}</span>`}
         <span class="accion">${conLinks(t.accion)}</span>
@@ -560,7 +566,7 @@
     return `<section class="grupo espera-lista"><h2>⏳ Esperando confirmación <span class="cuenta">${lista.length}</span></h2>
       <p class="intro-grupo">No te cuentan como pendientes. Cada una vuelve a aparecer el día que elegiste.</p>
       ${lista.map(t => `<article class="tarjeta"><div class="cabeza" style="display:grid;gap:2px;padding:12px 14px">
-        <span class="socio">${esc(t.socio_nombre)}</span><span class="profe">${esc(t.tipo)}</span>
+        <span class="socio">${nomSocio(t)}</span><span class="profe">${esc(t.tipo)}</span>
         <span class="situacion">Espera: ${esc(t.en_espera.detalle)} · vuelve el ${ddmm(t.en_espera.hasta)}</span></div>
         <div class="fila-accion"><button class="boton verde" data-accion="espera-liberar" data-id="${esc(t.id)}">Ya me confirmaron</button></div></article>`).join('')}</section>`;
   }
@@ -712,7 +718,7 @@
 
   function tarjetaPlan(t, i, puedeMarcar, puedeTraer) {
     return `<article class="tarjeta${t.estado === 'hecha' ? ' hecha' : ''}" style="--i:${i}"><div class="cabeza">
-        <span class="socio">${esc(t.socio_nombre)}</span>${estadoPlan(t)}
+        <span class="socio">${nomSocio(t, 'routines')}</span>${estadoPlan(t)}
         <span class="situacion"><b>${esc(t.tipo)}</b> · ${esc(detallePlan(t))}</span>
         <span class="accion">${esc(t.accion)}</span>
         ${t.nota ? `<span class="nota">“${esc(t.nota)}”</span>` : ''}
@@ -775,7 +781,7 @@
   function tarjetaReeval(x, i) {
     const p = x.propuesta;
     return `<article class="tarjeta${x.pedida ? ' hecha' : ''}" style="--i:${i}"><div class="cabeza">
-        <span class="socio">${esc(x.socio_nombre)}</span>${x.dias != null && x.dias >= (E.planes.mio.reeval.meta_dias || 56) ? '<span class="estado atrasada">Toca reevaluar</span>' : ''}
+        <span class="socio">${nomSocio(x, 'routines')}</span>${x.dias != null && x.dias >= (E.planes.mio.reeval.meta_dias || 56) ? '<span class="estado atrasada">Toca reevaluar</span>' : ''}
         <span class="situacion">${esc(haceCuanto(x))}</span>
         ${p ? `<span class="accion">${esc(tituloDia(p.fecha))} a las ${esc(p.hora)}</span><span class="nota">${esc(p.motivo)}</span>` : ''}
       </div><div class="fila-accion">${botonPedir(x)}</div>${x.pedida ? '' : noEsMioSocio(x)}</article>`;
@@ -817,7 +823,7 @@
     const saltos = r.saltos || [];
     const respuesta = r.respuesta === 'correcta' ? '✅ Dijiste que la progresión es correcta' : r.respuesta === 'corregir' ? '✏️ Dijiste que la vas a corregir' : r.respuesta === 'visto' ? '👀 Lo viste' : '';
     return `<article class="tarjeta revision" style="--i:${i}"><div class="cabeza">
-        <span class="socio">${esc(r.socio_nombre)}</span><span class="estado ${color === 'verde' ? 'hecha' : color === 'rojo' ? 'atrasada' : 'ayer'}">${pct}% cambiado</span>
+        <span class="socio">${nomSocio(r, 'routines')}</span><span class="estado ${color === 'verde' ? 'hecha' : color === 'rojo' ? 'atrasada' : 'ayer'}">${pct}% cambiado</span>
         <span class="barra-custom" aria-hidden="true"><span class="zona"></span><span class="marca-pct ${color}" style="left:${Math.min(100, pct)}%"></span></span>
         <span class="situacion">Plan renovado el ${esc(ddmm(r.fecha))}${r.minutos ? ` · lo armaste en ~${r.minutos} min` : ''} · ${esc(texto)}</span>
         ${saltos.length ? `<span class="accion">Hay ${saltos.length} cambio${saltos.length > 1 ? 's' : ''} que saltea${saltos.length > 1 ? 'n' : ''} escalones</span>
@@ -934,7 +940,7 @@
           <span class="aclara">Coordinación lo ve con tu motivo. No se te vuelve a pedir.</span></details>`;
     }
     return `<article class="tarjeta hallazgo${h.estado === 'marcada' || h.estado === 'dejada' ? ' hecha' : ''}" style="--i:${i}"><div class="cabeza">
-        <span class="socio">${esc(h.socio_nombre)}</span>${estado}
+        <span class="socio">${nomSocio(h, 'routines')}</span>${estado}
         <span class="profe">${esc(SECCION_AUD[h.seccion] || h.seccion)} · desde el ${esc(ddmm(h.desde))}</span>
         ${h.detalle.slice(0, 6).map(t => `<span class="nota">• ${esc(t)}</span>`).join('')}${h.detalle.length > 6 ? `<span class="nota">… y ${h.detalle.length - 6} más</span>` : ''}
         ${h.estado === 'dejada' && h.motivo ? `<span class="nota motivo">🤚 ${esc(h.motivo)}</span>` : ''}
@@ -1078,7 +1084,7 @@
     if (!H.length) return '';
     const que = t => (t.estado === 'papel' ? '📄 Plan en papel' : t.estado === 'derivada' ? '↪️ ' + (t.nota || 'Es de otro profe') : '✅ Renovado');
     return `<details class="catalogo hechas-profe"><summary>Lo que ya hiciste (${H.length}): si te equivocaste, deshacelo</summary>
-      ${H.map(t => `<div class="hecha-fila"><span><b>${esc(t.socio_nombre)}</b> · ${esc(que(t))} · ${esc(ddmmDe(t.hecha_en))}</span>
+      ${H.map(t => `<div class="hecha-fila"><span><b>${nomSocio(t)}</b> · ${esc(que(t))} · ${esc(ddmmDe(t.hecha_en))}</span>
         <button class="boton claro" data-accion="plan-deshacer" data-id="${esc(t.id)}">Deshacer</button></div>`).join('')}</details>`;
   }
 
@@ -1599,7 +1605,7 @@
       const lista = (tipo, titulo, extra) => {
         const xs = (r && r.lista && r.lista[tipo]) || [];
         if (!xs.length) return '';
-        return `<details class="lista-estado"><summary>${titulo} (${xs.length})</summary><ul>${xs.map(x => `<li><b>${esc(x[1])}</b> <small>N° ${esc(x[0])} · ${esc(x[2])}${extra(x[3]) ? ' · ' + esc(extra(x[3])) : ''}</small></li>`).join('')}</ul></details>`;
+        return `<details class="lista-estado"><summary>${titulo} (${xs.length})</summary><ul>${xs.map(x => `<li><b>${linkSocio(x[0], x[1], 'routines')}</b> <small>N° ${esc(x[0])} · ${esc(x[2])}${extra(x[3]) ? ' · ' + esc(extra(x[3])) : ''}</small></li>`).join('')}</ul></details>`;
       };
       const fechaCorta = v => (v ? ddmm(String(v)) : '');
       const listas = r ? lista('pendientes', '⏳ Faltan renovar', v => (v ? 'vence ' + fechaCorta(v) : '')) + lista('bajas', '🚪 Bajas', v => (v ? 'venció ' + fechaCorta(v) : ''))
@@ -2600,19 +2606,19 @@ ${p.tareas_mes ? `<span class="uso-hoy">📋 Tareas del mes: ${p.tareas_mes.hech
     if (!V || !(V.pedidos.length + V.espera.length + V.cobradas.length + V.de_la_sede.length)) return '';
     const fila = (texto, extra, acciones) => `<div class="venta-larga"><p>${texto}</p>${extra ? `<p class="aclara">${extra}</p>` : ''}<div class="botones">${acciones}</div></div>`;
     const pedidos = V.pedidos.map(v => fila(
-      v.cobro_pide ? `<b>${esc(v.pide)}</b> cobró el ${esc(v.plan)} de <b>${esc(v.socio_nombre)}</b> y dice que lo vendiste vos. ¿Es así?` : `<b>${esc(v.pide)}</b> dice que vendió el ${esc(v.plan)} de <b>${esc(v.socio_nombre)}</b>, que cobraste vos. ¿Es así?`,
+      v.cobro_pide ? `<b>${esc(v.pide)}</b> cobró el ${esc(v.plan)} de <b>${nomSocio(v)}</b> y dice que lo vendiste vos. ¿Es así?` : `<b>${esc(v.pide)}</b> dice que vendió el ${esc(v.plan)} de <b>${nomSocio(v)}</b>, que cobraste vos. ¿Es así?`,
       v.cobro_pide ? '' : 'Si decís que no, deciden Lucía y Emanuel.',
       `<button class="boton verde" data-accion="venta-responder" data-id="${esc(v.id)}" data-si="1">Sí, aceptar</button><button class="boton claro" data-accion="venta-responder" data-id="${esc(v.id)}" data-si="">No</button>`)).join('');
     const opciones = v => V.companeros.map(c => `<option value="${esc(c.dni)}" ${c.dni === v.sugerido_dni ? 'selected' : ''}>${esc(c.nombre)}</option>`).join('');
     const cobradas = V.cobradas.map(v => fila(
-      `Cobraste el ${esc(v.plan)} de <b>${esc(v.socio_nombre)}</b> el ${ddmm(v.fecha)}. ¿La vendiste vos?`,
+      `Cobraste el ${esc(v.plan)} de <b>${nomSocio(v)}</b> el ${ddmm(v.fecha)}. ¿La vendiste vos?`,
       `${v.sugerido ? `💡 ${esc(v.sugerido)} habló con este socio hace poco. ` : ''}Si fue tuya, tocá “Fue mía” y deja de aparecer. Si no hacés nada, la venta queda para vos y esto se va solo a los 7 días.`,
       `<button class="boton verde" data-accion="venta-confirmar" data-id="${esc(v.id)}">Fue mía</button>` + (V.companeros.length ? `<select data-venta-dar="${esc(v.id)}" aria-label="Dar la venta a">${opciones(v)}</select><button class="boton claro" data-accion="venta-dar" data-id="${esc(v.id)}">Dársela</button>` : ''))).join('');
     const sede = V.de_la_sede.map(v => fila(
-      `${esc(v.nombre_cobro)} cobró el ${esc(v.plan)} de <b>${esc(v.socio_nombre)}</b> el ${ddmm(v.fecha)}.`,
+      `${esc(v.nombre_cobro)} cobró el ${esc(v.plan)} de <b>${nomSocio(v)}</b> el ${ddmm(v.fecha)}.`,
       v.te_sugiere ? '💡 Hablaste con este socio hace poco.' : '',
       `<button class="boton claro" data-accion="venta-pedir" data-id="${esc(v.id)}">La vendí yo</button>`)).join('');
-    const espera = V.espera.map(v => `<p class="aclara">⏳ ${esc(v.plan)} de ${esc(v.socio_nombre)}: ${v.estado === 'pedida' ? 'falta que responda ' + esc(v.responde) : 'lo deciden Lucía y Emanuel'}.</p>`).join('');
+    const espera = V.espera.map(v => `<p class="aclara">⏳ ${esc(v.plan)} de ${nomSocio(v)}: ${v.estado === 'pedida' ? 'falta que responda ' + esc(v.responde) : 'lo deciden Lucía y Emanuel'}.</p>`).join('');
     return `<section class="ventas-largas"><b>🏆 Ventas para confirmar: planes de 3 meses e ingresos</b>${pedidos}${cobradas}${sede}${espera}</section>`;
   }
 
@@ -2624,8 +2630,8 @@ ${p.tareas_mes ? `<span class="uso-hoy">📋 Tareas del mes: ${p.tareas_mes.hech
     const resto = lista.filter(v => v.estado === 'asignada' || v.estado === 'confirmada' || v.estado === 'pedida');
     const botones = v => (tiene('admin') ? `<div class="fila-accion"><button class="boton verde" data-accion="venta-decidir" data-id="${esc(v.id)}" data-dni="${esc(v.hacia_dni)}">Es de ${esc(v.nombre_hacia)}</button>${v.dni_cobro ? `<button class="boton claro" data-accion="venta-decidir" data-id="${esc(v.id)}" data-dni="${esc(v.dni_cobro)}">Es de ${esc(v.nombre_cobro)}</button>` : ''}</div>` : '');
     return `<section class="grupo"><h2>🏆 Planes de 3 meses e ingresos <span class="cuenta">${lista.length}</span></h2>
-      ${disputa.map(v => `<article class="tarjeta"><div class="cabeza" style="display:grid;gap:2px;padding:12px 14px"><span class="socio">${esc(v.socio_nombre)}</span><span class="profe">${esc(v.plan)} · cobró ${esc(v.nombre_cobro)} · lo pide ${esc(v.nombre_hacia)}</span><span class="situacion">No se pusieron de acuerdo: hay que decidir.</span></div>${botones(v)}</article>`).join('')}
-      ${resto.length ? `<div class="envoltura-tabla"><table class="tabla compacta"><thead><tr><th>Día</th><th>Socio</th><th>Cobró</th><th>Quedó para</th></tr></thead><tbody>${resto.map(v => `<tr><td>${ddmm(v.fecha)}</td><td>${esc(v.socio_nombre)}</td><td>${esc(v.nombre_cobro)}</td><td>${v.estado === 'pedida' ? `⏳ falta que responda ${esc(v.nombre_responde)}` : esc(v.nombre_vendio)}</td></tr>`).join('')}</tbody></table></div>` : ''}
+      ${disputa.map(v => `<article class="tarjeta"><div class="cabeza" style="display:grid;gap:2px;padding:12px 14px"><span class="socio">${nomSocio(v)}</span><span class="profe">${esc(v.plan)} · cobró ${esc(v.nombre_cobro)} · lo pide ${esc(v.nombre_hacia)}</span><span class="situacion">No se pusieron de acuerdo: hay que decidir.</span></div>${botones(v)}</article>`).join('')}
+      ${resto.length ? `<div class="envoltura-tabla"><table class="tabla compacta"><thead><tr><th>Día</th><th>Socio</th><th>Cobró</th><th>Quedó para</th></tr></thead><tbody>${resto.map(v => `<tr><td>${ddmm(v.fecha)}</td><td>${nomSocio(v)}</td><td>${esc(v.nombre_cobro)}</td><td>${v.estado === 'pedida' ? `⏳ falta que responda ${esc(v.nombre_responde)}` : esc(v.nombre_vendio)}</td></tr>`).join('')}</tbody></table></div>` : ''}
     </section>`;
   }
 
@@ -2748,7 +2754,7 @@ ${p.tareas_mes ? `<span class="uso-hoy">📋 Tareas del mes: ${p.tareas_mes.hech
     const lista = S.beneficios || [];
     if (!lista.length) return '';
     const fila = b => `<article class="tarjeta"><div class="cabeza" style="display:grid;gap:2px;padding:12px 14px">
-        <span class="socio">${esc(b.socio_nombre)}</span>
+        <span class="socio">${nomSocio(b)}</span>
         <span class="profe">${b.tipo === 'referido' ? `Trajo a ${esc(b.nuevo_socio)}: en su próxima renovación de 3 meses paga 2` : `Constancia: ${esc(b.detalle)}`} · ${esc(SEDES[b.sede] || b.sede)}${b.detalle && b.tipo === 'referido' ? ' · ' + esc(b.detalle) : ''}</span>
         ${b.estado === 'aprobada' ? '<span class="situacion">Autorizado: falta crear el cupón en MOVE</span>' : ''}</div>
         <div class="fila-accion">${b.estado === 'pendiente'
@@ -2803,14 +2809,14 @@ ${p.tareas_mes ? `<span class="uso-hoy">📋 Tareas del mes: ${p.tareas_mes.hech
       : '<div class="vacio">No hay recepcionistas cargados en esta sede.</div>';
     const alertas = S.alertas.length ? S.alertas.map((t, i) => `<article class="tarjeta" style="--i:${i}">
         <div class="cabeza" style="display:grid;grid-template-columns:1fr auto;gap:2px 10px;padding:12px 14px">
-          <span class="socio">${esc(t.socio_nombre)}</span><span class="estado atrasada">${t.dias_pendiente} días</span>
+          <span class="socio">${nomSocio(t)}</span><span class="estado atrasada">${t.dias_pendiente} días</span>
           <span class="profe">${esc(t.tipo)} · tiene ${esc(t.asignado_nombre || nombre(t.asignado_dni))}</span>
           <span class="accion">${conLinks(t.accion)}</span></div>
         <div class="fila-accion"><select data-reasignar="${esc(t.id)}" aria-label="Pasar a">${opcionesDestino(S, t.asignado_dni)}</select>
           <button class="boton claro" data-accion="reasignar" data-id="${esc(t.id)}">Reasignar</button></div></article>`).join('')
       : '<div class="vacio">Sin tareas atrasadas. Todo al día.</div>';
     const garantias = S.garantias.length ? S.garantias.map(g => `<article class="tarjeta">
-        <div class="cabeza" style="display:grid;gap:2px;padding:12px 14px"><span class="socio">${esc(g.socio_nombre)}</span>
+        <div class="cabeza" style="display:grid;gap:2px;padding:12px 14px"><span class="socio">${nomSocio(g)}</span>
           <span class="profe">Profe: ${esc(g.profe || '—')} · registró ${esc(nombre(g.registra_dni))} el ${ddmm(g.ts.slice(0, 10))}</span>
           <span class="situacion">“${esc(g.motivo)}”</span></div>
         <div class="fila-accion"><input data-comentario="${esc(g.id)}" placeholder="Comentario (opcional)">
@@ -3919,6 +3925,11 @@ ${p.tareas_mes ? `<span class="uso-hoy">📋 Tareas del mes: ${p.tareas_mes.hech
     const el = ev.target.closest('[data-accion]');
     if (!el || el.tagName === 'SELECT') return;
     const a = el.dataset.accion;
+    if (a === 'ir-socio') {
+      ev.preventDefault(); ev.stopPropagation();
+      window.open(MOVE_ADMIN + encodeURIComponent(el.dataset.s) + (el.dataset.t ? '?tab=' + encodeURIComponent(el.dataset.t) : ''), '_blank', 'noopener');
+      return;
+    }
     if (a === 'salir') {
       const irse = () => { if (salirDeLaApp()) render(); };
       if (faltaElCierre()) recordarCierre(irse); else irse();
