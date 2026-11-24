@@ -10,6 +10,8 @@ function hojaFalsa(filas, alCambiar) {
     filas,
     getLastRow: () => h.filas.length,
     getMaxRows: () => 1000,
+    getMaxColumns: () => 26,
+    insertColumnsAfter: () => {},
     setFrozenRows: () => h,
     appendRow: f => { h.filas.push(f); alCambiar(); return h; },
     getRange: (fila, col, n, cols) => ({
