@@ -115,6 +115,8 @@ function profeTareas(req, deps) {
     out.mio = agendaDeProfe(filas.filter(t => t.profe_dni === usuario.dni), hoy);
     out.mio.reeval = reevalDeProfe(usuario, deps, hoy, usuarios);
     out.mio.extra = sociosPlanExtra(usuario, deps);
+    out.mio.avisos_condicion = avisosCondicionDe(usuario, usuarios, deps, 'profe');
+    out.mio.avisos_dueno = avisosDuenoDe(usuario, deps, usuarios);
     out.mio.revisiones = revisionesDeProfe(usuario, deps, hoy);
     out.mio.opciones = opcionesDeProfe(usuario, usuarios);
     out.mio.mes = mesDeProfe(usuario, deps, hoy);
@@ -682,7 +684,7 @@ function sociosPlanExtra(usuario, deps) {
 }
 
 function profePlanExtra(req, deps) {
-  const { usuario } = sesion(req, deps);
+  const { usuario, usuarios } = sesion(req, deps);
   if (!esProfe(usuario)) falla('prohibido');
   const reeval = deps.repo.leer('profe_reeval');
   const id = texto(req.socio_id);
@@ -696,16 +698,21 @@ function profePlanExtra(req, deps) {
   const filas = deps.repo.leer('profe_tareas');
   if (filas.some(t => t.socio_id === c.socio_id && t.profe_dni === usuario.dni && t.estado === 'hecha' && fechaArgentina(t.hecha_en) === hoy)) falla('ya_anotado');
   let t = filas.find(x => x.socio_id === c.socio_id && x.profe_dni === usuario.dni && x.estado === 'pendiente');
+  let aviso = null;
   if (t) {
     Object.assign(t, { fecha: t.fecha > hoy ? hoy : t.fecha, estado: 'hecha', hecha_en: ts, hecha_dni: usuario.dni, nota: 'Plan extra: lo renovó antes de que le tocara' });
   } else {
+    // El plan lo cuenta quien lo hizo (Emanuel, 24/11/2026). Si el dueño actual del socio es otro profe, se le pregunta si es su socio.
+    const dueno = duenoActualDeSocio(deps, hoy, usuarios, c);
+    const deOtro = !!dueno.dni && dueno.dni !== usuario.dni;
     t = { id: 'px-' + c.socio_id + '-' + hoy, fecha: hoy, sede: c.sede, profe: nombreProfe, profe_dni: usuario.dni, socio_id: c.socio_id, socio_nombre: c.socio_nombre,
       tipo: 'Plan extra', accion: 'Renovó el plan sin que estuviera en la lista', vence: '', alta: '', estado: 'hecha', hecha_en: ts, hecha_dni: usuario.dni,
-      nota: mia ? 'Plan extra' : 'Plan extra · en MOVE es socio de ' + c.profe, cargada: hoy, cerrada_en: '' };
+      nota: NOTA_PLAN_EXTRA + (deOtro ? ' · figura como socio de ' + dueno.nombre : ''), cargada: hoy, cerrada_en: '' };
     filas.push(t);
+    if (deOtro) aviso = crearAvisoDueno(deps, usuarios, usuario, t, dueno, ts);
   }
   deps.repo.escribir('profe_tareas', filas);
-  return { tarea: vistaTareaProfe(t, hoy) };
+  return { tarea: vistaTareaProfe(t, hoy), aviso_dueno: aviso ? aviso.dueno_nombre : '' };
 }
 
 // ---------- Auditoría automática de planes (F2.18, Emanuel 11/11/2026) ----------
@@ -1742,10 +1749,11 @@ const CAMPOS_PLANILLA = ['condicion', 'observaciones', 'profe_dni'];
 const MOV_MES_PLANILLA = ['renovo', 'por_vencer', 'no_renovo', 'nuevo', 'baja', '—', ''];
 const CUPO_SEDE_PLANILLA = { bolson: 110, puelo: 125, bariloche: 100 };
 const OBS_PLANILLA_MAX = 300;
-// Vacaciones (Emanuel, 24/11/2026): para que no cuenten como baja, las carga recepción (o coordinación / admin) antes de que
-// venza la membresía, con fecha de vuelta y de 60 días como máximo desde el vencimiento. Si el socio no renueva a la fecha de
+// Vacaciones (Emanuel, 24/11/2026): para que no cuenten como baja, las carga recepción (o coordinación / admin) hasta 7 días
+// corridos después del vencimiento (la ventana de baja), con fecha de vuelta y de 60 días como máximo desde el vencimiento. Si el socio no renueva a la fecha de
 // vuelta + 7 días, la PC lo cuenta como baja del mes en que se fue (pulso_planilla.py).
 const DIAS_VACACIONES_MAX = 60;
+const DIAS_BAJA_PLANILLA = 7;          // vencido hace más de 7 días sin renovar → BAJA (la PC); también el plazo para cargar vacaciones
 
 // '' si se pueden cargar las vacaciones; si no, el código de error con el motivo (la pantalla lo muestra)
 function motivoVacacionesInvalidas(usuario, fila, hasta, hoy) {
@@ -1754,8 +1762,10 @@ function motivoVacacionesInvalidas(usuario, fila, hasta, hoy) {
   if (hasta < hoy) return 'datos_invalidos';
   // cambiar la fecha de vuelta de unas vacaciones que ya se habían cargado a tiempo (por recepción) sigue valiendo
   const previa = fila.condicion_manual;
-  const yaCargada = previa && previa.valor === 'VACACIONES' && previa.quien !== 'planilla vieja' && fechaLocalDe(previa.ts) <= fila.vence;
-  if (!fechaIsoValida(fila.vence) || (hoy > fila.vence && !yaCargada)) return 'vac_vencida';
+  if (!fechaIsoValida(fila.vence)) return 'vac_vencida';
+  const plazo = sumarDiasProfe(fila.vence, DIAS_BAJA_PLANILLA);
+  const yaCargada = previa && previa.valor === 'VACACIONES' && previa.quien !== 'planilla vieja' && fechaLocalDe(previa.ts) <= plazo;
+  if (hoy > plazo && !yaCargada) return 'vac_vencida';
   if (hasta > sumarDiasProfe(fila.vence, DIAS_VACACIONES_MAX)) return 'vac_larga';
   return '';
 }
@@ -1818,7 +1828,7 @@ function cargarProfePlanilla(req, deps) {
 
 function profePlanillaEdiciones(req, deps) {
   exigirClave(req, deps);
-  return { filas: deps.repo.leer('profe_planilla_edit') };
+  return Object.assign({ filas: deps.repo.leer('profe_planilla_edit') }, planExtraParaPc(deps, deps.hoy()));
 }
 
 // La última edición de cada campo, por socio (la hoja se lee en orden de llegada; a igual orden manda el ts más nuevo)
@@ -1886,12 +1896,20 @@ function filasPlanilla(deps, hoy, usuarios, socios) {
   const filas = deps.repo.leer('profe_planilla').filter(f => !socios || socios[f.socio_id]);
   const ids = {};
   filas.forEach(f => { ids[f.socio_id] = []; });
+  // lo que se respondió en el aviso "¿Cómo viene?" (Avisos.js), para la ficha y para saber si el aviso sigue
+  const avisos = {};
+  deps.repo.leer('aviso_condicion').forEach(a => { if (ids[a.socio_id]) (avisos[a.socio_id] = avisos[a.socio_id] || []).push(a); });
   deps.repo.leer('registro').forEach(r => {
     if (ids[r.socio_id]) ids[r.socio_id].push({ fecha: fechaLocalDe(r.ts), ts: r.ts, quien: nombres[r.dni] || '', canal: r.canal, resultado: r.resultado, nota: texto(r.detalle).slice(0, 200), tipo: r.tipo });
   });
+  const extras = planExtraPorSocio(deps, ids, nombres);
   return filas.map(f => {
     const c = ids[f.socio_id].sort((a, b) => (a.ts < b.ts ? 1 : -1)).slice(0, CONTACTOS_FICHA).map(x => ({ fecha: x.fecha, quien: x.quien, canal: x.canal, resultado: x.resultado, nota: x.nota, tipo: x.tipo }));
-    return vistaFilaPlanilla(f, eds[f.socio_id], hoy, nombres, c);
+    const v = vistaFilaPlanilla(f, eds[f.socio_id], hoy, nombres, c);
+    v.aviso_hist = historialAviso(avisos[f.socio_id], nombres).slice(0, AVISO_HISTORIAL_FICHA);
+    v.plan_extra_hist = (extras[f.socio_id] || []).slice(0, 5);
+    v.plan_hecho_por = planHechoPor(extras[f.socio_id], v.profe_dni, hoy);
+    return v;
   });
 }
 
@@ -1919,6 +1937,7 @@ function profePlanilla(req, deps) {
   const equipo = comoEquipo ? profesDelEquipo(usuarios).filter(p => !sede || p.sede === sede) : [];
   const cupoDe = s => CUPO_SEDE_PLANILLA[s] || null;
   return { hoy: hoy, modo: comoEquipo ? 'equipo' : 'mio', sede: sede, profe_dni: profeDni,
+    avisos: listarAvisosCondicion(filas, hoy, deps.avisoDesde || AVISO_CONDICION_DESDE, comoEquipo ? 'recepcion' : 'profe'),
     cupo: comoEquipo ? (sede ? cupoDe(sede) : null) : cupoDe(usuario.sede), cupos: CUPO_SEDE_PLANILLA,
     profes: Object.keys(profes).map(k => profes[k]).sort((a, b) => String(a.nombre).localeCompare(String(b.nombre))),
     equipo: equipo, cargada: (deps.repo.leer('profe_planilla')[0] || {}).cargada || '', filas: filas };

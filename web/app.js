@@ -190,6 +190,8 @@
     if (coord) p.push(['sede', 'Sede', 'Recepción'], ['rend', 'Rendimiento', 'Recepción']);
     if (tiene('recepcion') || coord) p.push(['consultas', 'Consultas', coord ? 'Recepción' : 'Mi día'], ['pase', 'Pase de turno', coord ? 'Recepción' : 'Mi día']);
     // La ve recepción: es la que contesta "¿a qué hora hay menos gente?" (Emanuel, 09/11/2026)
+    // Lista de espera (24/11/2026): recepción la de su sede, coordinación todas por sede; los profes no la ven
+    if (tiene('recepcion') || coord) p.push(['espera', '⏳ Lista de espera', coord ? 'Recepción' : 'Mi día']);
     if (tiene('recepcion') || coord) p.push(['reservas', 'Reservas', coord ? 'Recepción' : 'Mi día']);
     if (tiene('admin') || tiene('recepcion') || coord) p.push(['liq', tiene('admin') ? 'Liquidación' : 'Mis ingresos', coord ? 'Recepción' : 'Mi día']);   // cada una ve lo suyo; admin ve a todas
     if (coord) p.push(['pres', 'Resumen', 'Profes'], ['profes', 'Planes y llegadas', 'Profes'], ['ppl', '📋 Planilla', 'Profes'], ['phor', 'Horarios y sábados', 'Profes'], ['pliq', tiene('admin') ? 'Comisiones y tareas' : 'Tareas del mes', 'Profes']);
@@ -467,6 +469,10 @@
   }
 
   function tarjeta(t, i) {
+    if (esContactoExtra(t)) {
+      return `<article class="tarjeta hecha" style="--i:${i}"><div class="cabeza"><span class="socio">${esc(t.socio_nombre)}</span><span class="estado hecha">✓ Contacto extra</span>
+        <span class="situacion">${esc(t.situacion)}</span><span class="accion">${esc(t.accion)}</span></div></article>`;
+    }
     if (seVerificaEnMove(t.tipo)) return tarjetaVerificada(t, i);
     if (String(t.tipo).indexOf('Cierre del turno') === 0 && t.estado !== 'hecha') {
       return `<article class="tarjeta" style="--i:${i}"><button class="cabeza" data-accion="probar-cierre-real">
@@ -487,7 +493,7 @@
 
   // El avance cuenta lo que se puede marcar: lo que se verifica en MOVE se cierra solo a la mañana siguiente
   function deHoy(t) {
-    return !esRecordatorio(t.tipo) && (t.estado === 'hecha' || String(t.fecha) <= E.hoy) && !(seVerificaEnMove(t.tipo) && t.estado !== 'hecha');
+    return !esRecordatorio(t.tipo) && !esContactoExtra(t) && (t.estado === 'hecha' || String(t.fecha) <= E.hoy) && !(seVerificaEnMove(t.tipo) && t.estado !== 'hecha');
   }
 
   function panelDia(hechas, total, profes) {
@@ -509,6 +515,7 @@
       ${profes.length ? `<section class="profes-hoy"><b>Profes de hoy en tu turno</b><p>Recordales que fichen con el QR al ingresar.</p>${profes.map(p => `<div><span>${esc(p.socio_nombre)}</span><em>${esc(String(p.situacion).replace('Primera clase a las ', ''))}</em></div>`).join('')}</section>` : ''}
       ${E.paraAdelantar ? `<button class="boton adelantar ancho" data-accion="adelantar">${E.adelantar ? 'Ocultar las de los próximos días' : `⏩ Adelantar tareas (${E.paraAdelantar})`}</button>` : ''}
       <button class="boton ancho" data-accion="registrar">Registrar mensaje, consulta o venta</button>
+      <button class="boton claro ancho" data-accion="contacto-extra">➕ Contacto extra</button>
       <button class="boton claro ancho" data-accion="garantia">Registrar pedido de garantía</button>
       <button class="boton claro ancho" data-accion="trajo-socio">🎁 Un socio trajo a un socio nuevo</button>
       ${avisosPendientes() ? '<button class="boton claro ancho" data-accion="activar-avisos">🔔 Activar avisos en esta PC</button>' : ''}
@@ -584,6 +591,7 @@
 
   // ---------- Pedidos de coordinación (cómo se ven: web/pedidos.js) ----------
   E.pedMios = null; E.ped = null; E.pedForm = null;
+  const ESP = PulsoEspera.crear({ cliente, E, esc, aviso, falla, render: () => render(), dialogo: (h, f) => dialogo(h, f), tiene, irA: v => irA(v) });
   const bandaPedidos = () => PulsoPedidos.bandaMios(E.pedMios, esc);
 
   function cargarPedidosMios() {
@@ -685,6 +693,9 @@
     const primera = E.filtro === 'pendientes' ? visibles.find(t => t.estado === 'pendiente' && deHoy(t) && !String(t.tipo).startsWith('Cierre')) : null;
     const grupoHtml = ([tipo, lista]) => `<section class="grupo"><h2>${esc(tipo)} <span class="cuenta">${lista.length}</span></h2>${lista[0].intro ? `<p class="intro-grupo">${esc(lista[0].intro)}</p>` : ''}${lista.map(t => tarjeta(t, i++)).join('')}</section>`;
     let i = 0;
+    // «Lista de espera de hoy» va justo después del bloque que trae el checklist de apertura (la tarea principal); si no hay apertura pendiente, al final
+    let esperaPendiente = true;
+    const listaDespuesDeApertura = (n, grupos) => { if (esperaPendiente && grupos.some(g => /^Apertura/.test(g[0]))) { esperaPendiente = false; return true; } return false; };
     const chip = (k, txt) => `<button class="chip" data-accion="filtro" data-f="${k}" aria-pressed="${E.filtro === k}">${txt}</button>`;
     return `<div class="dos-columnas"><aside class="lado">${panelDia(hechas, delDia.length, profes)}</aside><div class="principal">
       <h1 class="titulo">${esc(tituloDia(E.hoy))} <span>·</span> hoy</h1>
@@ -692,9 +703,10 @@
       <div class="filtros">${chip('pendientes', 'Pendientes')}${chip('hechas', 'Hechas')}${chip('todas', 'Todas')}
         <select data-accion="tipo" aria-label="Tipo de tarea"><option value="">Todos los tipos</option>${tipos.map(t => `<option ${E.tipo === t ? 'selected' : ''}>${esc(t)}</option>`).join('')}</select>
       </div>
+      ${bloqueAvisosCondicion(E.dia && E.dia.avisos_condicion, 'dia')}
       ${primera ? `<button class="empeza" data-accion="abrir" data-id="${esc(primera.id)}"><b>👉 Empezá por acá</b><span>${esc(primera.socio_nombre)} · ${esc(primera.tipo)}</span></button>` : ''}
-      ${porNivel.length ? porNivel.map(([n, grupos]) => `<section class="nivel nivel-${n.n}">${n.titulo ? `<h2 class="nivel-titulo">${n.emoji} ${esc(n.titulo)}<small>${esc(n.ayuda)}</small></h2>` : ''}${grupos.map(grupoHtml).join('')}</section>`).join('')
-        : `<div class="vacio">${E.filtro === 'pendientes' ? '¡No te quedan tareas pendientes! Mirá qué más podés hacer hoy.' : 'No hay tareas para mostrar.'}</div>`}
+      ${porNivel.length ? porNivel.map(([n, grupos]) => `<section class="nivel nivel-${n.n}">${n.titulo ? `<h2 class="nivel-titulo">${n.emoji} ${esc(n.titulo)}<small>${esc(n.ayuda)}</small></h2>` : ''}${grupos.map(grupoHtml).join('')}</section>` + (listaDespuesDeApertura(n, grupos) ? ESP.bandaHoy() : '')).join('') + (esperaPendiente ? ESP.bandaHoy() : '')
+        : ESP.bandaHoy() + `<div class="vacio">${E.filtro === 'pendientes' ? '¡No te quedan tareas pendientes! Mirá qué más podés hacer hoy.' : 'No hay tareas para mostrar.'}</div>`}
       ${bloqueEspera(enEspera)}
       ${E.dia && !E.dia.hoy.pendientes && E.filtro === 'pendientes' ? bloqueIdeas(E.dia, 3) : ''}
     </div></div>`;
@@ -913,6 +925,175 @@
       <button class="boton verde ancho" data-accion="plan-extra">Agregar plan extra</button></div>`;
   }
 
+  // ---------- Aviso de condición del socio (Emanuel, 24/11/2026, Avisos.js) ----------
+  // "¿Cómo viene Fulano?": socios de la Planilla con el plan vencido y sin renovar. Le llega al profe y a la recepción de la sede;
+  // si uno responde, desaparece para el otro. No es una tarea: no cuenta en el cumplimiento.
+  const AVISO_MAX_VISIBLES = 5;
+  const AVISO_BOTONES = [['renueva', '🔄 Renueva', 'verde'], ['vacaciones', '🌴 Está de vacaciones', 'claro'], ['no_vuelve', '👋 No vuelve', 'claro'], ['no_se', '🤔 Todavía no sé', 'claro']];
+  const textoRespuestaAviso = h => ({ renueva: '🔄 Renueva' + (h.hasta ? ' el ' + ddmm(h.hasta) : ''), vacaciones: '🌴 Vacaciones' + (h.hasta ? ' hasta el ' + ddmm(h.hasta) : ''),
+    vacaciones_pedida: '🌴 Pidió cargar vacaciones' + (h.hasta ? ' hasta el ' + ddmm(h.hasta) : ''), no_vuelve: '👋 No vuelve' + (h.nota ? ': ' + h.nota : ''), no_se: '🤔 Todavía no sabe' + (h.nota ? ': ' + h.nota : '') }[h.respuesta] || h.respuesta);
+
+  function tarjetaAviso(a, src) {
+    const meta = [a.profe ? 'Profe: ' + a.profe : '', SEDES[a.sede] || ''].filter(Boolean).join(' · ');
+    return `<article class="aviso-cond${a.dias >= 1 ? ' insiste' : ''}">
+      <b class="aviso-titulo">${esc(a.titulo)}</b>${meta ? `<span class="aviso-meta">${esc(meta)}</span>` : ''}
+      ${a.lineas.map(l => `<p>${esc(l)}</p>`).join('')}
+      <div class="aviso-botones">${AVISO_BOTONES.map(([r, t, c]) => `<button class="boton ${c}" data-accion="aviso-resp" data-s="${esc(a.socio_id)}" data-r="${r}" data-src="${src}">${t}</button>`).join('')}</div>
+    </article>`;
+  }
+
+  function bloqueAvisosCondicion(lista, src) {
+    if (!lista || !lista.length) return '';
+    const vis = lista.slice(0, AVISO_MAX_VISIBLES), resto = lista.slice(AVISO_MAX_VISIBLES);
+    return `<section class="avisos-cond"><h2>💬 ¿Cómo siguen? <span class="cuenta">${lista.length}</span></h2>
+      <p class="aclara">Estos socios ya cumplieron su plan y todavía no renovaron. Con lo que nos cuentes los acompañamos mejor. Si lo responde otra persona, desaparece para todos.</p>
+      ${vis.map(a => tarjetaAviso(a, src)).join('')}
+      ${resto.length ? `<details class="catalogo"><summary>Ver ${resto.length} más</summary>${resto.map(a => tarjetaAviso(a, src)).join('')}</details>` : ''}</section>`;
+  }
+
+  function avisoActual(src, id) {
+    const lista = src === 'dia' ? (E.dia && E.dia.avisos_condicion) : src === 'planes' ? (E.planes && E.planes.mio && E.planes.mio.avisos_condicion) : (E.pl && E.pl.avisos);
+    return (lista || []).find(x => x.socio_id === id);
+  }
+
+  function dialogoAviso(a, respuesta, src) {
+    const hoy = E.hoy || (E.pl && E.pl.hoy);
+    const directo = tiene('recepcion') || tiene('coordinador') || tiene('admin');
+    const cuerpo = {
+      renueva: `<h3 class="sin-mayus">🔄 ${esc(a.nombre)} renueva</h3><p class="bajada" style="margin:0">¿Qué día va a pagar? Ese día lo volvemos a mirar.</p>
+        <label class="campo">Renueva el<input type="date" name="fecha" min="${esc(hoy)}" max="${esc(a.renueva_max)}" required></label>
+        <p class="aclara" style="margin:0">Hasta 10 días desde hoy. No cambia su condición: solo queda anotado.</p>`,
+      vacaciones: `<h3 class="sin-mayus">🌴 ${esc(a.nombre)} está de vacaciones</h3>
+        <label class="campo">Vuelve el<input type="date" name="fecha" min="${esc(hoy)}" max="${esc(a.vac_max)}" value="${esc(a.pedido_vacaciones ? a.pedido_vacaciones.hasta : '')}" required></label>
+        <p class="aclara" style="margin:0">${directo ? 'Quedan cargadas en la planilla: hasta 60 días desde el vencimiento. Si no renueva a la vuelta + 7 días, cuenta como baja del mes en que se fue.' : 'Las vacaciones las carga recepción: le llega tu aviso con la fecha de vuelta y las deja cargadas.'}</p>`,
+      no_vuelve: `<h3 class="sin-mayus">👋 ${esc(a.nombre)} no vuelve</h3>
+        <label class="campo">Motivo <span class="opcional">(opcional)</span><textarea name="nota" maxlength="200" placeholder="Lo que nos contó"></textarea></label>
+        <p class="aclara" style="margin:0">Queda anotado en su ficha. Si no renueva, a los 7 días pasa a baja solo, como siempre.</p>`,
+    }[respuesta];
+    dialogo(`<form class="marca-form" style="border:0;padding:0">${cuerpo}
+        <div class="botones"><button class="boton verde">Guardar</button><button type="button" class="boton claro" data-cerrar>Cancelar</button></div></form>`, d => {
+      d.querySelector('[data-cerrar]').onclick = () => d.close();
+      const form = d.querySelector('form');
+      form.onsubmit = async ev => {
+        ev.preventDefault();
+        const campo = n => { const x = form.querySelector('[name=' + n + ']'); return x ? String(x.value || '').trim() : ''; };
+        const datos = { socio_id: a.socio_id, respuesta: respuesta };
+        if (respuesta !== 'no_vuelve') datos.fecha = campo('fecha');
+        else datos.nota = campo('nota');
+        if (respuesta !== 'no_vuelve' && !datos.fecha) { aviso(PulsoApi.mensaje(respuesta === 'renueva' ? 'aviso_sin_fecha' : 'vac_sin_vuelta'), true); return; }
+        const btn = form.querySelector('button.verde');
+        btn.disabled = true;
+        try { await enviarAviso(datos, src, a); d.close(); } catch (e) { btn.disabled = false; falla(e); }
+      };
+    });
+  }
+
+  async function enviarAviso(datos, src, a) {
+    const r = await cliente.llamar('aviso_condicion_responder', datos);
+    if (src === 'dia' && E.dia) E.dia.avisos_condicion = r.avisos;
+    else if (src === 'planes' && E.planes && E.planes.mio) E.planes.mio.avisos_condicion = r.avisos;
+    if (r.ya_respondido) aviso(`Ya lo contó ${r.ya_respondido.quien || 'otra persona'}: gracias igual. 💛`);
+    else aviso({ renueva: `🔄 Anotado: ${a.nombre} renueva el ${ddmm(datos.fecha)}. Ese día lo volvemos a mirar.`,
+      vacaciones: r.registrada === 'vacaciones_pedida' ? '🌴 Listo: le avisamos a recepción para que cargue las vacaciones.' : `🌴 Vacaciones cargadas hasta el ${ddmm(datos.fecha)}.`,
+      no_vuelve: '👋 Anotado en su ficha. Gracias por contarnos.', no_se: '🤔 Sin problema: te lo volvemos a preguntar el próximo día hábil.' }[datos.respuesta]);
+    E.pl = null;
+    if (src === 'pl') cargarVista(); else render();
+    // «No vuelve» es una baja: recepción puede ofrecerle el lugar a alguien de la lista de espera
+    if (datos.respuesta === 'no_vuelve' && !r.ya_respondido && (tiene('recepcion') || tiene('coordinador') || tiene('admin'))) ESP.dialogoBaja({ socio_id: datos.socio_id, nombre: a.nombre });
+  }
+
+  // ---------- Aviso al dueño: un compañero le hizo el plan a un socio que figura como mío (Emanuel, 24/11/2026, Avisos.js) ----------
+  function bloqueAvisosDueno(lista) {
+    if (!lista || !lista.length) return '';
+    return `<section class="avisos-cond"><h2>🤝 ¿Es tu socio? <span class="cuenta">${lista.length}</span></h2>
+      <p class="aclara">Un compañero le hizo el plan a un socio que figura como tuyo. El plan le cuenta a quien lo hizo. Si decís que no es tu socio, pasa a ser suyo y le avisamos a recepción para que lo cambie en MOVE.</p>
+      ${lista.map(a => `<article class="aviso-cond"><b class="aviso-titulo">${esc(a.titulo)}</b><span class="aviso-meta">${esc(SEDES[a.sede] || '')}</span>
+        <p>${esc(a.lineas[0])}</p>
+        <div class="aviso-botones"><button class="boton verde" data-accion="aviso-dueno" data-id="${esc(a.id)}" data-r="si">✅ Sí, es mi socio</button>
+        <button class="boton claro" data-accion="aviso-dueno" data-id="${esc(a.id)}" data-r="no">🙅 No es mi socio</button></div></article>`).join('')}</section>`;
+  }
+
+  function dialogoAvisoDueno(a) {
+    dialogo(`<form class="marca-form" style="border:0;padding:0"><h3 class="sin-mayus">🙅 ${esc(a.socio_nombre)} no es tu socio</h3>
+      <p class="bajada" style="margin:0">Pasa a ser socio de ${esc(a.hizo)}, que le hizo el plan. Le avisamos a recepción para que cambie el profe en MOVE.</p>
+      ${(a.recepcion || []).length ? `<label class="campo">¿A quién de recepción le avisamos?<select name="dni" required>${a.recepcion.map(u => `<option value="${esc(u.dni)}">${esc(u.nombre)}</option>`).join('')}</select></label>` : ''}
+      <div class="botones"><button class="boton verde">Confirmar</button><button type="button" class="boton claro" data-cerrar>Cancelar</button></div></form>`, d => {
+      d.querySelector('[data-cerrar]').onclick = () => d.close();
+      const form = d.querySelector('form');
+      form.onsubmit = async ev => {
+        ev.preventDefault();
+        const x = form.querySelector('[name=dni]');
+        const btn = form.querySelector('button.verde');
+        btn.disabled = true;
+        try { await enviarAvisoDueno(a, 'no', x ? x.value : ''); d.close(); } catch (e) { btn.disabled = false; falla(e); }
+      };
+    });
+  }
+
+  async function enviarAvisoDueno(a, respuesta, dni) {
+    const r = await cliente.llamar('aviso_dueno_responder', { id: a.id, respuesta: respuesta, dni: dni || '' });
+    await cargarVista();
+    if (r.ya_respondido) aviso('Ya estaba respondido. 💛');
+    else if (respuesta === 'si') aviso(`✅ Anotado: ${a.socio_nombre} sigue siendo tu socio. El plan le cuenta a ${a.hizo}.`);
+    else aviso(`✅ Listo: ${a.socio_nombre} pasó a ser socio de ${a.hizo}.` + (r.recepcionista ? ` Le avisamos a ${r.recepcionista} para que lo cambie en MOVE.` : ''));
+  }
+
+  // ---------- ➕ Contacto extra de recepción (Emanuel, 24/11/2026) ----------
+  async function dialogoContactoExtra() {
+    const NOMBRE_RES = { NOTIFICADO: 'NOTIFICADO (ya se le avisó)' };
+    const d = dialogo(`<h3>➕ Contacto extra</h3>
+      <p class="bajada" style="margin:0">¿Le escribiste o llamaste a un socio que no estaba en tu lista de hoy? Queda como hecho y suma en tus mensajes. Si ya lo tenías en la lista, se cierra esa tarea.</p>
+      <form class="marca-form" style="border:0;padding:0">
+        <label class="campo">Socio<input class="buscador" name="socio" list="socios-extra-rec" autocomplete="off" placeholder="Escribí el nombre" required><span class="aclara" data-carga-socios>Cargando los socios…</span></label>
+        <datalist id="socios-extra-rec"></datalist>
+        <label class="campo">Canal<select name="canal" required><option value="">Elegí…</option>${['AU', 'MP', 'LL', 'PR'].map(v => `<option value="${v}">${esc(NOMBRE_CANAL[v])}</option>`).join('')}</select></label>
+        <label class="campo">Resultado<select name="resultado" required><option value="">Elegí…</option>${resultadosDe('').map(g => `<optgroup label="${esc(g[0])}">${g[1].map(o => `<option value="${esc(o[0])}">${esc(NOMBRE_RES[o[0]] || o[1])}</option>`).join('')}</optgroup>`).join('')}</select></label>
+        <label class="campo" data-campo="fecha" hidden><span data-ayuda="fecha">Fecha</span><input name="fecha" type="date" min="${esc(E.hoy)}"></label>
+        <label class="campo">Nota <span class="opcional" data-ayuda="detalle">(opcional)</span><textarea name="detalle" maxlength="500" placeholder="Qué le dijiste, qué contestó…"></textarea></label>
+        <div class="botones"><button class="boton verde">Guardar contacto extra</button><button type="button" class="boton claro" data-cerrar>Cancelar</button></div>
+      </form>`);
+    d.querySelector('[data-cerrar]').onclick = () => d.close();
+    const form = d.querySelector('form');
+    const porValor = {};
+    try {
+      const socios = (await cliente.llamar('contacto_extra_socios', {})).socios;
+      const repetidos = {};
+      socios.forEach(s => { repetidos[s.nombre] = (repetidos[s.nombre] || 0) + 1; });
+      socios.forEach(s => { porValor[(repetidos[s.nombre] > 1 ? `${s.nombre} (n.° ${s.socio_id})` : s.nombre).toLowerCase()] = s; });
+      d.querySelector('#socios-extra-rec').innerHTML = socios.map(s => `<option value="${esc(repetidos[s.nombre] > 1 ? `${s.nombre} (n.° ${s.socio_id})` : s.nombre)}">`).join('');
+      d.querySelector('[data-carga-socios]').textContent = socios.length ? '' : 'No hay socios cargados en la planilla de tu sede.';
+    } catch (e) { d.querySelector('[data-carga-socios]').textContent = 'No pudimos cargar los socios. Cerrá y probá de nuevo.'; }
+    const elegido = () => {
+      const q = form.socio.value.trim().toLowerCase();
+      if (porValor[q]) return porValor[q];
+      const par = Object.keys(porValor).filter(k => q.length > 2 && k.indexOf(q) >= 0);
+      return par.length === 1 ? porValor[par[0]] : null;
+    };
+    form.resultado.onchange = () => {
+      const r = form.resultado.value;
+      form.querySelector('[data-campo=fecha]').hidden = PIDEN_FECHA.indexOf(r) < 0;
+      form.fecha.required = PIDEN_FECHA.indexOf(r) >= 0;
+      form.querySelector('[data-ayuda=fecha]').textContent = PREGUNTA_FECHA[r] || 'Fecha';
+      form.detalle.required = PIDEN_DETALLE.indexOf(r) >= 0;
+      form.querySelector('[data-ayuda=detalle]').textContent = PIDEN_DETALLE.indexOf(r) >= 0 ? '(obligatorio)' : '(opcional)';
+    };
+    form.onsubmit = async ev => {
+      ev.preventDefault();
+      const s = elegido();
+      if (!s) { aviso('Elegí el socio de la lista: escribí su nombre y tocá la sugerencia.', true); return; }
+      if (form.resultado.value === 'ESPERANDO') { aviso('Para "esperando" usá la tarea de la lista.', true); return; }
+      const btn = form.querySelector('button.verde');
+      btn.disabled = true;
+      try {
+        const r = await cliente.llamar('contacto_extra', { id_marca: (crypto.randomUUID ? crypto.randomUUID() : Date.now() + '-' + Math.random()), socio_id: s.socio_id,
+          canal: form.canal.value, resultado: form.resultado.value, fecha: form.fecha.value || '', detalle: form.detalle.value.trim() });
+        d.close();
+        await cargarVista();
+        aviso(r.cerro ? `✅ Listo: ${s.nombre} ya estaba en tu lista y cerramos esa tarea (${r.cerro}).` : `✅ Anotado: contacto extra con ${s.nombre}. Suma en tus mensajes y en tus tareas hechas.`);
+      } catch (e) { btn.disabled = false; falla(e); }
+    };
+  }
+
   // ---------- Auditoría de planes (F2.18): lo que hay que corregir y el puntaje ----------
   const NIVEL_AUD = { optimo: ['verde', 'Óptimo'], mejorar: ['amarillo', 'A mejorar'], critico: ['rojo', 'Crítico'] };
   const SECCION_AUD = { gestion: 'Gestión y vigencia', diagnostico: 'Diagnóstico', metodologia: 'Rigor metodológico', custom: 'Customización', rpe: 'RPE', general: 'Generales' };
@@ -1110,6 +1291,8 @@
         ${bloqueTareasMes(M)}${bloquePlanExtra(M)}${proximosSabados(M)}</aside>
       <div class="principal">
       <h1 class="titulo">${esc(tituloDia(E.planes.hoy))} <span>·</span> tus planes</h1>
+      ${bloqueAvisosDueno(M.avisos_dueno)}
+      ${bloqueAvisosCondicion(M.avisos_condicion, 'planes')}
       ${avisoSabado(M)}
       ${avisoAusencia(M)}
       ${avisoTareasMes(M)}
@@ -1717,6 +1900,7 @@ ${p.tareas_mes ? `<span class="uso-hoy">📋 Tareas del mes: ${p.tareas_mes.hech
   const PL_GRUPOS = [['ACTIVO', 'Activos'], ['VACACIONES', 'Vacaciones'], ['DERIVADO', 'Derivados'], ['LIBERADO', 'Liberados'], ['ONLINE', 'Online'], ['BAJA', 'Bajas']];
   const PL_CONDICIONES = ['ACTIVO', 'VACACIONES', 'DERIVADO', 'LIBERADO', 'ONLINE', 'BAJA'];
   const PL_VAC_DIAS = 60;     // vacaciones: como máximo 60 días desde el vencimiento (Emanuel, 24/11/2026)
+  const PL_VAC_PLAZO = 7;     // y se cargan hasta 7 días corridos después del vencimiento (la ventana de baja)
   // la fecha local (UTC-3) de un ts ISO, como fechaLocalDe del servidor
   const ddIsoLocal = ts => { const t = Date.parse(ts); return isNaN(t) ? '' : new Date(t - 3 * 3600 * 1000).toISOString().slice(0, 10); };
   const PL_FILTROS = [['todos', 'Todos'], ['activos', 'Activos'], ['semana', 'Vence esta semana'], ['no_renovo', 'No renovó'], ['renovo', 'Renovó este mes'],
@@ -1747,6 +1931,7 @@ ${p.tareas_mes ? `<span class="uso-hoy">📋 Tareas del mes: ${p.tareas_mes.hech
   }
   const plCond = c => `<span class="pl-cond cond-${esc(String(c || '').toLowerCase())}">${esc(c || '—')}</span>`;
   const plMalMove = f => `En MOVE figura con ${f.profe_move} — falta corregir en MOVE`;
+  const plHechoPor = f => `Plan hecho por ${f.plan_hecho_por}`;
   const plNombreViejo = f => `En la planilla figuraba como ${f.nombre_planilla}`;
   const plContactoTxt = f => [f.contacto_canal ? (NOMBRE_CANAL[f.contacto_canal] || f.contacto_canal) : '', f.contacto_resultado, f.contacto_quien, f.contacto_nota ? '“' + f.contacto_nota + '”' : ''].filter(Boolean).join(' · ');
 
@@ -1812,7 +1997,7 @@ ${p.tareas_mes ? `<span class="uso-hoy">📋 Tareas del mes: ${p.tareas_mes.hech
     }).join('');
     const contacto = plContactoTxt(f);
     return `<tr class="pl-fila" data-accion="pl-ficha" data-id="${esc(f.socio_id)}" tabindex="0">
-      <td class="pl-socio${f.profe_move ? ' pl-socio-mal' : ''}"${f.profe_move ? ` title="${esc(plMalMove(f))}"` : ''}><span class="pl-n">${i}</span><b>${esc(f.nombre)}</b>${f.profe_move ? ' <span class="pl-mal" aria-label="Mal asignado en MOVE">⚠️</span>' : ''}${f.nombre_planilla ? ` <span class="pl-mal" title="${esc(plNombreViejo(f))}" aria-label="${esc(plNombreViejo(f))}">✏️</span>` : ''}${f.origen === 'move' ? ' <span class="pl-desde-move" title="Entró desde MOVE: no estaba en la planilla vieja">🆕 MOVE</span>' : ''}${conProfe ? `<small>${esc(f.profe_nombre || 'Sin profe')}</small>` : ''}</td>
+      <td class="pl-socio${f.profe_move ? ' pl-socio-mal' : ''}"${f.profe_move ? ` title="${esc(plMalMove(f))}"` : ''}><span class="pl-n">${i}</span><b>${esc(f.nombre)}</b>${f.profe_move ? ' <span class="pl-mal" aria-label="Mal asignado en MOVE">⚠️</span>' : ''}${f.nombre_planilla ? ` <span class="pl-mal" title="${esc(plNombreViejo(f))}" aria-label="${esc(plNombreViejo(f))}">✏️</span>` : ''}${f.origen === 'move' ? ' <span class="pl-desde-move" title="Entró desde MOVE: no estaba en la planilla vieja">🆕 MOVE</span>' : ''}${f.plan_hecho_por ? ` <span class="pl-plan-por" title="${esc(plHechoPor(f))}">🛠️ Plan hecho por ${esc(f.plan_hecho_por)}</span>` : ''}${conProfe ? `<small>${esc(f.profe_nombre || 'Sin profe')}</small>` : ''}</td>
       <td class="pl-c">${plCond(f.condicion)}${f.condicion_manual ? '<small class="pl-amano" title="Puesta a mano">✋</small>' : ''}</td>
       <td class="pl-fecha ${f.condicion === 'ACTIVO' ? plSemVence(dv) : ''}" title="${esc(f.vence ? 'Vence ' + plCuando(dv) : 'Sin vencimiento en MOVE')}">${esc(plFecha(f.vence)) || '—'}</td>
       <td class="pl-contacto" title="${esc(contacto)}">${f.contacto_fecha ? `${PL_CANAL[f.contacto_canal] || ''} ${esc(plFecha(f.contacto_fecha))}<small>${esc(f.contacto_resultado || '')}</small>` : '<span class="pl-nada">—</span>'}</td>
@@ -1890,6 +2075,7 @@ ${p.tareas_mes ? `<span class="uso-hoy">📋 Tareas del mes: ${p.tareas_mes.hech
     return `<h1 class="titulo">📋 Planilla <span>·</span> ${esc(equipo ? (elegido || (P.sede ? SEDES[P.sede] : 'todas las sedes')) : 'tus socios')}</h1>
       <p class="bajada">Como la planilla de siempre, pero se arma sola con lo que muestra MOVE${P.cargada ? ` (datos del ${esc(plFecha(P.cargada))})` : ''}. La condición y las observaciones se pueden corregir desde la ficha del socio.</p>
       ${sedes || profeSel ? `<div class="filtros">${sedes}${profeSel}</div>` : ''}
+      ${bloqueAvisosCondicion(P.avisos, 'pl')}
       ${plContadores(base, hoy, cupo)}
       <div class="filtros pl-filtros">${PL_FILTROS.filter(([k]) => ['mal_move', 'nombre', 'desde_move', 'bajas_mes'].indexOf(k) < 0 || cuenta(k) || filtro === k).map(([k, t]) => `<button class="chip${k === 'mal_move' || k === 'nombre' ? ' chip-mal' : ''}" data-accion="pl-filtro" data-f="${k}" aria-pressed="${filtro === k}">${esc(t)} <small>${cuenta(k)}</small></button>`).join('')}</div>
       <div class="pl-herramientas"><input class="buscador" type="search" placeholder="Buscar socio por nombre" data-pl-buscar value="${esc(E.plBusca || '')}" aria-label="Buscar socio">
@@ -1918,15 +2104,16 @@ ${p.tareas_mes ? `<span class="uso-hoy">📋 Tareas del mes: ${p.tareas_mes.hech
     const sel = man ? man.valor : '';
     // Vacaciones con reglas (Emanuel, 24/11/2026): las mismas que valida el servidor, para avisar antes de guardar
     const vacMax = f.vence ? sumarDiasIso(f.vence, PL_VAC_DIAS) : '';
-    const vacPrevia = man && man.valor === 'VACACIONES' && man.quien !== 'planilla vieja' && ddIsoLocal(man.ts) <= (f.vence || '');
+    const vacPlazo = f.vence ? sumarDiasIso(f.vence, PL_VAC_PLAZO) : '';
+    const vacPrevia = man && man.valor === 'VACACIONES' && man.quien !== 'planilla vieja' && ddIsoLocal(man.ts) <= vacPlazo;
     const motivoVac = hasta => {
       if (!(tiene('recepcion') || tiene('coordinador') || tiene('admin'))) return 'vac_solo_recepcion';
       if (!/^\d{4}-\d{2}-\d{2}$/.test(hasta)) return 'vac_sin_vuelta';
-      if (!f.vence || (hoy > f.vence && !vacPrevia)) return 'vac_vencida';
+      if (!f.vence || (hoy > vacPlazo && !vacPrevia)) return 'vac_vencida';
       if (hasta > vacMax) return 'vac_larga';
       return '';
     };
-    const txtVac = `Las carga recepción antes de que venza la membresía, con fecha de vuelta: 60 días como máximo desde el vencimiento${vacMax ? ` (hasta el ${plFecha(vacMax)})` : ''}. Si no renueva a la vuelta + 7 días, cuenta como baja del mes en que se fue.`;
+    const txtVac = `Las carga recepción hasta 7 días después del vencimiento, con fecha de vuelta: 60 días como máximo desde el vencimiento${vacMax ? ` (hasta el ${plFecha(vacMax)})` : ''}. Si no renueva a la vuelta + 7 días, cuenta como baja del mes en que se fue.`;
     const formEdit = f.editable ? `<form class="marca-form pl-editar" style="border:0;padding:0">
         <label class="campo">Condición<select name="condicion"><option value=""${!sel ? ' selected' : ''}>Automática (${esc(autoTxt)})</option>${PL_CONDICIONES.map(c => `<option value="${c}"${c === sel ? ' selected' : ''}>${c}</option>`).join('')}</select></label>
         <label class="campo" data-hasta${sel === 'VACACIONES' ? '' : ' hidden'}>Vuelve el (hasta)<input type="date" name="hasta" min="${hoy}"${vacMax ? ` max="${esc(vacMax)}"` : ''} value="${esc(man && man.hasta ? man.hasta : '')}"></label>
@@ -1952,6 +2139,8 @@ ${p.tareas_mes ? `<span class="uso-hoy">📋 Tareas del mes: ${p.tareas_mes.hech
       <div class="pl-meses-ficha">${meses}</div>
       <div><b>Contactos de recepción</b>${f.contactos && f.contactos.length ? `<ul class="pl-contactos">${f.contactos.map(c => `<li><b>${esc(plFecha(c.fecha))}</b> ${PL_CANAL[c.canal] || ''} ${esc([NOMBRE_CANAL[c.canal] || c.canal, c.resultado, c.quien].filter(Boolean).join(' · '))}${c.nota ? `<br><small>“${esc(c.nota)}”</small>` : ''}</li>`).join('')}</ul>`
         : f.contacto_fecha ? `<p class="aclara">${esc(plFecha(f.contacto_fecha))} · ${esc(plContactoTxt(f))}${Number(f.contactos_n) > 1 ? ` · ${esc(f.contactos_n)} contactos en 60 días` : ''}</p>` : '<p class="aclara">Sin contactos de recepción registrados.</p>'}</div>
+      ${f.aviso_hist && f.aviso_hist.length ? `<div><b>Cómo sigue (avisos)</b><ul class="pl-contactos">${f.aviso_hist.map(h => `<li><b>${esc(plFecha(h.fecha))}</b> ${esc(textoRespuestaAviso(h))}${h.quien ? ' · ' + esc(h.quien) : ''}</li>`).join('')}</ul></div>` : ''}
+      ${f.plan_extra_hist && f.plan_extra_hist.length ? `<div><b>Plan extra (quién lo hizo)</b><ul class="pl-contactos">${f.plan_extra_hist.map(h => `<li><b>${esc(plFecha(h.fecha))}</b> Plan hecho por ${esc(h.quien)}${h.dueno ? ' · ' + esc({ pendiente: h.dueno + ' todavía no respondió si es su socio', si: h.dueno + ' confirmó que es su socio', no: h.dueno + ' dijo que no es su socio: pasó a ' + h.quien }[h.aviso] || '') : ''}</li>`).join('')}</ul></div>` : ''}
       ${f.obs_editada ? `<p class="aclara">Observaciones editadas por ${esc(f.obs_editada.quien)} el ${esc(ddmmDe(f.obs_editada.ts))}.</p>` : ''}
       ${formEdit}`, d => {
       d.querySelectorAll('[data-cerrar]').forEach(b => { b.onclick = () => d.close(); });
@@ -1992,6 +2181,8 @@ ${p.tareas_mes ? `<span class="uso-hoy">📋 Tareas del mes: ${p.tareas_mes.hech
           d.close();
           render();
           aviso('✅ Guardado en la planilla.');
+          // Baja confirmada por recepción: a quién de la lista de espera ofrecerle el lugar (cupo sin verificar)
+          if (cond === 'BAJA' && cond !== sel && (tiene('recepcion') || tiene('coordinador') || tiene('admin'))) ESP.dialogoBaja({ socio_id: f.socio_id, nombre: f.nombre });
         } catch (e) { btn.disabled = false; falla(e); }
       };
     });
@@ -2084,7 +2275,7 @@ ${p.tareas_mes ? `<span class="uso-hoy">📋 Tareas del mes: ${p.tareas_mes.hech
   }
 
   const DETALLE = {
-    tareas_pct: v => v.tareas_total ? `${v.tareas_hechas} de ${v.tareas_total}` : '',
+    tareas_pct: v => v.tareas_total ? `${v.tareas_hechas - (v.tareas_extra || 0)} de ${v.tareas_total}${v.tareas_extra ? ` (+${v.tareas_extra} extra)` : ''}` : '',
     apertura_pct: v => v.aperturas ? `${v.aperturas_bien} de ${v.aperturas} días` : '',
     retencion_pct: v => v.retencion_total ? `${v.retencion_logradas} de ${v.retencion_total}` : '',
     promesas_pct: v => v.promesas_total ? `${v.promesas_cumplidas} de ${v.promesas_total}` : '',
@@ -2997,6 +3188,8 @@ ${p.tareas_mes ? `<span class="uso-hoy">📋 Tareas del mes: ${p.tareas_mes.hech
     E.errorCarga = '';
     try {
       if (E.vista === 'hoy' || E.vista === 'planes') cargarPedidosMios();   // por detrás: la pantalla no espera
+      if (E.vista === 'hoy' && tiene('recepcion')) ESP.cargarHoy(() => { if (E.vista === 'hoy' && !document.activeElement.closest('.esp-banda')) render(); });
+      if (E.vista === 'espera') { await ESP.cargar(); if (E.espSede === 'metricas' && coordinaEsp()) E.espMetricas = await cliente.llamar('espera_metricas', {}); }
       if (E.vista === 'ped') {
         if (E.pedForm) return;   // se está escribiendo un pedido: no pisarlo
         E.ped = await cliente.llamar('pedidos_ver');
@@ -3083,6 +3276,8 @@ ${p.tareas_mes ? `<span class="uso-hoy">📋 Tareas del mes: ${p.tareas_mes.hech
   const clavePlanes = v => (['profes', 'phor', 'pliq'].indexOf(v) >= 0 ? 'equipo|' + (tiene('admin') ? E.sedeElegida : '') : 'mio');
   const claveRend = v => v + '|' + (E.rendMes || '') + '|' + (tiene('admin') ? E.sedeElegida : '');
   function recordar(clave, dato) { if (dato) MEMORIA[clave] = dato; }
+
+  const coordinaEsp = () => tiene('coordinador') || tiene('admin');
 
   function irA(vista) {
     E.vista = vista;
@@ -3385,10 +3580,11 @@ ${p.tareas_mes ? `<span class="uso-hoy">📋 Tareas del mes: ${p.tareas_mes.hech
       : E.vista === 'pres' ? vistaResumenProfes()
       : E.vista === 'ppl' ? vistaPlanilla()
       : E.vista === 'ped' ? PulsoPedidos.vistaCoord(E.ped, E.pedForm, esc)
+      : E.vista === 'espera' ? ESP.vista()
       : E.vista === 'phor' ? (E.planes ? vistaAgendaEquipo(true) : '<div class="cargando">Cargando…</div>')
       : E.vista === 'pliq' ? (E.planes ? `<h1 class="titulo">${tiene('admin') ? 'Comisiones y tareas del mes' : 'Tareas del mes'} <span>·</span> profes</h1>${vistaTareasMesCoord()}${tablaComisiones()}` : '<div class="cargando">Cargando…</div>')
       : '<div class="vacio">Tu usuario no tiene ninguna vista asignada. Avisale a Emanuel.</div>';
-    const sinDatos = { hoy: !E.tareas, sede: E.personaDni ? !E.persona : !E.sede, mes: !E.rend, rend: !E.rend, admin: !E.usuarios, reservas: !E.ocupacion, liq: !E.liq, resumen: !E.resumen, consultas: !E.cons, pase: !E.pase, chat: !E.chat, planes: !E.planes, profes: !E.planes, pmes: !E.planes, phor: !E.planes, pliq: !E.planes, pres: !E.estado, ppl: !E.pl, ped: !E.ped }[E.vista];
+    const sinDatos = { hoy: !E.tareas, sede: E.personaDni ? !E.persona : !E.sede, mes: !E.rend, rend: !E.rend, admin: !E.usuarios, reservas: !E.ocupacion, liq: !E.liq, resumen: !E.resumen, consultas: !E.cons, pase: !E.pase, chat: !E.chat, planes: !E.planes, profes: !E.planes, pmes: !E.planes, phor: !E.planes, pliq: !E.planes, pres: !E.estado, ppl: !E.pl, ped: !E.ped, espera: !E.esp }[E.vista];
     const mostrar = E.errorCarga && sinDatos ? `<div class="vacio" style="margin-top:18px"><p>${esc(E.errorCarga)}</p><p>La pantalla vuelve a intentarlo sola. Tus marcas no se pierden.</p><button class="boton" data-accion="reintentar">Reintentar ahora</button></div>` : cuerpo;
     const bandas = E.vista === 'hoy' ? bandaPedidos() + bandaPase() + bandaVentas() + bandaFichajes() + bandaReservas() : E.vista === 'planes' ? bandaPedidos() : '';
     app.innerHTML = encabezado() + `<main class="contenedor">${bandas}${mostrar}</main>` + (E.vista === 'hoy' && turnoTerminando() ? `<button class="cerrar-app-fijo${DEMO ? ' con-cinta' : ''}" data-accion="cerrar-app">🚪 ${E.dia && E.dia.cierre_hecho ? 'Listo por hoy' : 'Se termina tu turno'}: cerrá la app antes de irte</button>` : '') + (DEMO ? '<div class="cinta-practica">Modo práctica · datos inventados</div>' : '') + botonRanking() + panelRanking();
@@ -3643,6 +3839,7 @@ ${p.tareas_mes ? `<span class="uso-hoy">📋 Tareas del mes: ${p.tareas_mes.hech
 
   app.addEventListener('input', ev => {
     const t = ev.target;
+    if (t.matches && t.matches('[data-esp-busca]')) { ESP.alEscribir(t); return; }
     if (t.matches && t.matches('[data-pl-buscar]')) {
       E.plBusca = t.value;
       const c = document.getElementById('pl-cuerpo');
@@ -3919,6 +4116,7 @@ ${p.tareas_mes ? `<span class="uso-hoy">📋 Tareas del mes: ${p.tareas_mes.hech
 
   app.addEventListener('change', ev => {
     const el = ev.target;
+    if (el.dataset.accion === 'esp-franja') { ESP.alEscribir(el); return; }
     if (el.dataset.accion === 'tipo') { E.tipo = el.value; render(); }
     if (el.dataset.tmes) { marcarTareaMes(el.dataset.tmes, el.checked); }
     if (el.dataset.accion === 'sabado-elegir') {
@@ -3961,6 +4159,7 @@ ${p.tareas_mes ? `<span class="uso-hoy">📋 Tareas del mes: ${p.tareas_mes.hech
     } else if (a === 'cerrar-app') cerrarApp();
     else if (a.indexOf('chat-') === 0) accionChat(a, el);
     else if (a.indexOf('ped-') === 0) await accionPedido(a, el);
+    else if (a.indexOf('esp-') === 0) await ESP.accion(a, el);
     else if (a === 'fichaje') {
       el.disabled = true;
       try {
@@ -4148,6 +4347,21 @@ ${p.tareas_mes ? `<span class="uso-hoy">📋 Tareas del mes: ${p.tareas_mes.hech
         aviso({ corregi: '✅ Anotado: mañana lo miramos en MOVE.', dejar: '🤚 Listo: queda así, con tu motivo.', otro_dia: '📅 Pasa al próximo día hábil.', deshacer: '↩️ Deshecho.' }[que] + meta);
       } catch (e) { el.disabled = false; aviso(PulsoApi.mensaje(e.codigo || e.message), true); }
     }
+    else if (a === 'contacto-extra') dialogoContactoExtra();
+    else if (a === 'aviso-resp') {
+      const av = avisoActual(el.dataset.src, el.dataset.s), r = el.dataset.r;
+      if (!av) return;
+      if (r === 'no_se') {
+        el.disabled = true;
+        try { await enviarAviso({ socio_id: av.socio_id, respuesta: 'no_se' }, el.dataset.src, av); } catch (e) { el.disabled = false; falla(e); }
+      } else dialogoAviso(av, r, el.dataset.src);
+    }
+    else if (a === 'aviso-dueno') {
+      const av = (((E.planes || {}).mio || {}).avisos_dueno || []).find(x => x.id === el.dataset.id);
+      if (!av) return;
+      if (el.dataset.r === 'no') dialogoAvisoDueno(av);
+      else { el.disabled = true; try { await enviarAvisoDueno(av, 'si', ''); } catch (e) { el.disabled = false; falla(e); } }
+    }
     else if (a === 'plan-extra') {
       const campo = app.querySelector('[data-extra-busca]');
       const mio = (E.planes && E.planes.mio) || {};
@@ -4157,9 +4371,9 @@ ${p.tareas_mes ? `<span class="uso-hoy">📋 Tareas del mes: ${p.tareas_mes.hech
       if (!s) { aviso('Elegí el socio de la lista: escribí su nombre y tocá la sugerencia.', true); return; }
       el.disabled = true;
       try {
-        await cliente.llamar('profe_plan_extra', { socio_id: s.socio_id });
+        const r = await cliente.llamar('profe_plan_extra', { socio_id: s.socio_id });
         await cargarVista();
-        aviso(`✅ Anotado: le renovaste el plan a ${s.socio_nombre}. Te cuenta como hecho.`);
+        aviso(`✅ Anotado: le renovaste el plan a ${s.socio_nombre}. Te cuenta como hecho.` + (r.aviso_dueno ? ` Le preguntamos a ${r.aviso_dueno} si es su socio.` : ''));
       } catch (e) { el.disabled = false; aviso(PulsoApi.mensaje(e.codigo || e.message), true); }
     }
     else if (a === 'no-es-mio') {

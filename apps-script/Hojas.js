@@ -73,6 +73,12 @@ const COLUMNAS = {
                    'meses', 'mov_mes', 'observaciones', 'profe_move', 'origen', 'nombre_planilla', 'cargada'],
   // Lo que cambia la app sobre la planilla (condición a mano, observaciones, dueño). La PC la lee y no la pisa.
   profe_planilla_edit: ['socio_id', 'campo', 'valor', 'hasta', 'vence_al_editar', 'ts', 'dni'],
+  // Aviso "¿Cómo viene?" (Avisos.js): una fila por respuesta. vence = el vencimiento al que respondían; hasta = fecha de renovación o de vuelta.
+  // respuesta: renueva | vacaciones | vacaciones_pedida (la pidió un profe) | no_vuelve | no_se. Se borran solas a los 180 días.
+  aviso_condicion: ['id', 'socio_id', 'sede', 'profe_dni', 'vence', 'respuesta', 'hasta', 'nota', 'dni', 'nombre', 'ts'],
+  // Aviso al dueño (Avisos.js, 24/11/2026): un profe anotó un Plan extra de un socio que figura como de otro. estado: pendiente | si | no.
+  // tarea_id = el Plan extra en profe_tareas. Se borran solas a los 180 días.
+  aviso_dueno: ['id', 'tarea_id', 'socio_id', 'socio_nombre', 'sede', 'hizo_dni', 'hizo_nombre', 'dueno_dni', 'dueno_nombre', 'estado', 'ts', 'respondida_ts', 'respondio_dni'],
   chat_conv: ['id', 'tipo', 'nombre', 'miembros', 'creada_por', 'creada', 'ultimo_ts'],
   chat_msg: ['id', 'conv_id', 'ts', 'dni', 'nombre', 'texto', 'ref'],
   chat_lect: ['conv_id', 'dni', 'ts'],
@@ -82,6 +88,14 @@ const COLUMNAS = {
   pedidos: ['id', 'tipo', 'titulo', 'detalle', 'para_roles', 'para_sedes', 'para_dnis', 'de_dni', 'de_nombre', 'cierra', 'avisar_dias', 'repite', 'estado', 'creado', 'actualizado'],
   pedidos_items: ['id', 'pedido_id', 'ciclo', 'sede', 'dni', 'nombre', 'texto', 'cantidad', 'ts'],
   pedidos_hechos: ['pedido_id', 'ciclo', 'dni', 'nombre', 'sede', 'nota', 'ts'],
+  // Lista de espera (ListaEspera.js, 24/11/2026). Una fila por persona; el estado es un campo, no un color. pases: JSON [{lugares, ts, tipo, motivo}].
+  espera: ['id', 'sede', 'sede_interes', 'fecha_alta', 'prioridad', 'nombre', 'celular', 'horario_texto', 'franjas', 'observaciones', 'estado', 'estado_ts', 'derivacion', 'evaluacion', 'interesado',
+           'origen', 'referido_por', 'contacto_dni', 'consentimiento_fecha', 'consentimiento_canal', 'baja_pedida', 'intentos', 'recon_n', 'ultimo_contacto', 'proximo_contacto',
+           'ultimo_mensaje_ts', 'ultima_respuesta', 'respondio_alguna_vez', 'lugar_ref', 'ofertas_perdidas', 'pases', 'fecha_ingreso', 'nota_pausa', 'cargada', 'creado_por'],
+  espera_hist: ['id', 'persona_id', 'ts', 'dni', 'nombre', 'tipo', 'mensaje_clave', 'resultado', 'detalle', 'verif', 'verif_ts'],
+  espera_ofertas: ['id', 'persona_id', 'sede', 'franja', 'ts', 'vence_ts', 'estado', 'dni', 'motivo'],
+  espera_benef: ['id', 'persona_id', 'sede', 'ts', 'beneficio', 'estado', 'dni', 'nombre', 'canjeado_ts'],
+  espera_config: ['clave', 'valor'],
   garantia: ['id', 'ts', 'sede', 'socio_id', 'socio_nombre', 'profe', 'motivo', 'registra_dni', 'estado', 'decide_dni',
              'comentario', 'decidido_en'],
 };

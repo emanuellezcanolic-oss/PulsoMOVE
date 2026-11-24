@@ -51,7 +51,7 @@ function rankVer(req, deps) {
     const esc = liqEscalon(u, mes, hoy, liq, nuevos);
     return {
       dni: u.dni, nombre: u.nombre, sede: u.sede,
-      procesos: { total: Number(valores.tareas_total) || 0, hechas: Number(valores.tareas_hechas) || 0, pct: valores.tareas_pct == null ? null : Math.round(valores.tareas_pct * 100), a_tiempo_pct: valores.a_tiempo_pct == null ? null : Math.round(valores.a_tiempo_pct * 100) },
+      procesos: { total: Number(valores.tareas_total) || 0, hechas: (Number(valores.tareas_hechas) || 0) - (Number(valores.tareas_extra) || 0), extra: Number(valores.tareas_extra) || 0, pct: valores.tareas_pct == null ? null : Math.round(valores.tareas_pct * 100), a_tiempo_pct: valores.a_tiempo_pct == null ? null : Math.round(valores.a_tiempo_pct * 100) },
       largos: Number(valores.planes_largos) || 0, largos_mes_pasado: largosAnt, largos_meses: largosMeses,
       nuevos: nuevos, mes_pasado_a_la_fecha: aLaFecha, vs_mes_pasado: nuevos - aLaFecha,
       proyeccion: liqRedondeo(nuevos / corridos * dias, 1),
@@ -103,7 +103,7 @@ function resumenSemanal(req, deps) {
     const sem = rankSumar(v.filter(f => enSemana(f.fecha, lunes, domingo)));
     const ant = rankSumar(v.filter(f => enSemana(f.fecha, lunesAnt, domingoAnt)));
     const mesAFecha = rankSumar(v.filter(f => String(f.fecha).indexOf(mesActual) === 0 && String(f.fecha) <= domingo));
-    const t = tareas.filter(x => x.sede === sede && enSemana(x.fecha, lunes, domingo));
+    const t = tareas.filter(x => x.sede === sede && !esContactoExtra(x) && enSemana(x.fecha, lunes, domingo));
     const hechas = t.filter(x => x.estado === 'hecha').length;
     const animos = cierres.filter(c => c.sede === sede && enSemana(c.fecha, lunes, domingo) && Number(c.animo) > 0).map(c => Number(c.animo));
     const delEquipo = {};

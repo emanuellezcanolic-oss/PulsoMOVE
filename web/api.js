@@ -3,7 +3,7 @@
   const CLAVE_SESION = 'pulso_sesion';
   const CLAVE_COLA = 'pulso_cola';
   // Errores que no se arreglan reintentando: la marca se descarta y se avisa
-  const DEFINITIVOS = ['prohibido', 'no_existe', 'datos_invalidos', 'ya_pedida', 'sin_recepcion', 'ya_avisado', 'ya_anotado', 'vac_solo_recepcion', 'vac_sin_vuelta', 'vac_vencida', 'vac_larga'];
+  const DEFINITIVOS = ['prohibido', 'no_existe', 'datos_invalidos', 'ya_pedida', 'sin_recepcion', 'ya_avisado', 'ya_anotado', 'vac_solo_recepcion', 'vac_sin_vuelta', 'vac_vencida', 'vac_larga', 'aviso_sin_fecha', 'aviso_fecha_lejos', 'celular_invalido', 'espera_semana', 'espera_baja_pedida', 'espera_oferta_activa', 'espera_tope_beneficio', 'espera_sin_lugar'];
   // "ocupado" garantiza que el pedido no se hizo, así que repetirlo es seguro aunque guarde datos.
   const ESPERAS_OCUPADO = [3000, 8000];
   const LIMITE_MS = 90000;   // el servidor espera su turno hasta 20 s; más que esto ya es un pedido colgado
@@ -22,8 +22,16 @@
     ya_anotado: 'Ese socio ya figura con el plan renovado hoy.',
     vac_solo_recepcion: 'Las vacaciones las carga recepción (o coordinación): pedíselo a recepción con la fecha de vuelta.',
     vac_sin_vuelta: 'Para cargar vacaciones hace falta la fecha de vuelta.',
-    vac_vencida: 'Las vacaciones se cargan antes de que venza la membresía. Ya venció: si no renueva, cuenta como baja.',
+    vac_vencida: 'Las vacaciones se cargan hasta 7 días después del vencimiento. Ya pasó ese plazo: si no renueva, cuenta como baja.',
     vac_larga: 'Las vacaciones son de 60 días como máximo desde que vence la membresía. Elegí una fecha de vuelta más cercana.',
+    aviso_sin_fecha: 'Poné la fecha en que va a renovar así lo volvemos a mirar ese día.',
+    aviso_fecha_lejos: 'La fecha de renovación puede ser hasta 10 días desde hoy. Si es más lejos, tocá "Todavía no sé" y lo volvemos a mirar.',
+    celular_invalido: 'Ese celular no parece válido. Escribilo con el código de área (por ejemplo 2944 123456).',
+    espera_semana: 'A esa persona ya se le escribió esta semana. Esperá unos días para no ser pesados.',
+    espera_baja_pedida: 'Esa persona pidió la baja de la lista: no se la puede volver a poner sin que lo pida ella.',
+    espera_oferta_activa: 'Esa persona ya tiene un lugar ofrecido que todavía no venció.',
+    espera_tope_beneficio: 'Se alcanzó el tope de beneficios de este mes en la sede.',
+    espera_sin_lugar: 'Esa persona todavía no cuenta con un lugar calculado (falta reconfirmar o cargar el horario).',
     sin_recepcion: 'No hay nadie de recepción cargado en esa sede para pasarle el pedido. Avisale a Emanuel.',
     red: 'No hay conexión. Lo que marques se guarda en este equipo y se envía solo.',
     ocupado: 'El servidor está demorado. Esperá un momento y probá de nuevo.',

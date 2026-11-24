@@ -147,6 +147,72 @@ function marcar(req, deps) {
   return {};
 }
 
+// ---------- Contacto extra (Emanuel, 24/11/2026) ----------
+// Recepción le escribe o llama a un socio que no estaba en su lista del día: queda como marca hecha "Contacto extra", suma en
+// "Mensajes enviados" y en las tareas hechas, y no toca el denominador del cumplimiento (es extra: suma, pero no resta si no se hace).
+// Si el socio ya tenía una tarea pendiente para hoy, se cierra esa en lugar de duplicar (como Plan extra de los profes).
+const CANALES_EXTRA = ['AU', 'MP', 'LL', 'PR'];
+
+function esDeRecepcionConSede(u) {
+  return tieneRol(u, 'recepcion');
+}
+
+// Los socios que se pueden elegir: los de la planilla de la sede (más los de sus tareas, por si falta alguno). Solo nombre e id.
+function contactoExtraSocios(req, deps) {
+  const { usuario } = sesion(req, deps);
+  if (!esDeRecepcionConSede(usuario)) falla('prohibido');
+  const vistos = {}, out = [];
+  const sumar = (id, nombre, sede) => {
+    id = String(id);
+    if (!id || vistos[id] || !nombre) return;
+    vistos[id] = true;
+    out.push({ socio_id: id, nombre: nombre, sede: sede || '' });
+  };
+  deps.repo.leer('profe_planilla').filter(f => !usuario.sede || f.sede === usuario.sede).forEach(f => sumar(f.socio_id, f.nombre, f.sede));
+  deps.repo.leer('tareas').filter(t => t.asignado_dni === usuario.dni && /^\d+$/.test(t.socio_id)).forEach(t => sumar(t.socio_id, t.socio_nombre, t.sede));
+  out.sort((a, b) => String(a.nombre).localeCompare(String(b.nombre)));
+  return { socios: out };
+}
+
+function contactoExtra(req, deps) {
+  const { usuario } = sesion(req, deps);
+  if (!esDeRecepcionConSede(usuario)) falla('prohibido');
+  const idMarca = texto(req.id_marca);
+  const marca = { canal: texto(req.canal), resultado: texto(req.resultado), fecha: texto(req.fecha), detalle: texto(req.detalle) };
+  if (!idMarca || CANALES_EXTRA.indexOf(marca.canal) < 0 || marca.resultado === 'ESPERANDO' || validarMarca(marca)) falla('datos_invalidos');
+  const socio = texto(req.socio_id);
+  if (deps.repo.leer('registro').some(r => r.id_marca === idMarca)) return {};
+  const hoy = deps.hoy();
+  const tareas = deps.repo.leer('tareas');
+  // ¿ya estaba en mi lista de hoy? entonces se cierra esa tarea (la marca de siempre)
+  const pendiente = tareas.filter(t => t.asignado_dni === usuario.dni && t.estado === 'pendiente' && String(t.fecha) <= hoy && idDeSocio(t.socio_id) === socio
+    && !esRecordatorio(t.tipo) && !seVerificaEnMove(t.tipo) && !esContactoExtra(t)).sort(ordenTareas)[0];
+  if (pendiente) {
+    marcar(Object.assign({}, req, { tarea_id: pendiente.id }), deps);
+    return { cerro: pendiente.tipo, socio_nombre: pendiente.socio_nombre };
+  }
+  const planilla = deps.repo.leer('profe_planilla').find(f => f.socio_id === socio && (!usuario.sede || f.sede === usuario.sede));
+  const suya = tareas.find(t => t.asignado_dni === usuario.dni && idDeSocio(t.socio_id) === socio);
+  const origen = planilla || suya;
+  if (!origen) falla('no_existe');
+  const nombre = planilla ? planilla.nombre : suya.socio_nombre;
+  const sede = planilla ? planilla.sede : suya.sede;
+  const ts = new Date(deps.ahora()).toISOString();
+  const id = 'ce-' + idMarca;
+  deps.repo.agregar('tareas', {
+    id: id, fecha: hoy, sede: sede, socio_id: 'extra-' + socio, socio_nombre: nombre, profe: planilla ? planilla.profe_nombre : (suya.profe || ''),
+    tipo: TIPO_CONTACTO_EXTRA, prioridad: '3', situacion: 'Contacto que hiciste por tu cuenta · ' + marca.resultado + (marca.fecha ? ' ' + marca.fecha.slice(8, 10) + '/' + marca.fecha.slice(5, 7) : ''),
+    accion: 'Contacto extra ' + (marca.canal === 'LL' ? 'por llamada' : marca.canal === 'PR' ? 'en persona' : marca.canal === 'AU' ? 'con un audio' : 'por mensaje') + (marca.detalle ? ': ' + marca.detalle : ''),
+    ultima_anotacion: '', asignado_dni: usuario.dni, pendiente_desde: hoy, estado: 'hecha', hecha_en: ts, intro: '',
+  });
+  deps.repo.agregar('registro', {
+    segundos: '', adelantada: '', id_marca: idMarca, ts: ts, tarea_id: id, fecha_tarea: hoy, sede: sede, socio_id: socio,
+    socio_nombre: nombre, tipo: TIPO_CONTACTO_EXTRA, dni: usuario.dni, canal: marca.canal, resultado: marca.resultado,
+    fecha_resultado: marca.fecha, detalle: marca.detalle,
+  });
+  return { extra: true, socio_nombre: nombre };
+}
+
 // ---------- Coordinación ----------
 
 const DIAS_ALERTA = 2;
@@ -696,19 +762,21 @@ function delMes(iso, mes) {
 // Lo que se mide en la app, en vivo. Lo que viene de MOVE (cajas, renovaciones) lo carga el pipeline cada mañana.
 function valoresEnApp(dni, mes, tareas, registro, actividad, hoy) {
   const esperas = esperasActivas(registro.filter(r => r.dni === dni), hoy);
-  const suyas = tareas.filter(t => t.asignado_dni === dni && t.estado !== 'cerrada' && !esRecordatorio(t.tipo) && !esperaAMove(t) && !enEspera(t, esperas) && pendienteDesde(t).indexOf(mes) === 0 && (t.estado === 'hecha' ? fechaArgentina(t.hecha_en) >= INICIO_REAL : String(t.fecha) <= hoy));
+  const suyas = tareas.filter(t => t.asignado_dni === dni && t.estado !== 'cerrada' && !esRecordatorio(t.tipo) && !esContactoExtra(t) && !esperaAMove(t) && !enEspera(t, esperas) && pendienteDesde(t).indexOf(mes) === 0 && (t.estado === 'hecha' ? fechaArgentina(t.hecha_en) >= INICIO_REAL : String(t.fecha) <= hoy));
   const hechas = suyas.filter(t => t.estado === 'hecha');
+  // Contacto extra (24/11/2026): suma en las hechas, pero no está en el total ni en el % de cumplimiento
+  const extras = tareas.filter(t => t.asignado_dni === dni && t.estado === 'hecha' && esContactoExtra(t) && delMes(t.hecha_en, mes));
   const aTiempo = hechas.filter(t => diasHabiles(pendienteDesde(t), fechaArgentina(t.hecha_en)) === 0);
   const marcas = registro.filter(r => r.dni === dni && delMes(r.ts, mes) && r.resultado !== 'ESPERANDO');
   const contactos = marcas.filter(esContactoConSocio);
   const CON_FECHA = ['RESERVA', 'VUELVE', 'PAGA', 'PAGÓ', 'VOLVIÓ', 'VACACIONES'];
-  const reten = marcas.filter(r => !/^(Controlar stock|Encargo|Felicitar|Invitar a escanear|Cumpleaños|Encuesta de baja|Asignarle profesor|Completar ficha|Corregir calendario|Revisar profesor|Seguimiento de consulta|Profes de hoy|Apertura|Cierre|Socio antiguo|Coordinar|Cambiar profesor|Confirmar si viene|Evaluación sin cargar|Entrena en otra sede|Revisar plan)/.test(r.tipo));
+  const reten = marcas.filter(r => !/^(Controlar stock|Encargo|Contacto extra|Felicitar|Invitar a escanear|Cumpleaños|Encuesta de baja|Asignarle profesor|Completar ficha|Corregir calendario|Revisar profesor|Seguimiento de consulta|Profes de hoy|Apertura|Cierre|Socio antiguo|Coordinar|Cambiar profesor|Confirmar si viene|Evaluación sin cargar|Entrena en otra sede|Revisar plan)/.test(r.tipo));
   const act = actividad.filter(a => a.dni === dni && delMes(a.ts, mes));
   const cuenta = t => act.filter(a => a.tipo === t).length;
   const encuestas = suyas.filter(t => String(t.tipo).indexOf('Encuesta de baja') === 0);
   const v = {
     mensajes: contactos.length + cuenta('mensaje') + cuenta('encuesta'), consultas: cuenta('consulta'), dias_prueba: cuenta('prueba'), resenas: cuenta('resena'), referidos: cuenta('referido'),
-    tareas_total: suyas.length, tareas_hechas: hechas.length, adelantadas: marcas.filter(r => r.adelantada === '1').length,
+    tareas_total: suyas.length, tareas_hechas: hechas.length + extras.length, tareas_extra: extras.length, adelantadas: marcas.filter(r => r.adelantada === '1').length,
     audios: marcas.filter(r => r.canal === 'AU').length,
   };
   if (suyas.length) v.tareas_pct = hechas.length / suyas.length;
@@ -881,6 +949,7 @@ function miDia(req, deps) {
     hoy: { hechas: deHoy.hechas, pendientes: pendientes.length, atrasadas: atrasadas, mensajes: deHoy.mensajes, consultas: deHoy.consultas, meta: metaDe(usuario, tareas, hoy) },
     coach: mensajesCoach(valores, propios, { hoy: hoy, atrasadas: atrasadas, racha: racha }),
     ideas: ideasParaSumar({ valores: valores, objetivos: propios, fecha: hoy, hechoHoy: actividad.filter(a => a.dni === usuario.dni && fechaArgentina(a.ts) === hoy).reduce((o, a) => { o[a.tipo] = (o[a.tipo] || 0) + 1; return o; }, {}) }),
+    avisos_condicion: tieneRol(usuario, 'recepcion') && usuario.sede ? avisosCondicionDe(usuario, usuarios, deps, 'recepcion') : [],
     ventas_largas: ventasLargasDe(usuario, usuarios, deps), hora_fin: usuario.hora_fin || '', cierre_hecho: deps.repo.leer('cierres').some(c => c.dni === usuario.dni && c.fecha === hoy),
   };
 }
@@ -1043,7 +1112,7 @@ function respaldo(req, deps) {
   exigirClave(req, deps);
   const usuarios = deps.repo.leer('usuarios').map(u => { const c = Object.assign({}, u); delete c.pin_hash; delete c.sal; return c; });
   const out = { usuarios: usuarios };
-  ['tareas', 'registro', 'garantia', 'actividad', 'rendimiento', 'objetivos', 'cierres', 'profes', 'fichajes', 'reservas_qr', 'avisos', 'uso', 'beneficios', 'stock', 'ventas', 'ventas_largas', 'ocupacion', 'proximas', 'liquidacion', 'liq_qr', 'coberturas', 'consulta_estado', 'pases'].forEach(h => { out[h] = deps.repo.leer(h); });
+  ['tareas', 'registro', 'garantia', 'actividad', 'rendimiento', 'objetivos', 'cierres', 'profes', 'fichajes', 'reservas_qr', 'avisos', 'uso', 'beneficios', 'stock', 'ventas', 'ventas_largas', 'ocupacion', 'proximas', 'liquidacion', 'liq_qr', 'coberturas', 'consulta_estado', 'pases', 'aviso_condicion', 'aviso_dueno'].forEach(h => { out[h] = deps.repo.leer(h); });
   return out;
 }
 
@@ -1291,6 +1360,10 @@ const ACCIONES = {
   cambiar_pin: cambiarPin,
   mis_tareas: misTareas,
   marcar: marcar,
+  contacto_extra: contactoExtra,
+  aviso_condicion_responder: (r, d) => avisoCondicionResponder(r, d),
+  aviso_dueno_responder: (r, d) => avisoDuenoResponder(r, d),
+  contacto_extra_socios: contactoExtraSocios,
   cargar_tareas: cargarTareas,
   reasignar_tareas: reasignarTareas,
   bajar_registro: bajarRegistro,
@@ -1396,6 +1469,24 @@ const ACCIONES = {
   chat_leido: (r, d) => chatLeido(r, d),
   chat_enviar: (r, d) => chatEnviar(r, d),
   chat_agregar: (r, d) => chatAgregar(r, d),
+  // Lista de espera (ListaEspera.js)
+  espera_ver: (r, d) => esperaVer(r, d),
+  espera_hoy: (r, d) => esperaHoy(r, d),
+  espera_mensaje: (r, d) => esperaMensaje(r, d),
+  espera_historial: (r, d) => esperaHistorial(r, d),
+  espera_alta: (r, d) => esperaAlta(r, d),
+  espera_actualizar: (r, d) => esperaActualizar(r, d),
+  espera_pase: (r, d) => esperaPase(r, d),
+  espera_resultado: (r, d) => esperaResultado(r, d),
+  espera_candidatos: (r, d) => esperaCandidatos(r, d),
+  espera_ofrecer: (r, d) => esperaOfrecer(r, d),
+  espera_oferta_resolver: (r, d) => esperaOfertaResolver(r, d),
+  espera_beneficio: (r, d) => esperaBeneficio(r, d),
+  espera_beneficios_de: (r, d) => esperaBeneficiosDe(r, d),
+  espera_metricas: (r, d) => esperaMetricas(r, d),
+  espera_config_guardar: (r, d) => esperaConfigGuardar(r, d),
+  cargar_espera: (r, d) => cargarEspera(r, d),
+  cargar_espera_evidencia: (r, d) => cargarEsperaEvidencia(r, d),
   // Pedidos de coordinación (Pedidos.js)
   pedidos_mios: (r, d) => pedidosMios(r, d),
   pedidos_ver: (r, d) => pedidosVer(r, d),
@@ -1408,7 +1499,7 @@ const ACCIONES = {
 
 // Las pantallas que solo miran no esperan turno: un pedido trabado no las frena. Lista cerrada: lo que no esté acá espera.
 // Respaldo, bajadas y lo que usan los procesos de la PC siguen con turno porque necesitan los datos completos y sin cambios a mitad.
-const SOLO_LECTURA = ['mis_tareas', 'mi_dia', 'sede', 'tareas_de', 'rendimiento', 'cierres_ver', 'profes_ver', 'fichajes_ver', 'usuarios_listar', 'servidor_ver', 'ocupacion_ver', 'profe_tareas', 'profe_estado', 'profe_planilla', 'liquidacion_ver', 'coberturas_ver', 'ranking_ver', 'ranking_profes', 'resumen_semanal', 'consultas_ver', 'pase_ver', 'chat_personas', 'chat_listar', 'chat_ver', 'chat_novedad', 'pedidos_mios', 'pedidos_ver'];
+const SOLO_LECTURA = ['mis_tareas', 'mi_dia', 'contacto_extra_socios', 'sede', 'tareas_de', 'rendimiento', 'cierres_ver', 'profes_ver', 'fichajes_ver', 'usuarios_listar', 'servidor_ver', 'ocupacion_ver', 'profe_tareas', 'profe_estado', 'profe_planilla', 'liquidacion_ver', 'coberturas_ver', 'ranking_ver', 'ranking_profes', 'resumen_semanal', 'consultas_ver', 'pase_ver', 'chat_personas', 'chat_listar', 'chat_ver', 'chat_novedad', 'pedidos_mios', 'pedidos_ver', 'espera_ver', 'espera_mensaje', 'espera_historial', 'espera_candidatos', 'espera_beneficios_de', 'espera_metricas'];
 const ESPERA_TURNO_MS = 20000;
 const PEDIDO_LENTO_MS = 15000;
 

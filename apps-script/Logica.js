@@ -130,6 +130,12 @@ function resultadosDe(tipo) {
 // Tareas que no se marcan a mano: se dan por hechas solo cuando MOVE muestra el dato cargado.
 const SE_VERIFICAN_EN_MOVE = ['Asignarle profesor', 'Completar ficha', 'Corregir calendario'];
 
+// Contacto extra (Emanuel, 24/11/2026): marca hecha de recepción sobre un socio que no estaba en la lista del día.
+const TIPO_CONTACTO_EXTRA = 'Contacto extra';
+function esContactoExtra(t) {
+  return String(t.tipo).indexOf(TIPO_CONTACTO_EXTRA) === 0;
+}
+
 // Avisos para el turno: se leen, no se marcan ni cuentan como tarea. La llegada de los profes se mide sola con el QR.
 function esRecordatorio(tipo) {
   return String(tipo).indexOf('Profes de hoy') === 0;
@@ -469,7 +475,7 @@ const NIVELES = [
   { n: 3 },
 ];
 const TIPOS_NIVEL_1 = ['Cambiar profesor · lo pide', 'Coordinar reevaluación · lo pide', 'Encargo', 'Controlar stock', 'Apertura', 'Pagó y no viene', 'Le vence el plan', 'Vence', 'Socio nuevo', 'Vencieron'];   // el orden de urgencia de Emanuel (03/11/2026)
-const TIPOS_NIVEL_3 = ['Socio antiguo', 'Revisar profesor', 'Completar ficha', 'Asignarle profesor', 'Cierre'];
+const TIPOS_NIVEL_3 = ['Contacto extra', 'Socio antiguo', 'Revisar profesor', 'Completar ficha', 'Asignarle profesor', 'Cierre'];
 
 // La semana del 04 al 06/11/2026 fue de práctica: las estadísticas de recepción arrancan de cero el lunes 09/11 (Emanuel, 07/11/2026).
 // No se borra nada: lo anterior queda guardado pero no cuenta, y lo pendiente de la práctica empieza a contar desde el lunes.

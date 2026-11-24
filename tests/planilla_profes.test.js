@@ -198,7 +198,7 @@ test('planilla: ediciones inválidas se rechazan', () => {
   assert.equal(pedir(d, { accion: 'profe_planilla_editar', socio_id: '1', campo: 'condicion', valor: 'ACTIVO' }).error, 'sin_sesion');
 });
 
-test('planilla: reglas de vacaciones (24/11/2026): recepción, antes de vencer, con vuelta, hasta 60 días', () => {
+test('planilla: reglas de vacaciones (24/11/2026): recepción, hasta 7 días después del vencimiento, con vuelta, hasta 60 días', () => {
   const d = entorno();
   // socio 1 vence el 30/11: 60 días después es el 29/01
   assert.equal(editar(d, '20999000', { socio_id: '1', campo: 'condicion', valor: 'VACACIONES', hasta: '2027-01-29' }).ok, true);
@@ -207,13 +207,20 @@ test('planilla: reglas de vacaciones (24/11/2026): recepción, antes de vencer, 
   assert.equal(editar(d, '20555666', { socio_id: '1', campo: 'condicion', valor: 'VACACIONES', hasta: '2026-12-15' }).ok, true);
   assert.equal(editar(d, '20777888', { socio_id: '1', campo: 'condicion', valor: 'VACACIONES', hasta: '2026-12-16' }).ok, true);
   assert.equal(editar(d, '20111222', { socio_id: '1', campo: 'condicion', valor: 'VACACIONES', hasta: '2026-12-17' }).error, 'vac_solo_recepcion');
-  // el mismo día del vencimiento todavía se puede; al día siguiente no
-  pedir(d, { accion: 'cargar_profe_planilla', clave: PROPS.CLAVE_CARGA, hoy: HOY, filas: [fila('5', { vence: HOY }), fila('6', { vence: '2026-11-15' })] });
-  assert.equal(editar(d, '20999000', { socio_id: '5', campo: 'condicion', valor: 'VACACIONES', hasta: '2026-12-20' }).ok, true);
-  assert.equal(editar(d, '20999000', { socio_id: '6', campo: 'condicion', valor: 'VACACIONES', hasta: '2026-12-20' }).error, 'vac_vencida');
-  // las que vinieron de la planilla vieja no habilitan a cargarlas después de vencida
-  d.repo.hojas.profe_planilla_edit.push({ socio_id: '6', campo: 'condicion', valor: 'VACACIONES', hasta: '2026-12-01', vence_al_editar: '2026-11-15', ts: '2026-11-10T12:00:00.000Z', dni: 'planilla' });
-  assert.equal(editar(d, '20999000', { socio_id: '6', campo: 'condicion', valor: 'VACACIONES', hasta: '2026-12-05' }).error, 'vac_vencida');
+  // hasta 7 días corridos después del vencimiento se puede (Emanuel, 24/11/2026); al octavo día no
+  pedir(d, { accion: 'cargar_profe_planilla', clave: PROPS.CLAVE_CARGA, hoy: HOY, filas: [fila('5', { vence: HOY }), fila('6', { vence: '2026-11-05' }),
+    fila('7', { vence: '2026-11-09' }), fila('8', { vence: '2026-11-08' }), fila('9', { vence: '2026-11-05' })] });
+  const vac = (id, hasta) => editar(d, '20999000', { socio_id: id, campo: 'condicion', valor: 'VACACIONES', hasta: hasta || '2026-12-20' });
+  assert.equal(vac('5').ok, true);                       // vence hoy
+  assert.equal(vac('7').ok, true);                       // vencida hace 7 días: último día
+  assert.equal(vac('8').error, 'vac_vencida');           // vencida hace 8 días
+  assert.equal(vac('6').error, 'vac_vencida');
+  // las que vinieron de la planilla vieja no habilitan a cargarlas después del plazo
+  d.repo.hojas.profe_planilla_edit.push({ socio_id: '6', campo: 'condicion', valor: 'VACACIONES', hasta: '2026-12-01', vence_al_editar: '2026-11-05', ts: '2026-11-10T12:00:00.000Z', dni: 'planilla' });
+  assert.equal(vac('6', '2026-12-05').error, 'vac_vencida');
+  // las que recepción cargó a tiempo se pueden corregir (la fecha de vuelta) aunque el plazo ya haya pasado
+  d.repo.hojas.profe_planilla_edit.push({ socio_id: '9', campo: 'condicion', valor: 'VACACIONES', hasta: '2026-12-01', vence_al_editar: '2026-11-05', ts: '2026-11-10T12:00:00.000Z', dni: '20999000' });
+  assert.equal(vac('9', '2026-12-05').ok, true);
   // otras condiciones a mano siguen sin esas reglas
   assert.equal(editar(d, '20111222', { socio_id: '6', campo: 'condicion', valor: 'DERIVADO' }).ok, true);
   // el cliente tiene los mensajes con el motivo, y no reintenta
