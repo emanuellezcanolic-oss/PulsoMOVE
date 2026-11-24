@@ -114,6 +114,7 @@ function profeTareas(req, deps) {
   if (esProfe(usuario)) {
     out.mio = agendaDeProfe(filas.filter(t => t.profe_dni === usuario.dni), hoy);
     out.mio.reeval = reevalDeProfe(usuario, deps, hoy, usuarios);
+    out.mio.extra = sociosPlanExtra(usuario, deps);
     out.mio.revisiones = revisionesDeProfe(usuario, deps, hoy);
     out.mio.opciones = opcionesDeProfe(usuario, usuarios);
     out.mio.mes = mesDeProfe(usuario, deps, hoy);
@@ -659,11 +660,37 @@ function profeDeshacer(req, deps) {
 
 // ---------- Plan extra: renové el plan de un socio que no estaba en mi lista de hoy (Emanuel, 11/11/2026) ----------
 // Si estaba agendado para otro día, se da por hecho ahí; si no, queda anotado como "Plan extra". Cuenta como renovado.
+// Desde el 23/11 (Emanuel): se puede anotar cualquier socio activo de las sedes del profe, aunque en MOVE sea de otro profe.
+// La renovación cuenta para el profe que la hizo.
+function sedesDeProfe(usuario, reeval) {
+  const sedes = {};
+  reeval.forEach(c => { if (c.profe_dni === usuario.dni) sedes[c.sede] = true; });
+  if (usuario.sede && SEDES.indexOf(usuario.sede) >= 0) sedes[usuario.sede] = true;
+  return sedes;
+}
+
+function sociosPlanExtra(usuario, deps) {
+  const reeval = deps.repo.leer('profe_reeval');
+  const sedes = sedesDeProfe(usuario, reeval);
+  const vistos = {}, out = [];
+  reeval.filter(c => c.profe_dni === usuario.dni).concat(reeval.filter(c => c.profe_dni !== usuario.dni && sedes[c.sede])).forEach(c => {
+    if (vistos[c.socio_id]) return;
+    vistos[c.socio_id] = true;
+    out.push({ socio_id: c.socio_id, socio_nombre: c.socio_nombre, sede: c.sede, profe: c.profe_dni === usuario.dni ? '' : c.profe });
+  });
+  return out;
+}
+
 function profePlanExtra(req, deps) {
   const { usuario } = sesion(req, deps);
   if (!esProfe(usuario)) falla('prohibido');
-  const c = deps.repo.leer('profe_reeval').find(x => x.profe_dni === usuario.dni && x.socio_id === texto(req.socio_id));
+  const reeval = deps.repo.leer('profe_reeval');
+  const id = texto(req.socio_id);
+  const sedes = sedesDeProfe(usuario, reeval);
+  const mia = reeval.find(x => x.profe_dni === usuario.dni && x.socio_id === id);
+  const c = mia || reeval.find(x => x.socio_id === id && sedes[x.sede]);
   if (!c) falla('no_existe');
+  const nombreProfe = mia ? mia.profe : ((reeval.find(x => x.profe_dni === usuario.dni) || {}).profe || usuario.nombre);
   const hoy = deps.hoy();
   const ts = new Date(deps.ahora()).toISOString();
   const filas = deps.repo.leer('profe_tareas');
@@ -672,9 +699,9 @@ function profePlanExtra(req, deps) {
   if (t) {
     Object.assign(t, { fecha: t.fecha > hoy ? hoy : t.fecha, estado: 'hecha', hecha_en: ts, hecha_dni: usuario.dni, nota: 'Plan extra: lo renovó antes de que le tocara' });
   } else {
-    t = { id: 'px-' + c.socio_id + '-' + hoy, fecha: hoy, sede: c.sede, profe: c.profe, profe_dni: usuario.dni, socio_id: c.socio_id, socio_nombre: c.socio_nombre,
+    t = { id: 'px-' + c.socio_id + '-' + hoy, fecha: hoy, sede: c.sede, profe: nombreProfe, profe_dni: usuario.dni, socio_id: c.socio_id, socio_nombre: c.socio_nombre,
       tipo: 'Plan extra', accion: 'Renovó el plan sin que estuviera en la lista', vence: '', alta: '', estado: 'hecha', hecha_en: ts, hecha_dni: usuario.dni,
-      nota: 'Plan extra', cargada: hoy, cerrada_en: '' };
+      nota: mia ? 'Plan extra' : 'Plan extra · en MOVE es socio de ' + c.profe, cargada: hoy, cerrada_en: '' };
     filas.push(t);
   }
   deps.repo.escribir('profe_tareas', filas);
@@ -1553,7 +1580,12 @@ function profeEstado(req, deps) {
 // ---------- Mis mediciones: cómo viene cada profe contra los objetivos de su planilla (Emanuel, 13/11/2026) ----------
 // Lo mismo que la pestaña "Objetivos" (activos, deserción, tarea mensual, reevaluación y perfil del socio, con sus puntos
 // y el mensaje según el total), con los datos de MOVE. Sin plata: eso lo ve coordinación.
-const OBJ_DESERCION = [[10, 30], [20, 20], [25, 10]];          // hasta X% de deserción → puntos; más, 5
+// Deserción (Emanuel, 24/11/2026): una sola tabla para "Cómo venís" y el ranking, sobre el promedio de los últimos 3 meses
+// cerrados (suma de bajas ÷ suma de vencimientos), con al menos 60 vencimientos en esos 3 meses.
+const OBJ_DESERCION = [[14, 30], [18, 20], [22, 10]];          // hasta X% de deserción → puntos; más, 5
+const OBJ_DESERCION_MAS = 5;
+const DESERCION_MESES = 3, DESERCION_MIN_VENCIAN = 60;
+const OBJ_DESERCION_TXT = 'Hasta 14%: 30 · hasta 18%: 20 · hasta 22%: 10 · más de 22%: 5';
 const OBJ_REEVAL_PCT = 30, OBJ_REEVAL_POR_SOCIO = 1.5;
 const OBJ_PERFIL_PCT = 30, OBJ_PERFIL_PTS = 20;
 const OBJ_ACTIVOS_PTS = [0, 20, 30, 40];                         // no alcanzado, objetivo 1, objetivo 2, máximo
@@ -1563,13 +1595,49 @@ const MENSAJES_PUNTAJE = [[150, '🎉 ¡Felicitaciones! Seguro estás entre los 
 function puntosDesercion(d) {
   if (d == null) return null;
   for (let i = 0; i < OBJ_DESERCION.length; i++) if (d <= OBJ_DESERCION[i][0]) return OBJ_DESERCION[i][1];
-  return 5;
+  return OBJ_DESERCION_MAS;
+}
+
+function mesAnteriorProfe(mes) {
+  const a = Number(mes.slice(0, 4)), m = Number(mes.slice(5, 7));
+  return m === 1 ? (a - 1) + '-12' : a + '-' + String(m - 1).padStart(2, '0');
+}
+
+// Deserción de los últimos 3 meses cerrados (los 3 anteriores al mes en curso): suma de bajas ÷ suma de vencimientos, con la
+// deserción neta que arma la PC (datos[mes].real: bajas que no volvieron y socios a los que les vencía; cada mes queda fijo el
+// último día del mes siguiente). Sin 60 vencimientos en esos meses no hay puntos: {desercion: null, motivo}.
+function desercion3Meses(datos, mes) {
+  const meses = [];
+  let m = mes;
+  for (let i = 0; i < DESERCION_MESES; i++) { m = mesAnteriorProfe(m); meses.unshift(m); }
+  let bajas = 0, vencian = 0;
+  const con = [];
+  meses.forEach(k => {
+    const r = ((datos || {})[k] || {}).real;
+    if (!r || r.vencian == null) return;
+    bajas += Number(r.bajas) || 0;
+    vencian += Number(r.vencian) || 0;
+    con.push(k);
+  });
+  const out = { meses: meses, con_datos: con, bajas: bajas, vencian: vencian, desercion: null, motivo: '' };
+  if (vencian < DESERCION_MIN_VENCIAN) {
+    out.motivo = 'Sin puntos de deserción: entre ' + mesCortoProfe(meses[0]) + ' y ' + mesCortoProfe(meses[meses.length - 1]) + ' te vencieron ' + vencian +
+      ' socios y hacen falta al menos ' + DESERCION_MIN_VENCIAN + ' para que el promedio no dependa del azar.';
+    return out;
+  }
+  out.desercion = Math.round(bajas / vencian * 1000) / 10;
+  return out;
+}
+
+function mesCortoProfe(mes) {
+  return ['ene', 'feb', 'mar', 'abr', 'may', 'jun', 'jul', 'ago', 'sep', 'oct', 'nov', 'dic'][Number(String(mes).slice(5, 7)) - 1] || mes;
 }
 
 function puntajeObjetivos(m) {
   const pts = {
     activos: m.nivel != null ? OBJ_ACTIVOS_PTS[m.nivel] : null,
-    desercion: puntosDesercion(m.desercion),
+    // los puntos van con el promedio de 3 meses cerrados (desercion_3m); el mes suelto (desercion) solo se muestra
+    desercion: puntosDesercion(m.desercion_3m !== undefined ? m.desercion_3m : m.desercion),
     tareas: m.tareas_pct != null ? puntosTareasMes(m.tareas_pct / 100) : null,
     reeval: m.reeval_pct == null ? null : m.reeval_pct >= OBJ_REEVAL_PCT ? Math.round(OBJ_REEVAL_POR_SOCIO * (m.reeval_n || 0) * 10) / 10 : 0,
     perfil: m.perfil_pct == null ? null : m.perfil_pct > OBJ_PERFIL_PCT ? OBJ_PERFIL_PTS : 0,
@@ -1595,6 +1663,9 @@ function medicionesDeProfe(deps, usuario, hoy, tareasMes) {
     reeval_n: d.reeval != null && d.activos ? Math.round(d.reeval * d.activos / 100) : null, perfil_pct: d.perfil != null ? d.perfil : null,
     objetivo_pct: d.objetivo != null ? d.objetivo : null, tareas_pct: tareasMes ? tareasMes.pct : null,
   };
+  const d3 = desercion3Meses(datos, mes);
+  m.desercion_3m = d3.desercion;
+  m.desercion_3m_info = { meses: d3.meses, bajas: d3.bajas, vencian: d3.vencian, motivo: d3.motivo, tramos: OBJ_DESERCION_TXT };
   // la evolución de la deserción (los últimos 8 meses con datos)
   const serie = Object.keys(datos).sort().filter(k => datos[k].desercion != null && datos[k].activos >= 5).slice(-8).map(k => ({ mes: k, v: datos[k].desercion }));
   return Object.assign(m, puntajeObjetivos(m), { serie: serie, datos_hasta: fila ? fila.cargada : '' });
@@ -1603,20 +1674,18 @@ function medicionesDeProfe(deps, usuario, hoy, tareasMes) {
 // ---------- Ranking de profes (Emanuel, 16/11/2026) ----------
 // Un puntaje sobre 100 que pesa sobre todo la deserción y los planes al día (que no se venzan, customizados).
 // Se les muestra cuánto vale cada cosa, para que sepan dónde sumar. Sin plata. Lo ven los profes, coordinación y administración.
-const RANK_PROFE_DESERCION = [[10, 30], [15, 25], [20, 20], [25, 10]];   // hasta X% → puntos; más, 0
 const RANK_PROFE_ACTIVOS = [0, 4, 7, 10];                                  // objetivo de activos: no alcanzado, 1, 2, máximo
 const RANK_PROFE_REGLAS = [
-  { clave: 'desercion', emoji: '🛡️', nombre: 'Deserción baja', max: 30, como: 'Hasta 10%: 30 · hasta 15%: 25 · hasta 20%: 20 · hasta 25%: 10 · más de 25%: 0' },
+  { clave: 'desercion', emoji: '🛡️', nombre: 'Deserción baja', max: 30, como: 'Promedio de los últimos 3 meses cerrados (con al menos 60 vencimientos). ' + OBJ_DESERCION_TXT },
   { clave: 'al_dia', emoji: '📅', nombre: 'Planes al día', max: 30, como: 'El % de tus socios con el plan vigente, sin vencer: 100% vale 30' },
   { clave: 'custom', emoji: '🎨', nombre: 'Planes customizados', max: 15, como: 'De los planes que renovaste en los últimos 30 días, el % que cambiaste entre 30 y 80%: 100% vale 15' },
   { clave: 'tareas', emoji: '📋', nombre: 'Tareas del mes', max: 15, como: 'El % de las tareas del mes que marcaste hechas: 100% vale 15' },
   { clave: 'activos', emoji: '👥', nombre: 'Socios activos', max: 10, como: 'Objetivo 1: 4 · objetivo 2: 7 · máximo: 10' },
 ];
 
+// La misma tabla que "Cómo venís" (Emanuel, 24/11/2026: una sola tabla de puntos)
 function puntosRankDesercion(d) {
-  if (d == null) return null;
-  const t = RANK_PROFE_DESERCION.find(x => d <= x[0]);
-  return t ? t[1] : 0;
+  return puntosDesercion(d);
 }
 
 function rankingProfes(req, deps) {
@@ -1635,14 +1704,18 @@ function rankingProfes(req, deps) {
     // el nombre con el que figura en el reparto (puede diferir del de la cuenta)
     const enReparto = (nombresTareas.find(t => t.profe_dni === u.dni) || {}).profe || '';
     const fila = estado.find(x => mismoProfe(x.nombre, u.nombre) || (enReparto && mismoProfe(x.nombre, enReparto)));
-    const d = fila ? (leerJson(fila.datos, {})[mes] || {}) : {};
+    const datosProfe = fila ? leerJson(fila.datos, {}) : {};
+    const d3 = fila ? desercion3Meses(datosProfe, mes) : null;
     const co = coord[enReparto] || Object.keys(coord).filter(k => mismoProfe(k, u.nombre)).map(k => coord[k])[0] || null;
     const rv = resumenRevisiones(revis.filter(r => r.profe_dni === u.dni));
     const tm = tareasMesDeDni(deps, u.dni, mes, hoy);
     const l = liq.find(x => (x.profe_dni && x.profe_dni === u.dni) || (!x.profe_dni && mismoProfe(x.profe, u.nombre)));
     const ld = l ? liqConRespuestas(leerJson(l.datos, {}), mes, resp) : {};
     const items = {
-      desercion: d.desercion == null ? null : { pts: puntosRankDesercion(Number(d.desercion)), valor: String(uno(Number(d.desercion))).replace('.', ',') + '%' },
+      desercion: !d3 || (d3.desercion == null && !d3.vencian) ? null
+        : d3.desercion == null ? { pts: 0, valor: 'sin puntos', extra: d3.vencian + ' vencimientos en 3 meses (mínimo ' + DESERCION_MIN_VENCIAN + ')', sin_dato: true, motivo: d3.motivo }
+        : { pts: puntosRankDesercion(d3.desercion), valor: String(uno(d3.desercion)).replace('.', ',') + '%',
+          extra: 'promedio ' + mesCortoProfe(d3.meses[0]) + '–' + mesCortoProfe(d3.meses[d3.meses.length - 1]) + ' · ' + d3.bajas + ' de ' + d3.vencian },
       al_dia: co && co.al_dia_pct != null ? { pts: uno(30 * Number(co.al_dia_pct) / 100), valor: co.al_dia_pct + '%', extra: (co.vencidos || 0) + ' vencidos' } : null,
       custom: rv.revisados ? { pts: uno(15 * rv.en_rango / rv.revisados), valor: Math.round(100 * rv.en_rango / rv.revisados) + '%', extra: rv.en_rango + ' de ' + rv.revisados } : null,
       tareas: tm.total ? { pts: uno(15 * tm.pct / 100), valor: tm.pct + '%', extra: tm.hechas + ' de ' + tm.total } : null,
@@ -1652,7 +1725,7 @@ function rankingProfes(req, deps) {
     if (!con.length) return null;
     const total = uno(con.reduce((a, k) => a + items[k].pts, 0));
     // dónde puede sumar más: lo que más le falta para el máximo
-    const falta = RANK_PROFE_REGLAS.map(r => ({ clave: r.clave, nombre: r.nombre, faltan: uno(r.max - (items[r.clave] ? items[r.clave].pts : 0)) }))
+    const falta = RANK_PROFE_REGLAS.filter(r => !(items[r.clave] && items[r.clave].sin_dato)).map(r => ({ clave: r.clave, nombre: r.nombre, faltan: uno(r.max - (items[r.clave] ? items[r.clave].pts : 0)) }))
       .sort((a, b) => b.faltan - a.faltan)[0];
     return { dni: u.dni, nombre: u.nombre, sede: u.sede, total: total, items: items, donde_sumar: falta && falta.faltan > 0 ? falta : null };
   }).filter(Boolean).sort((a, b) => b.total - a.total || String(a.nombre).localeCompare(String(b.nombre)));
@@ -1669,7 +1742,23 @@ const CAMPOS_PLANILLA = ['condicion', 'observaciones', 'profe_dni'];
 const MOV_MES_PLANILLA = ['renovo', 'por_vencer', 'no_renovo', 'nuevo', 'baja', '—', ''];
 const CUPO_SEDE_PLANILLA = { bolson: 110, puelo: 125, bariloche: 100 };
 const OBS_PLANILLA_MAX = 300;
-const DIAS_VACACIONES_MAX = 365;
+// Vacaciones (Emanuel, 24/11/2026): para que no cuenten como baja, las carga recepción (o coordinación / admin) antes de que
+// venza la membresía, con fecha de vuelta y de 60 días como máximo desde el vencimiento. Si el socio no renueva a la fecha de
+// vuelta + 7 días, la PC lo cuenta como baja del mes en que se fue (pulso_planilla.py).
+const DIAS_VACACIONES_MAX = 60;
+
+// '' si se pueden cargar las vacaciones; si no, el código de error con el motivo (la pantalla lo muestra)
+function motivoVacacionesInvalidas(usuario, fila, hasta, hoy) {
+  if (!(tieneRol(usuario, 'recepcion') || tieneRol(usuario, 'coordinador') || tieneRol(usuario, 'admin'))) return 'vac_solo_recepcion';
+  if (!fechaIsoValida(hasta)) return 'vac_sin_vuelta';
+  if (hasta < hoy) return 'datos_invalidos';
+  // cambiar la fecha de vuelta de unas vacaciones que ya se habían cargado a tiempo (por recepción) sigue valiendo
+  const previa = fila.condicion_manual;
+  const yaCargada = previa && previa.valor === 'VACACIONES' && previa.quien !== 'planilla vieja' && fechaLocalDe(previa.ts) <= fila.vence;
+  if (!fechaIsoValida(fila.vence) || (hoy > fila.vence && !yaCargada)) return 'vac_vencida';
+  if (hasta > sumarDiasProfe(fila.vence, DIAS_VACACIONES_MAX)) return 'vac_larga';
+  return '';
+}
 const CONTACTOS_FICHA = 5;
 const COLS_PLANILLA_PC = ['socio_id', 'sede', 'profe_dni', 'profe_nombre', 'nombre', 'condicion_auto', 'vence', 'plan_meses', 'plan_tipo',
   'plan_fecha', 'plan_proximo', 'plan_rutinas', 'plan_pct', 'plan_estado', 'ultima_eval', 'perfil', 'ultima_visita',
@@ -1850,7 +1939,8 @@ function profePlanillaEditar(req, deps) {
     // vacío: vuelve a la condición automática
     if (valor && CONDICIONES_PLANILLA.indexOf(valor) < 0) falla('datos_invalidos');
     if (valor === 'VACACIONES') {
-      if (!fechaIsoValida(hasta) || hasta < hoy || hasta > sumarDiasProfe(hoy, DIAS_VACACIONES_MAX)) falla('datos_invalidos');
+      const motivo = motivoVacacionesInvalidas(usuario, fila, hasta, hoy);
+      if (motivo) falla(motivo);
     } else if (hasta) falla('datos_invalidos');
   } else if (campo === 'observaciones') {
     if (valor.length > OBS_PLANILLA_MAX || hasta) falla('datos_invalidos');

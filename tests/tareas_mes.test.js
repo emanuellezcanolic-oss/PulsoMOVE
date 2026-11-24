@@ -122,7 +122,8 @@ test('mis mediciones: puntaje como la pestaña Objetivos de la planilla, sin pla
   assert.equal(L.puntajeObjetivos({ nivel: 0, desercion: 35, tareas_pct: 20, reeval_pct: 10, reeval_n: 5, perfil_pct: 20 }).total, 5);
   const d = entorno();
   pedir(d, { accion: 'cargar_profe_estado', clave: PROPS.CLAVE_CARGA, filas: [{ clave: 'prof:30', tipo: 'profe', nombre: 'Belén Juárez', sede: 'bolson',
-    datos: { '2026-10': { activos: 90, desercion: 22 }, '2026-11': { activos: 92, desercion: 12, reeval: 31, perfil: 88 } } }] });
+    datos: { '2026-08': { real: { bajas: 6, vencian: 30 } }, '2026-09': { real: { bajas: 5, vencian: 30 } },
+      '2026-10': { activos: 90, desercion: 22, real: { bajas: 6, vencian: 40 } }, '2026-11': { activos: 92, desercion: 12, reeval: 31, perfil: 88 } } }] });
   pedir(d, { accion: 'cargar_profe_liq', clave: PROPS.CLAVE_CARGA, filas: [{ mes: '2026-11', profe: 'Belen Juarez', profe_dni: '20111222', sede: 'bolson',
     datos: { activos_mes: 40, metas: [36, 37, 45, 55], nivel: 1, nivel_txt: 'Objetivo 1', faltan_siguiente: 5, valor_socio: 712, comision: 9999 } }] });
   const M = pedir(d, { accion: 'profe_tareas', token: entrar(d, '20111222') }).data.mio.mediciones;
@@ -132,5 +133,18 @@ test('mis mediciones: puntaje como la pestaña Objetivos de la planilla, sin pla
   assert.equal(M.serie.length, 2);
   assert.equal(M.comision, undefined);
   assert.equal(M.valor_socio, undefined);
+  // los puntos van con ago–oct (17 de 100 = 17%: 20 puntos), no con el 12% del mes en curso (que daría 30)
+  assert.equal(M.desercion_3m, 17);
+  assert.equal(M.desercion_3m_info.vencian, 100);
   assert.equal(M.puntos.desercion, 20);
+});
+
+test('mis mediciones: sin 60 vencimientos en 3 meses, sin puntos de deserción y con el motivo', () => {
+  const d = entorno();
+  pedir(d, { accion: 'cargar_profe_estado', clave: PROPS.CLAVE_CARGA, filas: [{ clave: 'prof:30', tipo: 'profe', nombre: 'Belén Juárez', sede: 'bolson',
+    datos: { '2026-10': { activos: 30, desercion: 5, real: { bajas: 1, vencian: 20 } }, '2026-11': { activos: 30, desercion: 3 } } }] });
+  const M = pedir(d, { accion: 'profe_tareas', token: entrar(d, '20111222') }).data.mio.mediciones;
+  assert.equal(M.desercion_3m, null);
+  assert.equal(M.puntos.desercion, null);
+  assert.match(M.desercion_3m_info.motivo, /20 socios/);
 });

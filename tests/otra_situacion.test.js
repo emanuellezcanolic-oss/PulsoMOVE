@@ -138,10 +138,20 @@ test('plan extra: anoto un socio mío que no estaba en la lista de hoy', () => {
   const d = entorno();
   d.repo.hojas.profe_reeval = [{ id: 're-7', sede: 'bolson', profe: 'Belu Prueba', profe_dni: '20111222', socio_id: '7', socio_nombre: 'Socio 7', ultima_eval: '', dias: '', habitos: '' },
     { id: 're-8', sede: 'bolson', profe: 'Belu Prueba', profe_dni: '20111222', socio_id: '8', socio_nombre: 'Socio 8', ultima_eval: '', dias: '', habitos: '' },
-    { id: 're-9', sede: 'bolson', profe: 'Enzo Prueba', profe_dni: '20333444', socio_id: '9', socio_nombre: 'Socio 9', ultima_eval: '', dias: '', habitos: '' }];
+    { id: 're-9', sede: 'bolson', profe: 'Enzo Prueba', profe_dni: '20333444', socio_id: '9', socio_nombre: 'Socio 9', ultima_eval: '', dias: '', habitos: '' },
+    { id: 're-10', sede: 'puelo', profe: 'Javi Prueba', profe_dni: '20555666', socio_id: '10', socio_nombre: 'Socio 10', ultima_eval: '', dias: '', habitos: '' }];
   cargar(d, [tarea(8, { fecha: '2026-11-20' })]);
   const tk = entrar(d, '20111222');
-  assert.equal(pedir(d, { accion: 'profe_plan_extra', token: tk, socio_id: '9' }).error, 'no_existe');     // no es mío
+  assert.equal(pedir(d, { accion: 'profe_plan_extra', token: tk, socio_id: '10' }).error, 'no_existe');    // de otra sede, no
+  const lista = pedir(d, { accion: 'profe_tareas', token: tk }).data.mio.extra;
+  assert.deepEqual(lista.map(x => [x.socio_id, x.profe]), [['7', ''], ['8', ''], ['9', 'Enzo Prueba']]);
+  // el 9 es de Enzo en MOVE, pero lo renové yo: me cuenta a mí (23/11)
+  const r9 = pedir(d, { accion: 'profe_plan_extra', token: tk, socio_id: '9' });
+  assert.equal(r9.data.tarea.tipo, 'Plan extra');
+  const t9 = d.repo.hojas.profe_tareas.find(t => t.id === 'px-9-' + HOY);
+  assert.deepEqual([t9.profe, t9.profe_dni], ['Belu Prueba', '20111222']);
+  assert.match(t9.nota, /socio de Enzo Prueba/);
+  pedir(d, { accion: 'profe_deshacer', token: tk, id: 'px-9-' + HOY });
   const r = pedir(d, { accion: 'profe_plan_extra', token: tk, socio_id: '7' });
   assert.deepEqual([r.data.tarea.tipo, r.data.tarea.estado], ['Plan extra', 'hecha']);
   assert.equal(pedir(d, { accion: 'profe_plan_extra', token: tk, socio_id: '7' }).error, 'ya_anotado');

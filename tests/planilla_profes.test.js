@@ -104,12 +104,16 @@ test('planilla: profe_move queda a la vista para marcar al mal asignado en MOVE'
 
 test('planilla: condición efectiva con fecha hasta, vigente y vencida', () => {
   const d = entorno();
-  const r = editar(d, '20111222', { socio_id: '4', campo: 'condicion', valor: 'VACACIONES', hasta: '2026-11-20' });
+  // recepción, antes de que venza (vence el 30/11), con fecha de vuelta
+  pedir(d, { accion: 'cargar_profe_planilla', clave: PROPS.CLAVE_CARGA, hoy: HOY, filas: [fila('4', { condicion_auto: 'BAJA', vence: '2026-11-18', mov_mes: 'baja' })] });
+  const r = editar(d, '20999000', { socio_id: '4', campo: 'condicion', valor: 'VACACIONES', hasta: '2026-11-20' });
   assert.equal(r.ok, true, JSON.stringify(r));
   assert.equal(r.data.fila.condicion, 'VACACIONES');
   assert.equal(r.data.fila.condicion_manual.hasta, '2026-11-20');
   d.dia = '2026-11-20';
   assert.equal(ver(d, '20111222').data.filas.find(x => x.socio_id === '4').condicion, 'VACACIONES');
+  // ya vencida la membresía, recepción todavía puede mover la fecha de vuelta de esas vacaciones (dentro de los 60 días)
+  assert.equal(editar(d, '20999000', { socio_id: '4', campo: 'condicion', valor: 'VACACIONES', hasta: '2026-11-20' }).ok, true);
   d.dia = '2026-11-21';   // pasó la fecha: vuelve la automática (baja)
   const f = ver(d, '20111222').data.filas.find(x => x.socio_id === '4');
   assert.equal(f.condicion, 'BAJA');
@@ -179,15 +183,42 @@ test('planilla: ediciones inválidas se rechazan', () => {
   const mal = datos => assert.equal(editar(d, '20111222', Object.assign({ socio_id: '1' }, datos)).error, 'datos_invalidos', JSON.stringify(datos));
   mal({ campo: 'vence', valor: '2026-12-01' });
   mal({ campo: 'condicion', valor: 'FELIZ' });
-  mal({ campo: 'condicion', valor: 'VACACIONES' });                         // sin hasta
-  mal({ campo: 'condicion', valor: 'VACACIONES', hasta: '2026-11-10' });    // hasta en el pasado
-  mal({ campo: 'condicion', valor: 'VACACIONES', hasta: '2026-02-30' });
-  mal({ campo: 'condicion', valor: 'VACACIONES', hasta: '2028-01-01' });    // más de un año
+  // vacaciones: las carga recepción, no el profe
+  assert.equal(editar(d, '20111222', { socio_id: '1', campo: 'condicion', valor: 'VACACIONES', hasta: '2026-12-10' }).error, 'vac_solo_recepcion');
+  const malVac = (datos, err) => assert.equal(editar(d, '20999000', Object.assign({ socio_id: '1', campo: 'condicion', valor: 'VACACIONES' }, datos)).error, err, JSON.stringify(datos));
+  malVac({}, 'vac_sin_vuelta');                                    // sin hasta
+  malVac({ hasta: '2026-02-30' }, 'vac_sin_vuelta');
+  malVac({ hasta: '2026-11-10' }, 'datos_invalidos');              // hasta en el pasado
+  malVac({ hasta: '2027-01-30' }, 'vac_larga');                    // vence el 30/11: más de 60 días
+  malVac({ socio_id: '4', hasta: '2026-12-01' }, 'vac_vencida');   // la membresía ya venció (01/11)
   mal({ campo: 'condicion', valor: 'DERIVADO', hasta: '2026-12-01' });      // hasta solo para vacaciones
   mal({ campo: 'observaciones', valor: 'x'.repeat(301) });
   assert.equal(editar(d, '20777888', { socio_id: '1', campo: 'profe_dni', valor: '20999000' }).error, 'datos_invalidos');   // no es profe
   assert.equal(d.repo.hojas.profe_planilla_edit || undefined, undefined);
   assert.equal(pedir(d, { accion: 'profe_planilla_editar', socio_id: '1', campo: 'condicion', valor: 'ACTIVO' }).error, 'sin_sesion');
+});
+
+test('planilla: reglas de vacaciones (24/11/2026): recepción, antes de vencer, con vuelta, hasta 60 días', () => {
+  const d = entorno();
+  // socio 1 vence el 30/11: 60 días después es el 29/01
+  assert.equal(editar(d, '20999000', { socio_id: '1', campo: 'condicion', valor: 'VACACIONES', hasta: '2027-01-29' }).ok, true);
+  assert.equal(editar(d, '20999000', { socio_id: '1', campo: 'condicion', valor: 'VACACIONES', hasta: '2027-01-30' }).error, 'vac_larga');
+  // coordinación y admin también pueden; el profe no
+  assert.equal(editar(d, '20555666', { socio_id: '1', campo: 'condicion', valor: 'VACACIONES', hasta: '2026-12-15' }).ok, true);
+  assert.equal(editar(d, '20777888', { socio_id: '1', campo: 'condicion', valor: 'VACACIONES', hasta: '2026-12-16' }).ok, true);
+  assert.equal(editar(d, '20111222', { socio_id: '1', campo: 'condicion', valor: 'VACACIONES', hasta: '2026-12-17' }).error, 'vac_solo_recepcion');
+  // el mismo día del vencimiento todavía se puede; al día siguiente no
+  pedir(d, { accion: 'cargar_profe_planilla', clave: PROPS.CLAVE_CARGA, hoy: HOY, filas: [fila('5', { vence: HOY }), fila('6', { vence: '2026-11-15' })] });
+  assert.equal(editar(d, '20999000', { socio_id: '5', campo: 'condicion', valor: 'VACACIONES', hasta: '2026-12-20' }).ok, true);
+  assert.equal(editar(d, '20999000', { socio_id: '6', campo: 'condicion', valor: 'VACACIONES', hasta: '2026-12-20' }).error, 'vac_vencida');
+  // las que vinieron de la planilla vieja no habilitan a cargarlas después de vencida
+  d.repo.hojas.profe_planilla_edit.push({ socio_id: '6', campo: 'condicion', valor: 'VACACIONES', hasta: '2026-12-01', vence_al_editar: '2026-11-15', ts: '2026-11-10T12:00:00.000Z', dni: 'planilla' });
+  assert.equal(editar(d, '20999000', { socio_id: '6', campo: 'condicion', valor: 'VACACIONES', hasta: '2026-12-05' }).error, 'vac_vencida');
+  // otras condiciones a mano siguen sin esas reglas
+  assert.equal(editar(d, '20111222', { socio_id: '6', campo: 'condicion', valor: 'DERIVADO' }).ok, true);
+  // el cliente tiene los mensajes con el motivo, y no reintenta
+  const api = require('../web/api.js');
+  ['vac_solo_recepcion', 'vac_sin_vuelta', 'vac_vencida', 'vac_larga'].forEach(c => assert.notEqual(api.mensaje(c), api.mensaje('cualquiera'), c));
 });
 
 test('planilla: el último contacto de recepción de hoy se completa en vivo desde registro', () => {

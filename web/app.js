@@ -905,11 +905,11 @@
 
   // Plan extra: renové el plan de un socio que no estaba en la lista de hoy
   function bloquePlanExtra(M) {
-    const socios = (M.reeval && M.reeval.socios) || [];
+    const socios = M.extra || (M.reeval && M.reeval.socios) || [];
     if (!socios.length) return '';
     return `<div class="persona plan-extra"><b>➕ Plan extra</b><span class="turno">¿Le renovaste el plan a un socio que no estaba en tu lista? Agregalo y te cuenta.</span>
       <input class="buscador" list="socios-extra" data-extra-busca placeholder="Nombre del socio" aria-label="Socio al que le renovaste el plan">
-      <datalist id="socios-extra">${socios.map(x => `<option value="${esc(x.socio_nombre)}"></option>`).join('')}</datalist>
+      <datalist id="socios-extra">${socios.map(x => `<option value="${esc(x.socio_nombre)}">${x.profe ? esc('Socio de ' + x.profe) : ''}</option>`).join('')}</datalist>
       <button class="boton verde ancho" data-accion="plan-extra">Agregar plan extra</button></div>`;
   }
 
@@ -1042,8 +1042,15 @@
     if (m.metas && m.activos_mes != null) relojes.push(svgReloj({ titulo: 'Activos del mes', v: m.activos_mes, max: Math.round(m.metas[3] * 1.2),
       zonas: [[m.metas[1], 'rojo'], [m.metas[2], 'amarillo'], [m.metas[3], 'verde-claro'], [Math.round(m.metas[3] * 1.2), 'verde']], valorTxt: String(m.activos_mes),
       objetivo: `${esc(m.nivel_txt || '')}${m.faltan_siguiente ? ` · te faltan <b>${m.faltan_siguiente}</b> para el siguiente` : ' · ¡llegaste al máximo!'}<br><small>metas ${m.metas.slice(1).join(' / ')}</small>`, puntos: p.activos }));
-    if (m.desercion != null) relojes.push(svgReloj({ titulo: 'Deserción del mes', v: m.desercion, max: 40, zonas: [[10, 'verde'], [20, 'verde-claro'], [25, 'amarillo'], [40, 'rojo']],
-      valorTxt: num1(m.desercion) + '%', objetivo: raro ? '<span class="amarillo">Este dato de MOVE parece estar mal: lo estamos revisando.</span>' : 'Objetivo: menos de 25% · ideal, menos de 10%<br><small>menos es mejor</small>', puntos: p.desercion }));
+    // Puntos con el promedio de los últimos 3 meses cerrados (Emanuel, 24/11/2026); el mes en curso se muestra al lado
+    const d3 = m.desercion_3m_info;
+    const mesAhora = m.desercion != null ? `<br><small>Este mes vas ${num1(m.desercion)}%${raro ? ' (dato a revisar)' : ''}</small>` : '';
+    if (d3 && m.desercion_3m != null) relojes.push(svgReloj({ titulo: 'Deserción · promedio 3 meses', v: m.desercion_3m, max: 40, zonas: [[14, 'verde'], [18, 'verde-claro'], [22, 'amarillo'], [40, 'rojo']],
+      valorTxt: num1(m.desercion_3m) + '%', objetivo: `${esc(mesTxt(d3.meses[0]))} a ${esc(mesTxt(d3.meses[d3.meses.length - 1]))}: ${d3.bajas} bajas de ${d3.vencian} que vencían<br><small>${esc(d3.tramos)}</small>${mesAhora}`, puntos: p.desercion }));
+    else if (d3 && d3.motivo) relojes.push(svgReloj({ titulo: 'Deserción · promedio 3 meses', v: null, max: 40, zonas: [[14, 'verde'], [18, 'verde-claro'], [22, 'amarillo'], [40, 'rojo']],
+      valorTxt: 'sin puntos', objetivo: `${esc(d3.motivo)}${mesAhora}` }));
+    else if (m.desercion != null) relojes.push(svgReloj({ titulo: 'Deserción del mes', v: m.desercion, max: 40, zonas: [[14, 'verde'], [18, 'verde-claro'], [22, 'amarillo'], [40, 'rojo']],
+      valorTxt: num1(m.desercion) + '%', objetivo: raro ? '<span class="amarillo">Este dato de MOVE parece estar mal: lo estamos revisando.</span>' : 'Los puntos van con el promedio de 3 meses cerrados<br><small>menos es mejor</small>', puntos: p.desercion }));
     if (m.reeval_pct != null) relojes.push(svgReloj({ titulo: 'Reevaluaciones', v: m.reeval_pct, max: 60, zonas: [[15, 'rojo'], [30, 'amarillo'], [60, 'verde']],
       valorTxt: num1(m.reeval_pct) + '%', objetivo: `Objetivo: 30% de tus socios en el mes${m.reeval_n != null ? `<br><small>${m.reeval_n} reevaluados · 1,5 puntos cada uno si llegás</small>` : ''}`, puntos: p.reeval }));
     if (m.perfil_pct != null) relojes.push(svgReloj({ titulo: 'Perfil del socio cargado', v: m.perfil_pct, max: 100, zonas: [[30, 'rojo'], [60, 'amarillo'], [100, 'verde']],
@@ -1055,7 +1062,7 @@
       <div class="puntaje-mes"><strong>${num1(m.total)}</strong><span>puntos de objetivos</span><p>${esc(m.mensaje)}</p></div>
       <div class="relojes">${relojes.join('')}</div>
       ${serie.length >= 2 ? `<h3 class="sub-coord">Tu deserción mes a mes</h3>${svgBarras(serie, { unidad: '%', linea: 25, textoLinea: 'objetivo 25%' })}` : ''}
-      <p class="aclara">Datos de MOVE${m.datos_hasta ? ' al ' + esc(ddmm(m.datos_hasta)) : ''}: se actualizan cada mañana y el mes cierra el último día. Los puntos siguen las reglas de la pestaña Objetivos de tu planilla.</p></section>`;
+      <p class="aclara">Datos de MOVE${m.datos_hasta ? ' al ' + esc(ddmm(m.datos_hasta)) : ''}: se actualizan cada mañana. La deserción de cada mes queda fija el último día del mes siguiente, y los puntos de deserción van con el promedio de los últimos 3 meses cerrados (bajas ÷ vencimientos, con al menos 60 vencimientos).</p></section>`;
   }
 
   function vistaMesProfe() {
@@ -1651,7 +1658,7 @@
 
     const anios = [...new Set(todosMeses.map(m => m.slice(0, 4)))];
     return `<h1 class="titulo">Resumen <span>·</span> estado del gym</h1>
-      <p class="bajada">Activos y altas, de los cierres mensuales de MOVE. Deserción (semáforo y ranking): socios que no renovaron y no volvieron, sobre los que vencían en el mes. "A la semana (caja)": los que no renovaron a los 7 días de su vencimiento, aunque después vuelvan, porque esa plata no entró. No cuentan los nuevos ni los que están de vacaciones. Datos al ${esc(ddmm(sedes[0].cargada))}. El mes en curso se actualiza cada mañana.</p>
+      <p class="bajada">Activos y altas, de los cierres mensuales de MOVE. Deserción (semáforo y ranking): socios que no renovaron y no volvieron, sobre los que vencían en el mes. "A la semana (caja)": los que no renovaron a los 7 días de su vencimiento, aunque después vuelvan, porque esa plata no entró. No cuentan los nuevos ni los que están de vacaciones. Datos al ${esc(ddmm(sedes[0].cargada))}. El mes en curso se actualiza cada mañana; cada mes queda fijo el último día del mes siguiente (hasta ahí es provisorio).</p>
       <div class="filtros">${chips}</div>
       ${raros[mes] ? `<div class="aviso-mes urgente">⚠️ <b>Dato a revisar:</b> en ${esc(mesTxt(mes))} MOVE da una deserción que se despega mucho de lo habitual (${esc(raros[mes].join(' · '))}). Puede ser un problema del cálculo de MOVE ese mes: conviene consultarlo con Teo antes de sacar conclusiones. Este mes no entra en los promedios ni en la estacionalidad.</div>` : ''}
       ${sedes.map(s => `<section class="grupo estado-sede"><h2>📍 ${esc(s.nombre)}</h2>${metaSede(s)}
@@ -1709,6 +1716,9 @@ ${p.tareas_mes ? `<span class="uso-hoy">📋 Tareas del mes: ${p.tareas_mes.hech
   // La condición ya viene resuelta por el servidor (la edición a mano manda mientras siga vigente). Sin plata.
   const PL_GRUPOS = [['ACTIVO', 'Activos'], ['VACACIONES', 'Vacaciones'], ['DERIVADO', 'Derivados'], ['LIBERADO', 'Liberados'], ['ONLINE', 'Online'], ['BAJA', 'Bajas']];
   const PL_CONDICIONES = ['ACTIVO', 'VACACIONES', 'DERIVADO', 'LIBERADO', 'ONLINE', 'BAJA'];
+  const PL_VAC_DIAS = 60;     // vacaciones: como máximo 60 días desde el vencimiento (Emanuel, 24/11/2026)
+  // la fecha local (UTC-3) de un ts ISO, como fechaLocalDe del servidor
+  const ddIsoLocal = ts => { const t = Date.parse(ts); return isNaN(t) ? '' : new Date(t - 3 * 3600 * 1000).toISOString().slice(0, 10); };
   const PL_FILTROS = [['todos', 'Todos'], ['activos', 'Activos'], ['semana', 'Vence esta semana'], ['no_renovo', 'No renovó'], ['renovo', 'Renovó este mes'],
     ['nuevos', 'Nuevos'], ['vacaciones', 'Vacaciones'], ['derivados', 'Derivados'], ['bajas', 'Bajas'], ['bajas_mes', 'Bajas del mes'], ['mal_move', '⚠️ Mal asignado en MOVE'], ['nombre', '✏️ Nombre distinto'], ['desde_move', '🆕 Entró desde MOVE']];
   const PL_ESTADO_PLAN = { incompleto: ['🧩', 'Plan incompleto: tiene menos de 2 rutinas'], fuera_rango: ['🎨', 'El último plan no quedó entre 30 y 80% de cambio'], sin_plan: ['∅', 'Sin plan en MOVE'], vencido: ['', 'Plan vencido'] };
@@ -1906,10 +1916,21 @@ ${p.tareas_mes ? `<span class="uso-hoy">📋 Tareas del mes: ${p.tareas_mes.hech
     const man = f.condicion_manual;
     const autoTxt = man ? 'vuelve a la que calcula la planilla' : f.condicion;
     const sel = man ? man.valor : '';
+    // Vacaciones con reglas (Emanuel, 24/11/2026): las mismas que valida el servidor, para avisar antes de guardar
+    const vacMax = f.vence ? sumarDiasIso(f.vence, PL_VAC_DIAS) : '';
+    const vacPrevia = man && man.valor === 'VACACIONES' && man.quien !== 'planilla vieja' && ddIsoLocal(man.ts) <= (f.vence || '');
+    const motivoVac = hasta => {
+      if (!(tiene('recepcion') || tiene('coordinador') || tiene('admin'))) return 'vac_solo_recepcion';
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(hasta)) return 'vac_sin_vuelta';
+      if (!f.vence || (hoy > f.vence && !vacPrevia)) return 'vac_vencida';
+      if (hasta > vacMax) return 'vac_larga';
+      return '';
+    };
+    const txtVac = `Las carga recepción antes de que venza la membresía, con fecha de vuelta: 60 días como máximo desde el vencimiento${vacMax ? ` (hasta el ${plFecha(vacMax)})` : ''}. Si no renueva a la vuelta + 7 días, cuenta como baja del mes en que se fue.`;
     const formEdit = f.editable ? `<form class="marca-form pl-editar" style="border:0;padding:0">
         <label class="campo">Condición<select name="condicion"><option value=""${!sel ? ' selected' : ''}>Automática (${esc(autoTxt)})</option>${PL_CONDICIONES.map(c => `<option value="${c}"${c === sel ? ' selected' : ''}>${c}</option>`).join('')}</select></label>
-        <label class="campo" data-hasta${sel === 'VACACIONES' ? '' : ' hidden'}>Vuelve el (hasta)<input type="date" name="hasta" min="${hoy}" value="${esc(man && man.hasta ? man.hasta : '')}"></label>
-        <p class="aclara" data-aclara-cond>${sel === 'VACACIONES' ? 'Hasta esa fecha no se le da de baja automática.' : sel ? 'Puesta a mano, vale hasta que MOVE cambie el vencimiento (por ejemplo, cuando renueva).' : 'La calcula la planilla con los datos de MOVE. Cambiala solo si hace falta.'}</p>
+        <label class="campo" data-hasta${sel === 'VACACIONES' ? '' : ' hidden'}>Vuelve el (hasta)<input type="date" name="hasta" min="${hoy}"${vacMax ? ` max="${esc(vacMax)}"` : ''} value="${esc(man && man.hasta ? man.hasta : '')}"></label>
+        <p class="aclara" data-aclara-cond>${sel === 'VACACIONES' ? esc(txtVac) : sel ? 'Puesta a mano, vale hasta que MOVE cambie el vencimiento (por ejemplo, cuando renueva).' : 'La calcula la planilla con los datos de MOVE. Cambiala solo si hace falta.'}</p>
         ${f.puede_profe && (P.equipo || []).length ? `<label class="campo">Profe (dueño del socio)<select name="profe_dni">${P.equipo.map(p => `<option value="${esc(p.dni)}"${p.dni === f.profe_dni ? ' selected' : ''}>${esc(p.nombre)}</option>`).join('')}${P.equipo.some(p => p.dni === f.profe_dni) ? '' : `<option value="" selected>${esc(f.profe_nombre || 'Sin profe')}</option>`}</select></label>` : ''}
         <label class="campo">Observaciones<textarea name="observaciones" maxlength="300" rows="3">${esc(f.observaciones || '')}</textarea></label>
         <div class="botones"><button class="boton verde">Guardar</button><button type="button" class="boton claro" data-cerrar>Cerrar</button></div>
@@ -1942,7 +1963,7 @@ ${p.tareas_mes ? `<span class="uso-hoy">📋 Tareas del mes: ${p.tareas_mes.hech
         const vac = selCond.value === 'VACACIONES';
         form.querySelector('[data-hasta]').hidden = !vac;
         form.querySelector('[name=hasta]').required = vac;
-        form.querySelector('[data-aclara-cond]').textContent = vac ? 'Hasta esa fecha no se le da de baja automática.' : selCond.value ? 'Puesta a mano, vale hasta que MOVE cambie el vencimiento (por ejemplo, cuando renueva).' : 'La calcula la planilla con los datos de MOVE. Cambiala solo si hace falta.';
+        form.querySelector('[data-aclara-cond]').textContent = vac ? (['vac_solo_recepcion', 'vac_vencida'].indexOf(motivoVac('2000-01-01')) >= 0 ? PulsoApi.mensaje(motivoVac('2000-01-01')) : txtVac) : selCond.value ? 'Puesta a mano, vale hasta que MOVE cambie el vencimiento (por ejemplo, cuando renueva).' : 'La calcula la planilla con los datos de MOVE. Cambiala solo si hace falta.';
       };
       form.querySelector('[name=hasta]').required = sel === 'VACACIONES';
       form.onsubmit = async ev => {
@@ -1950,7 +1971,11 @@ ${p.tareas_mes ? `<span class="uso-hoy">📋 Tareas del mes: ${p.tareas_mes.hech
         const fd = new FormData(form);
         const cambios = [];
         const cond = String(fd.get('condicion') || ''), hasta = cond === 'VACACIONES' ? String(fd.get('hasta') || '') : '';
-        if (cond !== sel || (cond === 'VACACIONES' && hasta !== ((man && man.hasta) || ''))) cambios.push({ campo: 'condicion', valor: cond, hasta: hasta });
+        if (cond !== sel || (cond === 'VACACIONES' && hasta !== ((man && man.hasta) || ''))) {
+          const mv = cond === 'VACACIONES' ? motivoVac(hasta) : '';
+          if (mv) { aviso(PulsoApi.mensaje(mv), true); return; }
+          cambios.push({ campo: 'condicion', valor: cond, hasta: hasta });
+        }
         const obs = String(fd.get('observaciones') || '').trim();
         if (obs !== String(f.observaciones || '').trim()) cambios.push({ campo: 'observaciones', valor: obs });
         const pd = fd.get('profe_dni');
@@ -3244,7 +3269,7 @@ ${p.tareas_mes ? `<span class="uso-hoy">📋 Tareas del mes: ${p.tareas_mes.hech
       cuerpo = `<div class="rk-equipo">Lo que más pesa: <b>que tus socios no dejen</b> y <b>que sus planes estén al día y customizados</b>.${R.promedio != null ? ` Promedio del equipo: <b>${num(R.promedio)}</b>.` : ''}</div>
         ${reglas}
         ${R.personas.length ? `<ol class="rk-lista">${R.personas.map(fila).join('')}</ol>` : '<div class="vacio">Todavía no hay datos este mes.</div>'}
-        <p class="aclara">Deserción y activos salen de MOVE y se actualizan cada mañana. Planes al día y customización salen del control diario de los planes. Las tareas del mes son las que marcás vos. Sin plata.</p>`;
+        <p class="aclara">Deserción: promedio de los últimos 3 meses cerrados (cada mes queda fijo el último día del mes siguiente). Activos salen de MOVE y se actualizan cada mañana. Planes al día y customización salen del control diario de los planes. Las tareas del mes son las que marcás vos. Sin plata.</p>`;
     }
     return `<div class="rk-fondo" data-accion="rank-cerrar"></div><aside class="rk-panel" role="dialog" aria-label="Ranking de profes">
       <div class="rk-tope"><h2>🏆 Ranking de profes · ${R ? esc(nombreMes(R.mes)) : ''}</h2><button class="chip" data-accion="rank-cerrar">Cerrar</button></div>${cuerpo}</aside>`;
@@ -4125,7 +4150,8 @@ ${p.tareas_mes ? `<span class="uso-hoy">📋 Tareas del mes: ${p.tareas_mes.hech
     }
     else if (a === 'plan-extra') {
       const campo = app.querySelector('[data-extra-busca]');
-      const socios = (E.planes && E.planes.mio && E.planes.mio.reeval && E.planes.mio.reeval.socios) || [];
+      const mio = (E.planes && E.planes.mio) || {};
+      const socios = mio.extra || (mio.reeval && mio.reeval.socios) || [];
       const nombre = (campo && campo.value || '').trim().toLowerCase();
       const s = socios.find(x => x.socio_nombre.toLowerCase() === nombre) || (nombre.length > 2 && socios.filter(x => x.socio_nombre.toLowerCase().indexOf(nombre) >= 0).length === 1 ? socios.find(x => x.socio_nombre.toLowerCase().indexOf(nombre) >= 0) : null);
       if (!s) { aviso('Elegí el socio de la lista: escribí su nombre y tocá la sugerencia.', true); return; }
