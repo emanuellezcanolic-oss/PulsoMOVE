@@ -123,10 +123,14 @@ function repoHojas() {
     let h = buscarHoja(nombre);
     if (!h) {   // hojas agregadas después de la instalación
       h = libro.insertSheet(nombre);
+      // Una hoja nueva trae 26 columnas: si la nuestra tiene más, se agregan (si no, el rango queda fuera de la hoja y falla)
+      if (h.getMaxColumns() < COLUMNAS[nombre].length) h.insertColumnsAfter(h.getMaxColumns(), COLUMNAS[nombre].length - h.getMaxColumns());
       h.getRange(1, 1, 1, COLUMNAS[nombre].length).setValues([COLUMNAS[nombre]]).setFontWeight('bold');
       h.getRange(1, 1, h.getMaxRows(), COLUMNAS[nombre].length).setNumberFormat('@');
       h.setFrozenRows(1);
       hojas[nombre] = h;
+    } else if (h.getMaxColumns() < COLUMNAS[nombre].length) {   // quedó a medio crear (o la hoja creció)
+      h.insertColumnsAfter(h.getMaxColumns(), COLUMNAS[nombre].length - h.getMaxColumns());
     }
     return h;
   };
@@ -270,6 +274,7 @@ function instalar() {
   Object.keys(COLUMNAS).forEach(nombre => {
     const h = libro.getSheetByName(nombre) || libro.insertSheet(nombre);
     const cols = COLUMNAS[nombre];
+    if (h.getMaxColumns() < cols.length) h.insertColumnsAfter(h.getMaxColumns(), cols.length - h.getMaxColumns());
     h.getRange(1, 1, 1, cols.length).setValues([cols]).setFontWeight('bold');
     h.getRange(1, 1, h.getMaxRows(), cols.length).setNumberFormat('@');
     h.setFrozenRows(1);
