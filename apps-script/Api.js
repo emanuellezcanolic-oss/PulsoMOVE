@@ -1553,6 +1553,13 @@ function manejar(req, deps) {
     return { ok: true, data: ACCIONES[req.accion](req, deps) };
   } catch (e) {
     if (e instanceof ErrorApi) return { ok: false, error: e.codigo };
-    return { ok: false, error: 'interno' };
+    const r = { ok: false, error: 'interno' };
+    // Solo la computadora que carga (la que tiene la clave de carga) recibe el detalle, para poder diagnosticar
+    try {
+      if (req && typeof req.clave === 'string' && deps.props && deps.props.CLAVE_CARGA && igualSeguro(req.clave, deps.props.CLAVE_CARGA)) {
+        r.detalle = String((e && e.message) || e).slice(0, 300);
+      }
+    } catch (x) { /* nada */ }
+    return r;
   }
 }
