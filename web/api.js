@@ -3,7 +3,7 @@
   const CLAVE_SESION = 'pulso_sesion';
   const CLAVE_COLA = 'pulso_cola';
   // Errores que no se arreglan reintentando: la marca se descarta y se avisa
-  const DEFINITIVOS = ['prohibido', 'no_existe', 'datos_invalidos', 'ya_pedida', 'sin_recepcion', 'ya_avisado', 'ya_anotado', 'vac_solo_recepcion', 'vac_sin_vuelta', 'vac_vencida', 'vac_larga', 'aviso_sin_fecha', 'aviso_fecha_lejos', 'celular_invalido', 'espera_semana', 'espera_baja_pedida', 'espera_oferta_activa', 'espera_tope_beneficio', 'espera_sin_lugar'];
+  const DEFINITIVOS = ['prohibido', 'no_existe', 'datos_invalidos', 'ya_pedida', 'sin_recepcion', 'ya_avisado', 'ya_anotado', 'vac_solo_recepcion', 'vac_sin_vuelta', 'vac_vencida', 'vac_larga', 'aviso_sin_fecha', 'aviso_fecha_lejos', 'celular_invalido', 'espera_semana', 'espera_baja_pedida', 'espera_oferta_activa', 'espera_tope_beneficio', 'espera_sin_lugar', 'espera_nombre_incompleto', 'espera_sin_franja', 'pendiente_sin_profe', 'pendiente_sin_motivo'];
   // "ocupado" garantiza que el pedido no se hizo, así que repetirlo es seguro aunque guarde datos.
   const ESPERAS_OCUPADO = [3000, 8000];
   const LIMITE_MS = 90000;   // el servidor espera su turno hasta 20 s; más que esto ya es un pedido colgado
@@ -32,6 +32,10 @@
     espera_oferta_activa: 'Esa persona ya tiene un lugar ofrecido que todavía no venció.',
     espera_tope_beneficio: 'Se alcanzó el tope de beneficios de este mes en la sede.',
     espera_sin_lugar: 'Esa persona todavía no cuenta con un lugar calculado (falta reconfirmar o cargar el horario).',
+    espera_nombre_incompleto: 'Falta el apellido: anotá nombre y apellido (al menos dos palabras).',
+    espera_sin_franja: 'Falta la franja horaria: marcá si le interesa a la mañana, a la tarde o las dos.',
+    pendiente_sin_profe: 'Ese socio no tiene un profe con usuario en PulsoMOVE. Elegí a qué profe se lo anotamos.',
+    pendiente_sin_motivo: 'Contanos en pocas palabras por qué no corresponde, así queda claro para todos.',
     sin_recepcion: 'No hay nadie de recepción cargado en esa sede para pasarle el pedido. Avisale a Emanuel.',
     red: 'No hay conexión. Lo que marques se guarda en este equipo y se envía solo.',
     ocupado: 'El servidor está demorado. Esperá un momento y probá de nuevo.',

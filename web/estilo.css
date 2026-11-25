@@ -1031,9 +1031,19 @@ dialog:has(.pl-datos) { width: min(560px, calc(100% - 20px)); max-height: calc(1
 .esp-prio.esp-p1 { background: var(--rojo-claro); border-color: var(--rojo); }
 .esp-prio.esp-p2 { background: var(--naranja-claro); border-color: var(--naranja); }
 .esp-estado { display: inline-block; font-size: 12px; font-weight: 600; padding: 2px 8px; border-radius: 10px; border: 1px solid var(--linea); background: var(--hoja); }
-.esp-estado.esp-verde { border-color: var(--verde); }
-.esp-estado.esp-amarillo { background: var(--naranja-claro); border-color: var(--naranja); }
-.esp-estado.esp-rojo { background: var(--rojo-claro); border-color: var(--rojo); }
+/* Chips de estado con los colores suaves de la planilla de las recepcionistas (25/11/2026) */
+.esp-estado.esp-verde { background: #d9ead3; border-color: #6aa84f; color: #274e13; }
+.esp-estado.esp-amarillo { background: #fff2cc; border-color: #f1c232; color: #7f6000; }
+.esp-estado.esp-rojo { background: #f4cccc; border-color: #e06666; color: #85200c; }
+.esp-estado.esp-celeste { background: #e3eef9; border-color: #8fb4dc; color: #1c4587; }
+.esp-estado.esp-violeta { background: #eadcf0; border-color: #a882bd; color: #4c1130; }
+.esp-estado.esp-gris { color: var(--gris); }
+.esp-estado[title] { cursor: help; }
+.esp-faltan-chip { display: inline-block; font-size: 12px; font-weight: 700; padding: 2px 8px; border-radius: 10px; background: #fff; color: var(--rojo); border: 1px dashed var(--rojo); }
+.esp-completar { background: var(--hoja); border: 1px dashed var(--naranja); border-radius: var(--radio); padding: 10px 12px; margin: 10px 0; }
+.esp-completar .esp-cand { margin: 6px 0 0; }
+.esp-franjas { border: 0; padding: 0; margin: 0; display: flex; gap: 16px; flex-wrap: wrap; align-items: center; }
+.esp-franjas legend { padding: 0; margin-bottom: 4px; }
 .esp-lugar { display: inline-block; font-size: 12px; font-weight: 700; padding: 2px 8px; border-radius: 10px; background: var(--verde); color: #fff; }
 .esp-aviso-chip { font-size: 12px; color: var(--gris); border: 1px dashed var(--linea); padding: 1px 7px; border-radius: 10px; }
 .esp-fila { display: flex; gap: 10px; justify-content: space-between; align-items: center; background: var(--hoja); border: 1px solid var(--linea); border-radius: var(--radio); padding: 10px 12px; margin: 0 0 8px; box-shadow: var(--sombra); }
@@ -1055,3 +1065,14 @@ dialog:has(.pl-datos) { width: min(560px, calc(100% - 20px)); max-height: calc(1
 .esp-kpis > div { background: var(--hoja); border: 1px solid var(--linea); border-radius: var(--radio); padding: 8px 10px; display: grid; }
 .esp-kpis b { font: 800 22px/1.1 var(--display); }
 .esp-kpis span { font-size: 12px; color: var(--gris); }
+
+/* Pendientes con socios (25/11/2026) */
+.pds-item { background: var(--hoja); border: 1px solid var(--linea); border-left: 4px solid var(--verde); border-radius: var(--radio); padding: 10px 14px; margin: 0 0 10px; box-shadow: var(--sombra); display: grid; gap: 6px; }
+.pds-item.pds-hoy { border-left-color: var(--naranja); }
+.pds-item.pds-atrasado { border-left-color: var(--rojo); }
+.pds-cab { display: flex; flex-wrap: wrap; gap: 4px 10px; align-items: baseline; }
+.pds-que { margin: 0; font-size: 15px; }
+.pds-aviso { color: var(--rojo); margin: 0; }
+.pds-item .aclara { margin: 0; }
+.pds-item .botones { display: flex; flex-wrap: wrap; gap: 8px; }
+.pds-para { border: 0; padding: 0; margin: 0; display: grid; gap: 4px; }

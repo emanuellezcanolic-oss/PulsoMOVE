@@ -1495,11 +1495,16 @@ const ACCIONES = {
   pedido_hecho: (r, d) => pedidoHecho(r, d),
   pedido_item_agregar: (r, d) => pedidoItemAgregar(r, d),
   pedido_item_quitar: (r, d) => pedidoItemQuitar(r, d),
+  // Pendientes con socios (Pendientes.js)
+  socio_pendiente_socios: (r, d) => socioPendienteSocios(r, d),
+  socio_pendiente_anotar: (r, d) => socioPendienteAnotar(r, d),
+  socio_pendiente_resolver: (r, d) => socioPendienteResolver(r, d),
+  socio_pendiente_derivar: (r, d) => socioPendienteDerivar(r, d),
 };
 
 // Las pantallas que solo miran no esperan turno: un pedido trabado no las frena. Lista cerrada: lo que no esté acá espera.
 // Respaldo, bajadas y lo que usan los procesos de la PC siguen con turno porque necesitan los datos completos y sin cambios a mitad.
-const SOLO_LECTURA = ['mis_tareas', 'mi_dia', 'contacto_extra_socios', 'sede', 'tareas_de', 'rendimiento', 'cierres_ver', 'profes_ver', 'fichajes_ver', 'usuarios_listar', 'servidor_ver', 'ocupacion_ver', 'profe_tareas', 'profe_estado', 'profe_planilla', 'liquidacion_ver', 'coberturas_ver', 'ranking_ver', 'ranking_profes', 'resumen_semanal', 'consultas_ver', 'pase_ver', 'chat_personas', 'chat_listar', 'chat_ver', 'chat_novedad', 'pedidos_mios', 'pedidos_ver', 'espera_ver', 'espera_mensaje', 'espera_historial', 'espera_candidatos', 'espera_beneficios_de', 'espera_metricas'];
+const SOLO_LECTURA = ['mis_tareas', 'mi_dia', 'contacto_extra_socios', 'sede', 'tareas_de', 'rendimiento', 'cierres_ver', 'profes_ver', 'fichajes_ver', 'usuarios_listar', 'servidor_ver', 'ocupacion_ver', 'profe_tareas', 'profe_estado', 'profe_planilla', 'liquidacion_ver', 'coberturas_ver', 'ranking_ver', 'ranking_profes', 'resumen_semanal', 'consultas_ver', 'pase_ver', 'chat_personas', 'chat_listar', 'chat_ver', 'chat_novedad', 'pedidos_mios', 'pedidos_ver', 'espera_ver', 'espera_mensaje', 'espera_historial', 'espera_candidatos', 'espera_beneficios_de', 'espera_metricas', 'socio_pendiente_socios'];
 const ESPERA_TURNO_MS = 20000;
 const PEDIDO_LENTO_MS = 15000;
 

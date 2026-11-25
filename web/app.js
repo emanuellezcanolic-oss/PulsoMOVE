@@ -516,6 +516,7 @@
       ${E.paraAdelantar ? `<button class="boton adelantar ancho" data-accion="adelantar">${E.adelantar ? 'Ocultar las de los próximos días' : `⏩ Adelantar tareas (${E.paraAdelantar})`}</button>` : ''}
       <button class="boton ancho" data-accion="registrar">Registrar mensaje, consulta o venta</button>
       <button class="boton claro ancho" data-accion="contacto-extra">➕ Contacto extra</button>
+      <button class="boton claro ancho" data-accion="pds-anotar">📌 Pedido de un socio para su profe</button>
       <button class="boton claro ancho" data-accion="garantia">Registrar pedido de garantía</button>
       <button class="boton claro ancho" data-accion="trajo-socio">🎁 Un socio trajo a un socio nuevo</button>
       ${avisosPendientes() ? '<button class="boton claro ancho" data-accion="activar-avisos">🔔 Activar avisos en esta PC</button>' : ''}
@@ -593,6 +594,8 @@
   E.pedMios = null; E.ped = null; E.pedForm = null;
   const ESP = PulsoEspera.crear({ cliente, E, esc, aviso, falla, render: () => render(), dialogo: (h, f) => dialogo(h, f), tiene, irA: v => irA(v) });
   const bandaPedidos = () => PulsoPedidos.bandaMios(E.pedMios, esc);
+  // Pendientes con socios (web/pendientes.js, apps-script/Pendientes.js)
+  const PDS = PulsoPendientes.crear({ cliente, E, esc, aviso, falla, dialogo: (h, f) => dialogo(h, f), tiene, recargar: () => cargarVista() });
 
   function cargarPedidosMios() {
     cliente.llamar('pedidos_mios').then(r => {
@@ -1258,7 +1261,7 @@
       <p class="bajada">Tus números, como los mira la auditoría. Son para vos: no hay ranking entre compañeros.</p>
       <div class="personas">
         ${puntajeAuditoria(M.auditoria)}
-        <div class="persona"><b>Planes</b><div class="cifras">${c(r.en_agenda, 'te quedan en los próximos 30 días')}${c(r.atrasadas, 'atrasados hoy', r.atrasadas ? 'mal' : 'bien')}${c(r.hechas_mes, 'hechos este mes', 'bien')}${c(s.dias_completos, 'días completos')}${c(s.en_una_hora, 'días en menos de 1 hora')}${c(r.en_papel || 0, 'en papel')}</div></div>
+        <div class="persona"><b>Planes</b><div class="cifras">${c(r.en_agenda, 'te quedan en los próximos 30 días')}${c(r.atrasadas, 'atrasados hoy', r.atrasadas ? 'mal' : 'bien')}${c(r.hechas_mes, 'hechos este mes', 'bien')}${c(r.pedidos_socio_hechos_mes || 0, 'pedidos de socios resueltos', 'bien')}${c(s.dias_completos, 'días completos')}${c(s.en_una_hora, 'días en menos de 1 hora')}${c(r.en_papel || 0, 'en papel')}</div></div>
         <div class="persona"><b>Customización y progresión (30 días)</b><div class="cifras">${c(rv.revisados, 'planes renovados revisados')}${c(rv.en_rango, 'entre 30 y 80%', 'bien')}${c(rv.casi_todo, 'cambiaste casi todo', rv.casi_todo ? 'mal' : '')}${c(rv.con_saltos, 'con saltos de escalón', rv.con_saltos ? 'mal' : 'bien')}${c(rv.saltos_sin_responder, 'saltos sin responder', rv.saltos_sin_responder ? 'mal' : 'bien')}${c(rv.minutos_mediana != null ? rv.minutos_mediana + ' min' : null, 'tardás en armar un plan (aprox.)')}</div></div>
       </div>
       ${bloqueMediciones(M)}
@@ -1296,11 +1299,13 @@
       ${avisoSabado(M)}
       ${avisoAusencia(M)}
       ${avisoTareasMes(M)}
+      ${M.pendientes_socio && M.pendientes_socio.abiertos.length ? PDS.bloqueProfe(M, E.planes.hoy) : ''}
       <p class="bajada">Primero el socio nuevo, después los vencidos y después los que están por vencer.</p>
       ${bandaConcentrado(M)}
       ${nuevos.length ? `<section class="grupo"><h2>🆕 Plan nuevo, hoy <span class="cuenta">${nuevos.length}</span></h2>${nuevos.map(t => tarjetaPlan(t, i++, true)).join('')}</section>` : ''}
       ${resto.length ? `<section class="grupo"><h2>Para renovar hoy <span class="cuenta">${resto.length}</span></h2>${resto.map(t => tarjetaPlan(t, i++, true)).join('')}</section>`
         : (nuevos.length ? '' : '<div class="vacio">Hoy no tenés planes para renovar. 🎉</div>')}
+      ${M.pendientes_socio && !M.pendientes_socio.abiertos.length ? PDS.bloqueProfe(M, E.planes.hoy) : ''}
       ${bloqueCobertura(M)}
       ${bloqueAuditoria(M)}
       ${bloqueHechas(M)}
@@ -1886,6 +1891,7 @@
       <p class="bajada">Lo que cada profe y cada kinesiólogo tiene que renovar hoy, lo atrasado y lo que lleva hecho en el mes.</p>
       ${selector}
       ${E.planes.agenda ? preguntaFeriado(E.planes.agenda) : ''}
+      ${PDS.bloqueCoord(E.planes.pendientes_socio_atrasados)}
       ${tablaEquipo(eq)}
       ${bloqueProfes()}
       ${eq.length ? `<div class="personas">${eq.map(p => `<div class="persona"><b>${esc(p.profe)}</b><span class="turno">${p.con_usuario ? 'Con usuario' : 'Todavía sin usuario en PulsoMOVE'}</span>${cifrasPlanes(p.resumen)}${p.auditoria && p.auditoria.puntaje != null ? `<span class="uso-hoy aud-linea ${(NIVEL_AUD[p.auditoria.nivel] || [''])[0]}">🧾 Auditoría: <b>${p.auditoria.puntaje}</b> ${esc((NIVEL_AUD[p.auditoria.nivel] || ['', ''])[1])}${p.auditoria.cambio_semana ? ` (${p.auditoria.cambio_semana > 0 ? '▲' : '▼'} ${Math.abs(p.auditoria.cambio_semana)})` : ''} · ${p.auditoria.cuantos.pendientes} para corregir${p.auditoria.cuantos.no_corregidos ? ` · ${p.auditoria.cuantos.no_corregidos} dijo que corrigió y sigue` : ''}${p.auditoria.cuantos.dejadas ? ` · ${p.auditoria.cuantos.dejadas} dejó así` : ''}</span>` : ''}${p.dias ? `<span class="uso-hoy">Días completos este mes: ${p.dias.completos} (en menos de 1 hora: ${p.dias.en_una_hora})${p.revisiones && p.revisiones.resumen.minutos_mediana != null ? ` · arma un plan en ~${p.revisiones.resumen.minutos_mediana} min` : ''}${p.resumen.en_papel ? ` · en papel: ${p.resumen.en_papel}` : ''}</span>` : ''}${p.revisiones ? `<span class="uso-hoy">Planes renovados (30 días): ${p.revisiones.resumen.revisados} · en 30-80%: ${p.revisiones.resumen.en_rango} · casi todo cambiado: ${p.revisiones.resumen.casi_todo}${p.revisiones.resumen.con_saltos ? ` · con saltos: ${p.revisiones.resumen.con_saltos} (${p.revisiones.resumen.saltos_sin_responder} sin responder, ${p.revisiones.resumen.corregir} a corregir)` : ''}</span>` : ''}
@@ -4160,6 +4166,7 @@ ${p.tareas_mes ? `<span class="uso-hoy">📋 Tareas del mes: ${p.tareas_mes.hech
     else if (a.indexOf('chat-') === 0) accionChat(a, el);
     else if (a.indexOf('ped-') === 0) await accionPedido(a, el);
     else if (a.indexOf('esp-') === 0) await ESP.accion(a, el);
+    else if (a.indexOf('pds-') === 0) await PDS.accion(a, el);
     else if (a === 'fichaje') {
       el.disabled = true;
       try {

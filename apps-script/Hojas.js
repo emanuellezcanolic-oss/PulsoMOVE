@@ -96,6 +96,9 @@ const COLUMNAS = {
   espera_ofertas: ['id', 'persona_id', 'sede', 'franja', 'ts', 'vence_ts', 'estado', 'dni', 'motivo'],
   espera_benef: ['id', 'persona_id', 'sede', 'ts', 'beneficio', 'estado', 'dni', 'nombre', 'canjeado_ts'],
   espera_config: ['clave', 'valor'],
+  // Pendientes con socios (Pendientes.js, 25/11/2026): lo que un socio le pidió al profe. estado: pendiente | hecho | no_corresponde.
+  socio_pendientes: ['id', 'sede', 'socio_id', 'socio_nombre', 'profe_dni', 'profe_nombre', 'que', 'limite', 'estado', 'motivo', 'creado_ts', 'creado_dni', 'creado_nombre',
+                     'creado_rol', 'derivado_de_dni', 'derivado_de_nombre', 'resuelto_ts', 'resuelto_dni', 'resuelto_nombre'],
   garantia: ['id', 'ts', 'sede', 'socio_id', 'socio_nombre', 'profe', 'motivo', 'registra_dni', 'estado', 'decide_dni',
              'comentario', 'decidido_en'],
 };

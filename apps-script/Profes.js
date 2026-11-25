@@ -133,6 +133,9 @@ function profeTareas(req, deps) {
     out.mio.ausencia = mia ? vistaAusencia(mia) : null;
     out.mio.cubriendo = coberturaDe(usuario, deps, filas, hoy);
     out.mio.mediciones = medicionesDeProfe(deps, usuario, hoy, out.mio.tareas_mes);
+    // Pendientes con socios (Pendientes.js): aparte de los planes, así no bajan nada mientras están pendientes
+    out.mio.pendientes_socio = psDeProfe(usuario, deps, hoy);
+    out.mio.resumen.pedidos_socio_hechos_mes = out.mio.pendientes_socio.hechos_mes;
   }
   if (coordina) {
     const sede = tieneRol(usuario, 'admin') ? texto(req.sede) : usuario.sede;
@@ -152,6 +155,7 @@ function profeTareas(req, deps) {
     const mesQueViene = mesDe(sumarDiasProfe(mesDe(hoy) + '-01', 32));
     out.tareas_mes = { mes: mesDe(hoy), lista: tmHoy.lista, origen: tmHoy.origen, siguiente: Object.assign({ mes: mesQueViene }, tareasDelMes(deps, mesQueViene)) };
     out.ve_liq = tieneRol(usuario, 'admin');
+    out.pendientes_socio_atrasados = psAtrasados(deps, hoy, sede);
     // el horario que se muestra es el de la app (lo edita coordinación), no el que calculó la PC a la mañana
     const horarioDe = n => out.agenda.horarios.filter(x => mismoProfe(x.profe, n));
     out.equipo = nombres.sort().map(n => {

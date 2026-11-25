@@ -265,11 +265,11 @@ test('carga de la PC: pide clave, valida, es idempotente y no pisa lo que cambi�
   assert.equal(d.repo.hojas.espera[0].estado, 'reconfirmo');
 });
 
-test('catálogo de mensajes: 10 de ideas + 6 de otros rubros + beneficio, avance y posición; sin presión ni promesas', () => {
+test('catálogo de mensajes: 10 de ideas + 6 de otros rubros + beneficio (y el de presoterapia), avance y posición; sin presión ni promesas', () => {
   const claves = L.MENSAJES_ESPERA.map(m => m.clave);
-  assert.equal(claves.length, 19);
-  assert.equal(new Set(claves).size, 19);
-  ['beneficio', 'avance', 'posicion'].forEach(c => assert.ok(claves.includes(c)));
+  assert.equal(claves.length, 20);
+  assert.equal(new Set(claves).size, 20);
+  ['beneficio', 'beneficio_presoterapia', 'avance', 'posicion'].forEach(c => assert.ok(claves.includes(c)));
   L.MENSAJES_ESPERA.forEach(m => {
     assert.ok(!/última chance|ultima chance|no te lo pierdas|solo hoy|urgente|garantizado|seguro que entrás/i.test(m.texto), m.clave);
     assert.ok(!/\$\s?\d/.test(m.texto), 'sin precios inventados: ' + m.clave);
@@ -406,4 +406,155 @@ test('check: las métricas de coordinación muestran cuántas quedaron sin compr
   d.fecha('2026-11-25');
   pedir(d, KEI, { accion: 'espera_hoy' });
   assert.equal(pedir(d, EMA, { accion: 'espera_metricas' }).data.sedes.find(s => s.sede === 'bariloche').sin_comprobar, 1);
+});
+
+// ---------- Ajustes del 25/11/2026: datos obligatorios, beneficios, etiquetas y re-sincronizar desde la planilla ----------
+
+test('alta: sin apellido, sin celular válido o sin franja no se guarda, con un código claro', () => {
+  const d = entorno();
+  const base = { accion: 'espera_alta', nombre: 'Ana Inventada', celular: '2944 55-6001', franjas: ['manana'] };
+  assert.equal(pedir(d, KEI, { ...base, nombre: 'Ana' }).error, 'espera_nombre_incompleto');
+  assert.equal(pedir(d, KEI, { ...base, nombre: '  ' }).error, 'espera_nombre_incompleto');
+  assert.equal(pedir(d, KEI, { ...base, celular: '' }).error, 'celular_invalido');
+  assert.equal(pedir(d, KEI, { ...base, franjas: [], horario: 'cuando pueda' }).error, 'espera_sin_franja');
+  assert.equal((d.repo.hojas.espera || []).length, 0);
+  // la franja puede venir marcada o salir del texto del horario
+  assert.deepEqual(pedir(d, KEI, { ...base, franjas: [], horario: '16 a 20' }).data.persona.franjas, ['tarde']);
+  const r = pedir(d, KEI, { ...base, celular: '2944556002', franjas: ['manana', 'tarde'] }).data.persona;
+  assert.deepEqual(r.franjas, ['manana', 'tarde']);
+  assert.deepEqual(r.faltan, []);
+});
+
+test('editar: tampoco deja borrar el apellido, el celular ni la franja; lo demás se edita igual aunque falten datos', () => {
+  const d = entorno([P({ id: 'inc', nombre: 'Rodri', celular: '', creado_por: 'pc' })]);
+  assert.equal(pedir(d, KEI, { accion: 'espera_actualizar', id: 'inc', campos: { nombre: 'Rodri' } }).error, 'espera_nombre_incompleto');
+  assert.equal(pedir(d, KEI, { accion: 'espera_actualizar', id: 'inc', campos: { celular: '12' } }).error, 'celular_invalido');
+  assert.equal(pedir(d, KEI, { accion: 'espera_actualizar', id: 'inc', campos: { franjas: '' } }).error, 'espera_sin_franja');
+  assert.ok(pedir(d, KEI, { accion: 'espera_actualizar', id: 'inc', campos: { observaciones: 'Llamar a la tarde' } }).ok);
+  const p = pedir(d, KEI, { accion: 'espera_actualizar', id: 'inc', campos: { nombre: 'Rodrigo Inventado', celular: '2944 55-6003' } }).data.persona;
+  assert.deepEqual(p.faltan, []);
+});
+
+test('faltan datos: la carga vieja los acepta, se marcan y la tarea del día propone completarlos (sin contar en los topes)', () => {
+  const d = entorno();
+  const fila = { id: 'le-imp0000009', sede: 'bariloche', sede_interes: 'bariloche', fecha_alta: '2026-11-20', prioridad: '3', nombre: 'Rodri', celular: '', horario_texto: '', franjas: 'manana',
+    observaciones: '', estado: 'nuevo', derivacion: '', evaluacion: '', interesado: '', origen: 'planilla', contacto_dni: KEI.dni };
+  const coni = { ...fila, id: 'le-imp0000010', nombre: 'Coni', celular: '5492944100200' };
+  assert.equal(L.manejar({ accion: 'cargar_espera', clave: 'clave-prueba', filas: [fila, coni] }, d).data.nuevos, 2);
+  const V = pedir(d, KEI, { accion: 'espera_ver' }).data;
+  assert.deepEqual(V.personas.find(p => p.id === fila.id).faltan, ['nombre', 'celular']);
+  assert.deepEqual(V.personas.find(p => p.id === coni.id).faltan, ['nombre']);
+  const H = pedir(d, KEI, { accion: 'espera_hoy' }).data;
+  assert.deepEqual(H.completar.map(x => x.persona_id).sort(), [fila.id, coni.id].sort());
+  assert.match(H.completar.find(x => x.persona_id === fila.id).motivo, /Sin celular no se le puede escribir/);
+  // sin celular no hay contacto; con celular sí, y la tarjeta avisa qué falta
+  assert.ok(!H.tareas.some(t => t.persona_id === fila.id));
+  assert.deepEqual(H.tareas.find(t => t.persona_id === coni.id).faltan, ['nombre']);
+  assert.equal(H.pendientes_total, 1);
+});
+
+test('beneficios: nutricionista y charla con el profe en el catálogo; presoterapia con su mensaje de agradecimiento y para quien más responde', () => {
+  const claves = L.LE_CONFIG_DEFECTO.beneficios.map(b => b.clave);
+  ['presoterapia', 'nutricionista', 'charla_profe'].forEach(c => assert.ok(claves.includes(c), c));
+  L.LE_CONFIG_DEFECTO.beneficios.forEach(b => assert.ok(!/\$\s?\d|\d+\s?%/.test(b.titulo + b.detalle), 'sin precios: ' + b.clave));
+  const uno = P({ id: 'uno', fecha_alta: '2026-10-01', respondio_alguna_vez: 'true', ultima_respuesta: '2026-11-10', estado: 'reconfirmo' });
+  const tres = P({ id: 'tres', fecha_alta: '2026-10-10', respondio_alguna_vez: 'true', ultima_respuesta: '2026-11-10', estado: 'reconfirmo' });
+  const d = entorno([uno, tres]);
+  const h = r => ({ id: 'h' + Math.random(), persona_id: r, ts: '2026-11-01T12:00:00Z', dni: KEI.dni, nombre: '', tipo: 'contacto', mensaje_clave: 'reconfirmacion', resultado: 'respondio_si', detalle: '', verif: 'comprobada', verif_ts: '' });
+  d.repo.hojas.espera_hist = [h('uno'), h('tres'), h('tres'), h('tres')];
+  pedir(d, EMA, { accion: 'espera_config_guardar', config: { tope_turno: 1 } });
+  const t = pedir(d, KEI, { accion: 'espera_hoy' }).data.tareas;
+  assert.equal(t.length, 1);
+  assert.equal(t[0].persona_id, 'tres');   // más antigua es «uno», pero «tres» respondió más mensajes
+  assert.equal(t[0].beneficio.clave, 'presoterapia');
+  assert.equal(t[0].mensaje.clave, 'beneficio_presoterapia');
+  assert.match(t[0].mensaje.texto, /^¡Hola Persona! Gracias por tu paciencia/);
+  assert.match(t[0].mensaje.texto, /bonificada por nosotros/);
+  assert.match(t[0].motivo, /por esperar con paciencia y por responder los mensajes/);
+  // cuando se acaba el tope de presoterapia del mes, sigue con el próximo beneficio del catálogo con su mensaje genérico
+  const cfg = JSON.parse(JSON.stringify(L.LE_CONFIG_DEFECTO.beneficios));
+  cfg[0].tope_mes = 0;
+  pedir(d, EMA, { accion: 'espera_config_guardar', config: { beneficios: cfg } });
+  const t2 = pedir(d, KEI, { accion: 'espera_hoy' }).data.tareas[0];
+  assert.equal(t2.beneficio.clave, 'outdoor'); assert.equal(t2.mensaje.clave, 'beneficio');
+  // un mensaje propio que no existe no se puede guardar
+  cfg[0].mensaje = 'no_existe';
+  assert.equal(pedir(d, EMA, { accion: 'espera_config_guardar', config: { beneficios: cfg } }).error, 'datos_invalidos');
+});
+
+test('estados con las palabras de recepción: misma clave interna, etiqueta nueva y ayuda del cierre', () => {
+  assert.equal(L.LE_ESTADOS.nuevo, 'Pendiente de mensaje');
+  assert.equal(L.LE_ESTADOS.contactado, 'Aguardando respuesta');
+  assert.equal(L.LE_ESTADOS.evaluacion_agendada, 'Evaluación agendada');
+  assert.equal(L.LE_ESTADOS.descartado, 'Descartado');
+  assert.equal(L.LE_ESTADOS.cerrado_amable, 'Cerrado: no respondió');
+  ['pausa', 'reconfirmo', 'ingreso', 'esperando'].forEach(k => assert.ok(L.LE_ESTADOS[k], k));
+  const V = pedir(entorno([P()]), KEI, { accion: 'espera_ver' }).data;
+  assert.match(V.estados_ayuda.cerrado_amable, /mensaje de cierre después de varios intentos sin respuesta; si vuelve a escribir, se reactiva/);
+});
+
+// Re-sincronizar estados desde la planilla (cargar_espera con modo actualizar_estados)
+function filaPlanilla(o = {}) {
+  return { id: 'le-sync000001', sede: 'bariloche', sede_interes: 'bariloche', fecha_alta: '2026-10-01', prioridad: '3', nombre: 'Sync Inventada', celular: '5492944100300', horario_texto: '8 a 10',
+    franjas: 'manana', observaciones: '', estado: 'nuevo', derivacion: '', evaluacion: '', interesado: '', origen: 'planilla', contacto_dni: KEI.dni, ...o };
+}
+
+test('re-sincronizar: actualiza el estado por el color si nadie la tocó en la app; es idempotente y solo devuelve conteos', () => {
+  const d = entorno();
+  const cl = { accion: 'cargar_espera', clave: 'clave-prueba' };
+  const a = filaPlanilla(), b = filaPlanilla({ id: 'le-sync000002', celular: '5492944100301', nombre: 'Otra Inventada' }), c = filaPlanilla({ id: 'le-sync000003', celular: '5492944100302', nombre: 'Tercera Inventada' });
+  L.manejar({ ...cl, filas: [a, b, c] }, d);
+  d.t += 3600000;
+  const sync = (filas, extra) => L.manejar({ ...cl, modo: 'actualizar_estados', filas, ...extra }, d);
+  assert.equal(L.manejar({ accion: 'cargar_espera', modo: 'actualizar_estados', filas: [a] }, d).error, 'clave');
+  const nuevas = [{ ...a, estado: 'contactado', derivacion: 'Kei' }, { ...b, estado: 'evaluacion_agendada', evaluacion: 'SI' }, { ...c, estado: 'nuevo' }, filaPlanilla({ id: 'le-sync000099', celular: '5492944100399' })];
+  const sim = sync(nuevas, { simular: true }).data;
+  assert.equal(sim.simulado, true); assert.equal(sim.actualizadas, 2);
+  assert.equal(d.repo.hojas.espera.find(p => p.id === a.id).estado, 'nuevo', 'simular no escribe');
+  const r = sync(nuevas).data;
+  assert.deepEqual(r.cambios, { 'nuevo→contactado': 1, 'nuevo→evaluacion_agendada': 1 });
+  assert.deepEqual(r.campos, { derivacion: 1, evaluacion: 1 });
+  assert.equal(r.actualizadas, 2); assert.equal(r.sin_cambios, 1); assert.equal(r.no_estan, 1); assert.equal(r.tocadas_en_app, 0);
+  assert.ok(!/Inventada|549294/.test(JSON.stringify(r)), 'sin nombres ni celulares');
+  assert.equal(d.repo.hojas.espera.find(p => p.id === a.id).estado, 'contactado');
+  assert.equal(d.repo.hojas.espera.length, 3, 'no da de alta a la que no estaba');
+  assert.ok(d.repo.hojas.espera_hist.some(h => h.persona_id === a.id && h.tipo === 'sincro_planilla'));
+  // otra vez lo mismo: nada cambia, y lo sincronizado no cuenta como «tocado en la app»
+  d.t += 3600000;
+  const r2 = sync(nuevas).data;
+  assert.equal(r2.actualizadas, 0); assert.equal(r2.sin_cambios, 3); assert.equal(r2.tocadas_en_app, 0);
+  // y si la recepcionista vuelve a pintar, se vuelve a actualizar
+  assert.deepEqual(sync([{ ...a, estado: 'descartado' }]).data.cambios, { 'contactado→descartado': 1 });
+  // estados que la planilla no tiene no se aceptan
+  assert.equal(sync([{ ...a, estado: 'reconfirmo' }]).error, 'datos_invalidos');
+});
+
+test('re-sincronizar: si la tocaron en la app (historial o estado posterior a la carga), no se pisa', () => {
+  const d = entorno();
+  const cl = { accion: 'cargar_espera', clave: 'clave-prueba' };
+  const a = filaPlanilla(), b = filaPlanilla({ id: 'le-sync000002', celular: '5492944100301' }), c = filaPlanilla({ id: 'le-sync000003', celular: '5492944100302' });
+  L.manejar({ ...cl, filas: [a, b, c] }, d);
+  d.t += 3600000;
+  pedir(d, KEI, { accion: 'espera_resultado', id: a.id, resultado: 'respondio_si', mensaje_clave: 'reconfirmacion' });   // historial de contacto
+  d.repo.hojas.espera.find(p => p.id === b.id).estado_ts = new Date(d.t).toISOString();                             // estado cambiado después de la carga
+  pedir(d, KEI, { accion: 'espera_actualizar', id: c.id, campos: { observaciones: 'Prefiere audio' } });               // una edición
+  const r = L.manejar({ ...cl, modo: 'actualizar_estados', filas: [a, b, c].map(x => ({ ...x, estado: 'descartado' })) }, d).data;
+  assert.equal(r.tocadas_en_app, 3); assert.equal(r.actualizadas, 0); assert.deepEqual(r.cambios, {});
+  assert.equal(d.repo.hojas.espera.find(p => p.id === a.id).estado, 'reconfirmo');
+  // las altas hechas en la app nunca se tocan desde la planilla
+  const app = pedir(d, KEI, { accion: 'espera_alta', nombre: 'Alta Inventada', celular: '2944556010', franjas: ['manana'] }).data.persona;
+  const r2 = L.manejar({ ...cl, modo: 'actualizar_estados', filas: [{ ...a, id: app.id, celular: '5492944556010', estado: 'descartado' }] }, d).data;
+  assert.equal(r2.tocadas_en_app, 1);
+  // y un modo desconocido falla
+  assert.equal(L.manejar({ ...cl, modo: 'otra_cosa', filas: [] }, d).error, 'datos_invalidos');
+});
+
+test('pantalla: el celular y los datos obligatorios se chequean igual que en el servidor', () => {
+  require('../web/espera.js');
+  const W = globalThis.PulsoEspera;
+  ['2944 12-3456', '+54 9 2944 123456', '0294415123456', '15123456', '123456', '', '2,944E+9', '12345', '1112345678'].forEach(c => assert.equal(W.celularValido(c), !!L.leNormalizarCelular(c), c));
+  assert.deepEqual(W.faltanParaGuardar({ nombre: 'Ana', celular: '1', franjas: '' }), ['nombre', 'celular', 'franja']);
+  assert.deepEqual(W.faltanParaGuardar({ nombre: 'Ana Inventada', celular: '2944123456', franjas: 'tarde' }), []);
+  assert.deepEqual(W.faltanParaGuardar({ observaciones: 'x' }), []);   // en la edición se chequea solo lo que se cambia
+  assert.equal(W.ESTADO_CLASE.descartado, 'rojo'); assert.equal(W.ESTADO_CLASE.contactado, 'amarillo'); assert.equal(W.ESTADO_CLASE.evaluacion_agendada, 'verde');
 });

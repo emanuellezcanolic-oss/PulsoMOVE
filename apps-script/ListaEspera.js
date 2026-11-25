@@ -9,9 +9,15 @@
 //  - Nada se envía solo: la app arma el mensaje y recepción lo manda por WhatsApp. Sin presión ni promesas de fecha.
 //  - Baja pedida = no recibe más tareas. Sin respuesta tras 3 intentos y más de 90 días = PAUSA (reversible).
 
+// Las etiquetas son las palabras que usan las recepcionistas en la planilla (Emanuel, 25/11/2026); las claves internas no cambian.
 const LE_ESTADOS = {
-  nuevo: 'Nuevo', esperando: 'Esperando lugar', contactado: 'Contactado: aguardando respuesta', reconfirmo: 'Reconfirmó',
-  evaluacion_agendada: 'Evaluación agendada', pausa: 'En pausa', descartado: 'Descartado', ingreso: 'Ingresó', cerrado_amable: 'Cerrado amable',
+  nuevo: 'Pendiente de mensaje', esperando: 'Esperando lugar', contactado: 'Aguardando respuesta', reconfirmo: 'Reconfirmó',
+  evaluacion_agendada: 'Evaluación agendada', pausa: 'En pausa', descartado: 'Descartado', ingreso: 'Ingresó', cerrado_amable: 'Cerrado: no respondió',
+};
+const LE_ESTADOS_AYUDA = {
+  nuevo: 'Todavía no se le mandó el primer mensaje.',
+  contactado: 'Se le escribió y todavía no contestó.',
+  cerrado_amable: 'Se le mandó el mensaje de cierre después de varios intentos sin respuesta; si vuelve a escribir, se reactiva.',
 };
 const LE_EN_FILA = ['nuevo', 'esperando', 'contactado', 'reconfirmo', 'evaluacion_agendada'];
 const LE_FRANJAS = { manana: 'la mañana', tarde: 'la tarde' };
@@ -42,11 +48,17 @@ const LE_CONFIG_DEFECTO = {
   feriados: [],                // fechas AAAA-MM-DD sin trabajo: no cuentan como días hábiles para repartir
   dias_min_reparto: 5,         // al repartir, mirar al menos estos días hábiles hacia adelante (para no tirar todo junto a fin de mes)
   sedes_extra: [],             // [{clave:'nueva', nombre:'Sede nueva'}]: para una sede que todavía no está en el sistema
+  // `mensaje`: clave de un mensaje propio (si no, el genérico «beneficio»). `solo_si_respondio`: solo para quien respondió los mensajes.
+  // La presoterapia + café la aprobó Emanuel (25/11/2026) como bonificación por esperar con paciencia y por responder los mensajes.
   beneficios: [
-    { clave: 'presoterapia', activo: true, tope_mes: 6, titulo: 'Sesión de botas de presoterapia + café', detalle: 'una sesión de botas de presoterapia y un café, pasando por el gimnasio' },
+    { clave: 'presoterapia', activo: true, tope_mes: 6, titulo: 'Sesión de botas de presoterapia + café (bonificada)', detalle: 'una sesión de botas de presoterapia y un café, pasando por el gimnasio',
+      motivo: 'por esperar con paciencia y por responder los mensajes', mensaje: 'beneficio_presoterapia', solo_si_respondio: true },
     { clave: 'outdoor', activo: true, tope_mes: 10, titulo: 'Descuento en actividades outdoor o eventos', detalle: 'un descuento en nuestras actividades outdoor y eventos (el porcentaje lo define coordinación)' },
     { clave: 'charla', activo: true, tope_mes: 10, titulo: 'Charla o clase abierta', detalle: 'una charla o clase abierta de The Move Club' },
+    { clave: 'nutricionista', activo: true, tope_mes: 10, titulo: 'Descuento con la nutricionista', detalle: 'un descuento en la consulta con nuestra nutricionista (el porcentaje lo define coordinación)' },
+    { clave: 'charla_profe', activo: true, tope_mes: 10, titulo: 'Charla abierta con el profe', detalle: 'una charla abierta con uno de nuestros profes, para que nos conozcas y le hagas todas tus preguntas' },
   ],
+  completar_por_dia: 5,        // personas con datos incompletos que se proponen completar por día (no cuentan en los topes de contactos)
 };
 
 // ---------- Catálogo de mensajes: un solo lugar para editarlos ----------
@@ -70,6 +82,7 @@ const MENSAJES_ESPERA = [
   { clave: 'microtarea', titulo: 'Micro-tarea de 10 minutos', texto: 'Hola {nombre}, un desafío de 10 minutos: salí a caminar a paso rápido y después contame del 1 al 10 cómo te sentiste. Es para conocerte un poco antes de entrenar juntos.' },
   { clave: 'evento', titulo: 'Invitación a charla o clase abierta', texto: 'Hola {nombre}, el {dia_horario} hacemos una charla abierta de 30 minutos sobre cómo empezar a entrenar sin lesionarte. Es gratis y estás invitado/a. ¿Querés que te guarde lugar?' },
   { clave: 'cierre_amable_vuelvo', titulo: 'Cierre amable (escribí «vuelvo»)', texto: 'Hola {nombre}, no pudimos hablar en estas semanas y no quiero molestarte. Te dejo en pausa. Cuando quieras volver, escribime «vuelvo» y retomamos donde quedaste.' },
+  { clave: 'beneficio_presoterapia', titulo: 'Gracias por esperar: presoterapia + café', texto: '¡Hola {nombre}! Gracias por tu paciencia mientras esperás tu lugar en The Move Club y por estar siempre en contacto. Como agradecimiento, te queremos invitar a una sesión de botas de presoterapia con un café, bonificada por nosotros. ¿Qué día te queda cómodo pasar por {sede}?' },
   { clave: 'beneficio', titulo: 'Algo para vos mientras esperás', texto: 'Hola {nombre}, mientras esperás tu lugar en {franja} queremos tener un detalle con vos: {beneficio}. Sin costo y sin compromiso. Si te interesa, escribime y lo coordinamos.' },
   { clave: 'avance', titulo: 'Se movió la fila', texto: '¡Hola {nombre}! Se movió la fila: ahora estás N° {lugar} para el horario de {franja} (antes {lugar_antes}). Es el orden de la lista, no una fecha: tu lugar depende de que se libere uno. Te sigo avisando.' },
   { clave: 'posicion', titulo: 'En qué lugar estás', texto: 'Hola {nombre}, te cuento cómo viene la lista: hoy estás en el lugar {lugar} para el horario de {franja}. Es el orden de la lista, no una fecha: no puedo prometerte cuándo, porque depende de que se libere un lugar. Cualquier cosa, escribime.' + BAJA_PIE },
@@ -145,6 +158,23 @@ function leFranjasDeTexto(t) {
     }
   }
   return ['manana', 'tarde'].filter(f => out[f]);
+}
+
+// ---------- Datos obligatorios (Emanuel, 25/11/2026) ----------
+// Para anotar a alguien hacen falta: nombre y apellido (2 palabras), un celular válido y al menos una franja (mañana / tarde).
+// La carga de la planilla vieja los acepta incompletos (ya estaban cargados): la persona se marca «Faltan datos» y la tarea del día propone completarlos.
+const LE_DATOS_TXT = { nombre: 'nombre y apellido', celular: 'un celular válido', franja: 'la franja horaria (mañana o tarde)' };
+
+function leNombreCompleto(s) {
+  return texto(s).split(/\s+/).filter(x => /[a-zA-ZÀ-ÿ]/.test(x)).length >= 2;
+}
+
+function leFaltanDatos(p) {
+  const out = [];
+  if (!leNombreCompleto(p.nombre)) out.push('nombre');
+  if (!/^549\d{10}$/.test(texto(p.celular))) out.push('celular');
+  if (!leFranjasDe(p).length) out.push('franja');
+  return out;
 }
 
 function leConfig(deps) {
@@ -329,6 +359,7 @@ function leVistaPersona(p, hoy, cfg, usuarios, lugares) {
     lugares: lugares[p.id] || [], lugar: mejor ? mejor.lugar : null, lugar_franja: mejor ? mejor.franja : '',
     pases: lePases(p), ofertas_perdidas: Number(p.ofertas_perdidas) || 0,
     dueno_dni: dueno ? dueno.dni : '', dueno_nombre: dueno ? dueno.nombre : '', contacto_dni: p.contacto_dni,
+    faltan: leFaltanDatos(p),
   };
 }
 
@@ -350,7 +381,7 @@ function esperaVer(req, deps) {
   const ofertas = deps.repo.leer('espera_ofertas').filter(o => leVeSede(usuario, o.sede) && o.estado === 'ofrecida');
   return {
     hoy: hoy, es_coord: leEsCoord(usuario), mi_sede: usuario.sede, sedes: sedesVer.map(c => ({ clave: c, nombre: sedes[c] })),
-    estados: LE_ESTADOS, franjas: LE_FRANJAS, mensajes: leMensajeCatalogo(),
+    estados: LE_ESTADOS, estados_ayuda: LE_ESTADOS_AYUDA, datos_txt: LE_DATOS_TXT, franjas: LE_FRANJAS, mensajes: leMensajeCatalogo(),
     personas: visibles.map(p => leVistaPersona(p, hoy, cfg, usuarios, lugares)),
     ofertas: ofertas.map(o => ({ id: o.id, persona_id: o.persona_id, vence_ts: o.vence_ts, franja: o.franja })),
     equipo: leEsCoord(usuario) ? leEquipoContacto(usuarios) : [],
@@ -434,8 +465,8 @@ function esperaAlta(req, deps) {
   const sede = leEsCoord(usuario) && texto(req.sede) ? texto(req.sede) : usuario.sede;
   if (!sedes[sede]) falla('datos_invalidos');
   if (!leVeSede(usuario, sede)) falla('prohibido');
-  const nombre = texto(req.nombre).slice(0, 80);
-  if (!nombre) falla('datos_invalidos');
+  const nombre = texto(req.nombre).replace(/\s+/g, ' ').slice(0, 80);
+  if (!leNombreCompleto(nombre)) falla('espera_nombre_incompleto');
   const celular = leNormalizarCelular(req.celular);
   if (!celular) falla('celular_invalido');
   const horario = texto(req.horario).slice(0, 120);
@@ -450,6 +481,7 @@ function esperaAlta(req, deps) {
     const lugares = leLugares(todas, sede, hoy, cfg);
     return { duplicado: leVistaPersona(igual, hoy, cfg, usuarios, lugares) };
   }
+  if (!franjas.length) falla('espera_sin_franja');   // después del duplicado: si ya está anotada, eso es lo que importa
   const p = lePersonaVacia();
   const consent = req.consentimiento === true || esVerdad(req.consentimiento);
   Object.assign(p, { id: leNuevoId(deps), sede: sede, sede_interes: sedeInteres.slice(0, 40), fecha_alta: hoy, prioridad: String(prioridad), nombre: nombre, celular: celular,
@@ -495,8 +527,9 @@ function esperaActualizar(req, deps) {
     if (LE_EDITABLES.indexOf(k) < 0) falla('datos_invalidos');
     let nuevo = v;
     if (k === 'celular') { nuevo = leNormalizarCelular(v); if (!nuevo) falla('celular_invalido'); }
+    else if (k === 'nombre') { nuevo = v.replace(/\s+/g, ' ').slice(0, 80); if (!leNombreCompleto(nuevo)) falla('espera_nombre_incompleto'); }
     else if (k === 'prioridad') { if (['1', '2', '3'].indexOf(v) < 0) falla('datos_invalidos'); }
-    else if (k === 'franjas') nuevo = (Array.isArray(c[k]) ? c[k] : v.split(',')).map(x => texto(x)).filter(f => LE_FRANJAS[f]).join(',');
+    else if (k === 'franjas') { nuevo = (Array.isArray(c[k]) ? c[k] : v.split(',')).map(x => texto(x)).filter(f => LE_FRANJAS[f]).join(','); if (!nuevo) falla('espera_sin_franja'); }
     else if (k === 'estado') {
       if (LE_ESTADOS_MANUALES.indexOf(v) < 0) falla('datos_invalidos');
       if (p.baja_pedida && LE_EN_FILA.indexOf(v) >= 0) falla('espera_baja_pedida');
@@ -725,7 +758,7 @@ function leTareasDePersona(p, hoy, cfg, lugar, beneficiosOk) {
   }
   if (beneficiosOk && vig && esVerdad(p.respondio_alguna_vez) && leEnFila(p)) {
     const d = leDiasEnLista(p, hoy);
-    if (d != null && d >= cfg.beneficio_dias_en_lista) return { tipo: 'beneficio', motivo: 'Lleva ' + d + ' días en lista y ya respondió alguna vez', clave: 'beneficio' };
+    if (d != null && d >= cfg.beneficio_dias_en_lista) return { tipo: 'beneficio', motivo: 'Lleva ' + d + ' días en lista y responde los mensajes', clave: 'beneficio' };
   }
   return null;
 }
@@ -749,6 +782,10 @@ function esperaHoy(req, deps) {
   const actividad = {};
   accionesHoy.forEach(h => { actividad[h.persona_id] = true; });
   const tareas = [];
+  const completar = [];   // datos incompletos (de la planilla vieja): se proponen completar, sin contar en los topes de contactos
+  // Cuántas veces respondió cada persona: el beneficio prefiere a quienes responden los mensajes (Emanuel, 25/11/2026)
+  const respuestas = {};
+  hist.forEach(h => { if (h.tipo === 'contacto' && (h.resultado === 'respondio_si' || h.resultado === 'respondio_no')) respuestas[h.persona_id] = (respuestas[h.persona_id] || 0) + 1; });
   // Reabiertas por evidencia que contradice lo marcado
   const reabiertas = {};
   hist.filter(h => h.tipo === 'verificacion' && h.verif === 'reabierta').forEach(h => { reabiertas[h.persona_id] = h.detalle; });
@@ -756,6 +793,10 @@ function esperaHoy(req, deps) {
     const dueno = leDueno(p, usuarios);
     if (!dueno || dueno.dni !== usuario.dni) return;
     if (actividad[p.id]) return;                                   // 1 acción por persona por día
+    const faltan = leFaltanDatos(p);
+    if (faltan.length) completar.push({ persona_id: p.id, nombre: p.nombre, prioridad: lePrio(p), faltan: faltan, antig: fechaIsoValida(p.fecha_alta) ? p.fecha_alta : '9999-99-99',
+      motivo: 'Faltan datos: ' + faltan.map(f => LE_DATOS_TXT[f]).join(', ') + (faltan.indexOf('celular') >= 0 ? '. Sin celular no se le puede escribir.' : '. Aprovechá el próximo mensaje para pedírselos.') });
+    if (faltan.indexOf('celular') >= 0) return;                    // sin celular no hay contacto posible: primero completar
     if (p.ultimo_mensaje_ts) { const d = leDias(fechaArgentina(p.ultimo_mensaje_ts), hoy); if (d != null && d < cfg.dias_entre_mensajes) return; }   // 1 mensaje por semana
     if (deps.repo.leer('espera_ofertas').some(o => o.persona_id === p.id && o.estado === 'ofrecida')) return;
     const mejor = leMejorLugar(lugares[p.id]);
@@ -767,15 +808,19 @@ function esperaHoy(req, deps) {
     if (p.lugar_ref) ctx.vars.lugar_antes = p.lugar_ref;
     let beneficio = null;
     if (t.tipo === 'beneficio') {
-      const b = cfg.beneficios.filter(x => x.activo && leBeneficiosDelMes(benef, miSede, hoy, x.clave) < x.tope_mes
+      const respondio = esVerdad(p.respondio_alguna_vez);
+      const b = cfg.beneficios.filter(x => x.activo && (!x.solo_si_respondio || respondio) && leBeneficiosDelMes(benef, miSede, hoy, x.clave) < x.tope_mes
         && !benef.some(r => r.persona_id === p.id && r.estado !== 'cancelado' && leDias(String(r.ts).slice(0, 10), hoy) < cfg.beneficio_dias_entre))[0];
       if (!b) return;
-      beneficio = { clave: b.clave, titulo: b.titulo };
+      beneficio = { clave: b.clave, titulo: b.titulo, motivo: b.motivo || '' };
       ctx.vars.beneficio = b.detalle;
+      if (b.mensaje && MENSAJES_ESPERA.some(x => x.clave === b.mensaje)) t.clave = b.mensaje;
+      if (b.motivo) t.motivo += ' · bonificado ' + b.motivo;
     }
     const m = leArmarMensaje(t.clave, p, ctx);
     tareas.push(leTarea(deps, t.tipo, p, { motivo: t.motivo, mensaje: m, beneficio: beneficio, sin_consentimiento: !p.consentimiento_fecha, lugar: mejor ? mejor.lugar : null,
-      dias_en_lista: leDiasEnLista(p, hoy), antig: fechaIsoValida(p.fecha_alta) ? p.fecha_alta : '9999-99-99' }));
+      dias_en_lista: leDiasEnLista(p, hoy), antig: fechaIsoValida(p.fecha_alta) ? p.fecha_alta : '9999-99-99', faltan: faltan,
+      pref: t.tipo === 'beneficio' ? -(respuestas[p.id] || 0) : 0 }));
   });
   // Ofertas vencidas que ofreció esta persona: hay que pasar al siguiente
   const vencidas = ofertas.filter(o => o.estado === 'vencida' && o.dni === usuario.dni && o.sede === miSede).map(o => {
@@ -785,20 +830,23 @@ function esperaHoy(req, deps) {
     return leTarea(deps, 'oferta_vencida', p, { motivo: 'No respondió el lugar que se le ofreció: pasa al siguiente', oferta_id: o.id, franja: o.franja, mensaje: m,
       candidatos: leCandidatos(todas, miSede, o.franja, hoy, cfg, lugares, ofertas, [p.id]), dias_en_lista: leDiasEnLista(p, hoy), antig: '' });
   }).filter(Boolean);
-  tareas.sort((a, b) => a.rango - b.rango || a.prioridad - b.prioridad || (a.antig < b.antig ? -1 : a.antig > b.antig ? 1 : 0));
+  tareas.sort((a, b) => a.rango - b.rango || a.pref - b.pref || a.prioridad - b.prioridad || (a.antig < b.antig ? -1 : a.antig > b.antig ? 1 : 0));
   const q = leCuotaDelDia(tareas.length, hechasYo, hechasSede, hoy, cfg);
   // Las ofertas vencidas son urgentes (hay un lugar libre): van primero y no se reparten, solo respetan los topes duros
   const duras = Math.max(0, Math.min(cfg.tope_turno - hechasYo, cfg.tope_sede - hechasSede));
   const vistas = vencidas.slice(0, duras);
   const restantes = Math.max(0, Math.min(q.cuota, duras - vistas.length));
-  const visibles = vistas.concat(tareas.slice(0, restantes)).map(t => { delete t.antig; delete t.rango; return t; });
+  const visibles = vistas.concat(tareas.slice(0, restantes)).map(t => { delete t.antig; delete t.rango; delete t.pref; return t; });
+  // Completar datos: aparte, con su propio tope por día, para no tapar los contactos
+  completar.sort((a, b) => a.prioridad - b.prioridad || (a.antig < b.antig ? -1 : a.antig > b.antig ? 1 : 0));
+  const completarVer = completar.slice(0, Math.max(0, Number(cfg.completar_por_dia) || 0)).map(x => { delete x.antig; return x; });
   const hechasHoy = hist.filter(h => h.tipo === 'contacto' && fechaArgentina(h.ts) === hoy && h.dni === usuario.dni).map(h => {
     const p = todas.find(x => x.id === h.persona_id);
     return { persona_id: h.persona_id, nombre: p ? p.nombre : '', resultado: h.resultado, verif: h.verif || 'pendiente' };
   });
   // Lo de días anteriores que sigue sin comprobar se ve como «hecha, sin comprobar»: sin castigo
   const sinComprobar = hist.filter(h => h.tipo === 'contacto' && h.verif === 'sin_comprobar' && h.dni === usuario.dni).length;
-  return { hoy: hoy, tareas: visibles, pendientes_total: vencidas.length + tareas.length, hechas_yo: hechasYo, hechas_sede: hechasSede, hechas_hoy: hechasHoy, sin_comprobar: sinComprobar,
+  return { hoy: hoy, tareas: visibles, completar: completarVer, completar_total: completar.length, pendientes_total: vencidas.length + tareas.length, hechas_yo: hechasYo, hechas_sede: hechasSede, hechas_hoy: hechasHoy, sin_comprobar: sinComprobar,
     topes: { turno: cfg.tope_turno, sede: cfg.tope_sede }, restantes: vistas.length + restantes, ahora: ahora,
     reparto: { habil: q.habil, dias_habiles: q.dias_habiles, tope_dia: q.tope_dia, pendientes: tareas.length } };
 }
@@ -986,7 +1034,8 @@ function esperaConfigGuardar(req, deps) {
     const def = LE_CONFIG_DEFECTO[k], v = nuevo[k];
     if (typeof def === 'number' && !(typeof v === 'number' && isFinite(v) && v >= 0 && v <= 1000)) falla('datos_invalidos');
     if (Array.isArray(def) && !Array.isArray(v)) falla('datos_invalidos');
-    if (k === 'beneficios' && !v.every(b => b && /^[a-z0-9_]{2,20}$/.test(b.clave) && texto(b.titulo) && texto(b.detalle) && isFinite(Number(b.tope_mes)))) falla('datos_invalidos');
+    if (k === 'beneficios' && !v.every(b => b && /^[a-z0-9_]{2,20}$/.test(b.clave) && texto(b.titulo) && texto(b.detalle) && isFinite(Number(b.tope_mes))
+      && (!b.mensaje || MENSAJES_ESPERA.some(m => m.clave === b.mensaje)))) falla('datos_invalidos');
     const i = filas.findIndex(f => f.clave === k);
     const fila = { clave: k, valor: JSON.stringify(v) };
     if (i >= 0) filas[i] = fila; else filas.push(fila);
@@ -1003,6 +1052,8 @@ const LE_COLS_CARGA = ['id', 'sede', 'sede_interes', 'fecha_alta', 'prioridad', 
 function cargarEspera(req, deps) {
   exigirClave(req, deps);
   if (!Array.isArray(req.filas) || req.filas.length > 2000) falla('datos_invalidos');
+  if (req.modo === 'actualizar_estados') return cargarEsperaEstados(req, deps);
+  if (req.modo != null && req.modo !== '' && req.modo !== 'altas') falla('datos_invalidos');
   const cfg = leConfig(deps), sedes = leSedes(cfg), hoy = texto(req.hoy) || deps.hoy();
   const todas = leCargar(deps);
   const porId = {};
@@ -1010,11 +1061,7 @@ function cargarEspera(req, deps) {
   let nuevos = 0, yaEstaban = 0;
   const ahora = leIso(deps);
   req.filas.forEach(x => {
-    const f = {};
-    LE_COLS_CARGA.forEach(c => { f[c] = texto(x && x[c]); });
-    const celular = f.celular;
-    if (!/^[0-9a-z_-]{3,40}$/.test(f.id) || !sedes[f.sede] || !f.nombre || f.nombre.length > 80 || LE_ESTADOS[f.estado] == null
-      || ['1', '2', '3'].indexOf(f.prioridad) < 0 || (celular && !/^549\d{10}$/.test(celular)) || (f.fecha_alta && !fechaIsoValida(f.fecha_alta))) falla('datos_invalidos');
+    const f = leFilaDeCarga(x, sedes);
     if (porId[f.id]) { yaEstaban++; return; }
     porId[f.id] = true;
     const p = Object.assign(lePersonaVacia(), f, { cargada: hoy, creado_por: 'pc', estado_ts: ahora, origen: f.origen || 'planilla', franjas: f.franjas.split(',').filter(g => LE_FRANJAS[g]).join(',') });
@@ -1026,4 +1073,73 @@ function cargarEspera(req, deps) {
   });
   leGuardar(deps, todas);
   return { nuevos: nuevos, ya_estaban: yaEstaban, total: todas.length };
+}
+
+function leFilaDeCarga(x, sedes) {
+  const f = {};
+  LE_COLS_CARGA.forEach(c => { f[c] = texto(x && x[c]); });
+  const celular = f.celular;
+  if (!/^[0-9a-z_-]{3,40}$/.test(f.id) || !sedes[f.sede] || !f.nombre || f.nombre.length > 80 || LE_ESTADOS[f.estado] == null
+    || ['1', '2', '3'].indexOf(f.prioridad) < 0 || (celular && !/^549\d{10}$/.test(celular)) || (f.fecha_alta && !fechaIsoValida(f.fecha_alta))) falla('datos_invalidos');
+  return f;
+}
+
+// ---------- Re-sincronizar estados desde la planilla (Emanuel, 25/11/2026) ----------
+// Las recepcionistas volvieron a pintar la planilla vieja. Para quien ya está cargado (mismo id) se actualiza el estado según el color
+// (y derivación / evaluación / observaciones si vienen), SOLO si en la app nadie tocó a esa persona desde que se importó:
+// sin historial distinto de la carga y sin un cambio de estado posterior. Si la tocaron, no se pisa y se cuenta como «tocada en la app».
+// Idempotente: correrlo dos veces con la misma planilla no cambia nada la segunda vez. `simular: true` cuenta sin escribir.
+// La respuesta trae solo conteos: nunca nombres ni celulares.
+const LE_ESTADOS_PLANILLA = ['nuevo', 'contactado', 'evaluacion_agendada', 'descartado'];
+const LE_HIST_DE_CARGA = ['alta', 'sincro_planilla'];
+
+function leTocadaEnApp(p, histDe) {
+  if (p.creado_por !== 'pc') return true;
+  const hs = histDe[p.id] || [];
+  if (hs.some(h => LE_HIST_DE_CARGA.indexOf(h.tipo) < 0)) return true;
+  const ref = hs.map(h => String(h.ts)).sort().pop() || '';
+  return !!(p.estado_ts && ref && String(p.estado_ts) > ref);
+}
+
+function cargarEsperaEstados(req, deps) {
+  const cfg = leConfig(deps), sedes = leSedes(cfg);
+  const simular = req.simular === true;
+  const todas = leCargar(deps);
+  const porId = {};
+  todas.forEach(p => { porId[p.id] = p; });
+  const histDe = {};
+  deps.repo.leer('espera_hist').forEach(h => { (histDe[h.persona_id] = histDe[h.persona_id] || []).push(h); });
+  const ahora = leIso(deps);
+  const r = { modo: 'actualizar_estados', simulado: simular, actualizadas: 0, sin_cambios: 0, tocadas_en_app: 0, no_estan: 0, cambios: {}, campos: {} };
+  const nuevasHist = [];
+  const vistas = {};
+  req.filas.forEach(x => {
+    const f = leFilaDeCarga(x, sedes);
+    if (LE_ESTADOS_PLANILLA.indexOf(f.estado) < 0) falla('datos_invalidos');
+    if (vistas[f.id]) return;
+    vistas[f.id] = true;
+    const p = porId[f.id];
+    if (!p) { r.no_estan++; return; }
+    if (leTocadaEnApp(p, histDe)) { r.tocadas_en_app++; return; }
+    const partes = [];
+    if (p.estado !== f.estado) {
+      const k = p.estado + '→' + f.estado;
+      r.cambios[k] = (r.cambios[k] || 0) + 1;
+      partes.push('estado: ' + (LE_ESTADOS[p.estado] || p.estado) + ' → ' + LE_ESTADOS[f.estado]);
+      if (!simular) { p.estado = f.estado; p.estado_ts = ahora; }
+    }
+    ['derivacion', 'evaluacion', 'observaciones'].forEach(c => {
+      const v = f[c].slice(0, c === 'observaciones' ? 300 : 120);
+      if (v && v !== p[c]) { r.campos[c] = (r.campos[c] || 0) + 1; partes.push(c); if (!simular) p[c] = v; }
+    });
+    if (!partes.length) { r.sin_cambios++; return; }
+    r.actualizadas++;
+    nuevasHist.push({ id: 'lh-' + deps.aleatorio(5), persona_id: p.id, ts: ahora, dni: '', nombre: '', tipo: 'sincro_planilla', mensaje_clave: '', resultado: '',
+      detalle: ('Actualizado desde la planilla: ' + partes.join(' · ')).slice(0, 300), verif: '', verif_ts: '' });
+  });
+  if (!simular && nuevasHist.length) {
+    leGuardar(deps, todas);
+    nuevasHist.forEach(h => deps.repo.agregar('espera_hist', h));
+  }
+  return r;
 }

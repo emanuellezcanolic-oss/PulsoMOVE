@@ -3,12 +3,42 @@
 (function (raiz) {
   const SEDES = { bariloche: 'Bariloche', bolson: 'El Bolsón', puelo: 'Lago Puelo' };
   const FRANJA = { manana: 'Mañana', tarde: 'Tarde' };
-  const ESTADO_CLASE = { nuevo: 'gris', esperando: 'verde', contactado: 'amarillo', reconfirmo: 'verde', evaluacion_agendada: 'verde', pausa: 'gris', descartado: 'rojo', ingreso: 'verde', cerrado_amable: 'gris' };
+  // Colores suaves de la planilla de las recepcionistas: rojo = descartado, amarillo = aguardando respuesta, verde = evaluación agendada (25/11/2026)
+  const ESTADO_CLASE = { nuevo: 'gris', esperando: 'celeste', contactado: 'amarillo', reconfirmo: 'celeste', evaluacion_agendada: 'verde', pausa: 'gris', descartado: 'rojo', ingreso: 'violeta', cerrado_amable: 'gris' };
+  const DATOS_TXT = { nombre: 'nombre y apellido', celular: 'un celular válido', franja: 'la franja horaria (mañana o tarde)' };
   const TIPO_TAREA = { revisar: ['↩️', 'Revisar: lo marcado no coincide'], oferta_vencida: ['⏰', 'Pasó la ventana: ofrecerle el lugar al siguiente'], primer_contacto: ['👋', 'Primer contacto'], reconfirmacion: ['🔁', '¿Sigue en la lista?'],
     seguimiento: ['💬', 'Seguimiento'], cierre: ['🤝', 'Cierre amable'], avance: ['📈', 'Subió en la fila'], beneficio: ['🎁', 'Un detalle mientras espera'] };
   const RESULTADOS = [['respondio_si', '✅ Respondió que sí', 'verde'], ['respondio_no', '👋 Respondió que no', 'claro'], ['sin_respuesta', '⏳ Sin respuesta', 'claro'], ['pidio_baja', '🚫 Pidió la baja de la lista', 'claro']];
   const dmy = iso => (iso ? String(iso).slice(8, 10) + '/' + String(iso).slice(5, 7) : '');
   const plural = (n, uno, varios) => n + ' ' + (n === 1 ? uno : varios);
+  const enLista = xs => (xs.length > 1 ? xs.slice(0, -1).join(', ') + ' y ' + xs[xs.length - 1] : xs[0] || '');
+
+  // Mismo criterio que leNormalizarCelular (apps-script/ListaEspera.js): solo para avisar en la pantalla antes de mandar; el que decide es el servidor
+  function celularValido(s) {
+    const t = String(s == null ? '' : s).trim();
+    if (!t || /\d[eE][+-]?\d/.test(t)) return false;
+    let d = t.replace(/\D/g, '').replace(/^00/, '');
+    if (d.indexOf('54') === 0 && d.length >= 12) d = d.slice(2);
+    if (d.charAt(0) === '9' && d.length === 11) d = d.slice(1);
+    if (d.charAt(0) === '0') d = d.slice(1);
+    if (d.length === 12) {
+      if (d.slice(4, 6) === '15') d = d.slice(0, 4) + d.slice(6);
+      else if (d.slice(3, 5) === '15') d = d.slice(0, 3) + d.slice(5);
+    }
+    if (d.length === 8 && d.slice(0, 2) === '15') d = '2944' + d.slice(2);
+    if (d.length === 6) d = '2944' + d;
+    return d.length === 10 && /^[23]/.test(d);
+  }
+  const nombreCompleto = s => String(s || '').trim().split(/\s+/).filter(x => /[a-zA-ZÀ-ÿ]/.test(x)).length >= 2;
+  // Qué falta para poder guardar (alta y edición). `campos`: solo lo que se va a mandar.
+  function faltanParaGuardar(campos) {
+    const f = [];
+    if ('nombre' in campos && !nombreCompleto(campos.nombre)) f.push('nombre');
+    if ('celular' in campos && !celularValido(campos.celular)) f.push('celular');
+    if ('franjas' in campos && !String(campos.franjas || '').split(',').some(x => FRANJA[x.trim()])) f.push('franja');
+    return f;
+  }
+  const textoFaltan = f => 'Para guardar falta ' + enLista(f.map(k => DATOS_TXT[k])) + '.';
 
   function crear(c) {
     const { cliente, E, esc, aviso, falla, render, dialogo, tiene } = c;
@@ -39,7 +69,9 @@
     }
 
     // ---------- Piezas ----------
-    const chipEstado = (e) => `<span class="esp-estado esp-${ESTADO_CLASE[e] || 'gris'}">${esc((E.esp && E.esp.estados[e]) || e)}</span>`;
+    const ayudaEstado = e => (E.esp && E.esp.estados_ayuda && E.esp.estados_ayuda[e]) || '';
+    const chipEstado = (e) => `<span class="esp-estado esp-${ESTADO_CLASE[e] || 'gris'}"${ayudaEstado(e) ? ` title="${esc(ayudaEstado(e))}"` : ''}>${esc((E.esp && E.esp.estados[e]) || e)}</span>`;
+    const chipFaltan = (f) => (f && f.length ? `<span class="esp-faltan-chip" title="Falta ${esc(enLista(f.map(k => DATOS_TXT[k] || k)))}">Faltan datos</span>` : '');
     const chipPrio = (p) => `<span class="esp-prio esp-p${p}" title="${p === 1 ? 'Viene de otro servicio activo (Kine, RF o RH)' : p === 2 ? 'Ex entrenado' : 'Nuevo'}">P${p}</span>`;
     function lugarTexto(p) {
       if (!p.lugares.length) return p.vigente ? '' : '<span class="esp-aviso-chip" title="Hace más de 90 días que no confirma: no cuenta para el lugar hasta que responda">sin reconfirmar</span>';
@@ -68,12 +100,24 @@
       return `<article class="tarjeta esp-tarea" style="--i:${i}"><div class="cabeza" style="display:grid;gap:3px;padding:12px 14px">
         <span class="socio">${chipPrio(t.prioridad)} ${esc(t.nombre)}</span><span class="situacion"><b>${ico} ${esc(nombre)}</b> · ${esc(t.motivo)}${t.lugar ? ` · hoy en el lugar ${t.lugar}` : ''}</span>
         ${t.dias_en_lista != null ? `<span class="profe">${plural(t.dias_en_lista, 'día', 'días')} en lista</span>` : ''}</div>
-        <div class="esp-cuerpo">${consent}${t.beneficio ? `<p class="aclara">Beneficio sugerido: <b>${esc(t.beneficio.titulo)}</b>. Al marcar el resultado queda registrado como ofrecido.</p>` : ''}
+        <div class="esp-cuerpo">${consent}${t.beneficio ? `<p class="aclara">Beneficio sugerido: <b>${esc(t.beneficio.titulo)}</b>${t.beneficio.motivo ? `, bonificado ${esc(t.beneficio.motivo)}: es una muestra de agradecimiento` : ''}. Al marcar el resultado queda registrado como ofrecido.</p>` : ''}
+        ${t.faltan && t.faltan.length ? `<p class="aclara esp-faltan">Faltan datos: ${esc(enLista(t.faltan.map(k => DATOS_TXT[k] || k)))}. Aprovechá el mensaje para pedírselos y después completalos en su ficha.</p>` : ''}
         ${cajaMensaje(t.mensaje, t.celular || '', id)}${sigs}${botones}</div></article>`;
     }
 
     const VERIF = { pendiente: ['✔', 'hecha · mañana se comprueba'], comprobada: ['✔✔', 'hecha y comprobada'], sin_comprobar: ['✔', 'hecha, sin comprobar'], reabierta: ['↩️', 'reabierta'], atendida: ['✔', 'hecha'] };
     const RES_TXT = { respondio_si: 'respondió que sí', respondio_no: 'respondió que no', sin_respuesta: 'sin respuesta', pidio_baja: 'pidió la baja' };
+
+    // Personas de la planilla vieja con datos incompletos: se proponen completar (no cuentan en los topes de contactos)
+    function bloqueCompletar(H) {
+      const L = H.completar || [];
+      if (!L.length) return '';
+      const resto = (H.completar_total || L.length) - L.length;
+      return `<div class="esp-completar"><b>✍️ Completar datos <span class="cuenta">${L.length}</span></b>
+        <p class="aclara">Vienen de la planilla vieja con algún dato incompleto. Para que la lista funcione hace falta nombre y apellido, un celular válido y la franja (mañana o tarde). No cuenta en tus contactos del día.${resto > 0 ? ` Quedan ${resto} para los próximos días.` : ''}</p>
+        ${L.map(x => `<div class="esp-cand"><div><b>${chipPrio(x.prioridad)} ${esc(x.nombre)}</b><span class="aclara">${esc(x.motivo)}</span></div>
+          <div class="botones"><button class="boton claro" data-accion="esp-completar" data-id="${esc(x.persona_id)}">Completar datos</button></div></div>`).join('')}</div>`;
+    }
 
     function bandaHoy() {
       const H = E.espHoy;
@@ -85,11 +129,12 @@
         : `Se reparten parejo en el mes: hoy te tocan hasta ${R.tope_dia} (${plural(R.pendientes, 'pendiente', 'pendientes')} entre ${plural(R.dias_habiles, 'día hábil', 'días hábiles')}). Lo que no llegues a hacer pasa a mañana, sin penalización.`;
       const hechas = (H.hechas_hoy || []).length ? `<div class="esp-hechas"><b>Hechas hoy</b><ul>${H.hechas_hoy.map(x => { const v = VERIF[x.verif] || VERIF.pendiente; return `<li><span class="esp-check" title="${esc(v[1])}">${v[0]}</span> ${esc(x.nombre)} · ${esc(RES_TXT[x.resultado] || x.resultado)} <small>${esc(v[1])}</small></li>`; }).join('')}</ul>
         <p class="aclara">Se ven como hechas al instante. Mañana la app comprueba lo que pueda (por ejemplo, si hay una respuesta registrada); lo que no se pueda comprobar queda como «hecha, sin comprobar» y no te baja nada.${H.sin_comprobar ? ` Días anteriores sin comprobar: ${H.sin_comprobar}.` : ''}</p></div>` : '';
-      if (!H.tareas.length && !pend) return `<section class="grupo esp-banda"><h2>⏳ Lista de espera de hoy <span class="cuenta">al día</span></h2><p class="intro-grupo">${resumen}. No hay nada pendiente con la lista de espera. Si alguien se anota en el mostrador, usá «Agregar a la lista».</p>${hechas}</section>`;
+      if (!H.tareas.length && !pend) return `<section class="grupo esp-banda"><h2>⏳ Lista de espera de hoy <span class="cuenta">al día</span></h2><p class="intro-grupo">${resumen}. No hay nada pendiente con la lista de espera. Si alguien se anota en el mostrador, usá «Agregar a la lista».</p>${bloqueCompletar(H)}${hechas}</section>`;
       const sobran = pend - H.tareas.length;
       return `<section class="grupo esp-banda"><h2>⏳ Lista de espera de hoy <span class="cuenta">${H.tareas.length}</span></h2>
         <p class="intro-grupo">Va después del checklist de apertura. ${resumen}. Una acción por persona y un mensaje por semana: nada se manda solo, vos lo copiás y lo mandás. ${reparto}${sobran > 0 && R.habil !== false ? ` Quedan ${sobran} para los próximos días.` : ''}</p>
         ${H.tareas.length ? H.tareas.map(tarjetaTarea).join('') : '<p class="aclara">Por hoy no hay más para hacer.</p>'}
+        ${bloqueCompletar(H)}
         ${hechas}
         <div class="fila-accion"><button class="boton claro" data-accion="esp-alta">➕ Agregar a la lista</button><button class="boton claro" data-accion="esp-vista">Ver toda la lista</button></div></section>`;
     }
@@ -143,9 +188,12 @@
       const d = dialogo(`<h3>➕ Agregar a la lista</h3>
         <form class="marca-form" style="border:0;padding:0">
           ${coord() ? `<label class="campo">Sede de la lista<select name="sede">${sedes.map(s => `<option value="${esc(s.clave)}"${s.clave === E.espSede ? ' selected' : ''}>${esc(s.nombre)}</option>`).join('')}</select></label>` : ''}
-          <label class="campo">Nombre y apellido<input name="nombre" maxlength="80" required></label>
+          <p class="aclara" style="margin:0">Obligatorio: nombre y apellido, celular y al menos una franja. Lo demás, si lo tenés.</p>
+          <label class="campo">Nombre y apellido<input name="nombre" maxlength="80" required autocomplete="off"></label>
           <label class="campo">Celular (con código de área)<input name="celular" inputmode="tel" placeholder="2944 123456" required></label>
-          <label class="campo">Horario de interés<input name="horario" maxlength="120" placeholder="Ej.: 8 a 10, o a la tarde"></label>
+          <fieldset class="campo esp-franjas"><legend>Franja de interés</legend><label class="visto"><input type="checkbox" name="franja" value="manana"> Mañana</label><label class="visto"><input type="checkbox" name="franja" value="tarde"> Tarde</label></fieldset>
+          <label class="campo">Horario de interés <span class="opcional">(opcional)</span><input name="horario" maxlength="120" placeholder="Ej.: 8 a 10, o a la tarde"></label>
+          <p class="aclara esp-faltan" data-faltan hidden></p>
           <label class="campo">Prioridad<select name="prioridad"><option value="3">3 · Nuevo</option><option value="2">2 · Ex entrenado</option><option value="1">1 · Viene de otro servicio (Kine, RF, RH)</option></select></label>
           <label class="campo">Quién lo trajo <span class="opcional">(opcional)</span><input name="referido_por" maxlength="80" placeholder="Nombre de quien lo recomendó"></label>
           <label class="campo">Sede donde quiere entrenar<input name="sede_interes" maxlength="40" placeholder="Si es otra sede o una nueva"></label>
@@ -155,12 +203,23 @@
         </form>`);
       d.querySelector('[data-cerrar]').onclick = () => d.close();
       const form = d.querySelector('form');
+      // Al escribir el horario se marcan solas las franjas que se entienden (se pueden cambiar)
+      form.horario.oninput = () => {
+        const s = form.horario.value.toLowerCase();
+        if (/ma[nñ]ana|\b([5-9]|1[0-2])\s*(a|-|hs|h|am)\b/.test(s)) form.querySelector('[name=franja][value=manana]').checked = true;
+        if (/tarde|noche|\b(1[3-9]|2[0-2])\b|pm/.test(s)) form.querySelector('[name=franja][value=tarde]').checked = true;
+      };
       form.onsubmit = async ev => {
         ev.preventDefault();
-        const btn = form.querySelector('button.verde'); btn.disabled = true;
         const f = new FormData(form);
+        const franjas = f.getAll('franja');
+        const faltan = faltanParaGuardar({ nombre: f.get('nombre'), celular: f.get('celular'), franjas: franjas.join(',') });
+        const caja = form.querySelector('[data-faltan]');
+        if (faltan.length) { caja.textContent = textoFaltan(faltan); caja.hidden = false; aviso(textoFaltan(faltan), true); return; }
+        caja.hidden = true;
+        const btn = form.querySelector('button.verde'); btn.disabled = true;
         try {
-          const r = await cliente.llamar('espera_alta', { sede: f.get('sede') || '', nombre: f.get('nombre'), celular: f.get('celular'), horario: f.get('horario'), prioridad: Number(f.get('prioridad')),
+          const r = await cliente.llamar('espera_alta', { sede: f.get('sede') || '', nombre: f.get('nombre'), celular: f.get('celular'), franjas: franjas, horario: f.get('horario'), prioridad: Number(f.get('prioridad')),
             referido_por: f.get('referido_por'), sede_interes: f.get('sede_interes') || '', observaciones: f.get('observaciones'), consentimiento: !!f.get('consentimiento') });
           d.close();
           if (r.duplicado) { aviso('Ese celular ya está en la lista: ' + r.duplicado.nombre + '.', true); return; }
@@ -179,14 +238,16 @@
       const estados = Object.keys(E.esp.estados);
       const pases = p.pases.length ? `<p class="aclara">Pases de prioridad: ${p.pases.map(x => '+' + x.lugares + (x.tipo === 'referido' ? ' (referidos)' : ' (coordinación: ' + esc(x.motivo || '') + ')')).join(' · ')}</p>` : '';
       const d = dialogo(`<h3>${chipPrio(p.prioridad)} ${esc(p.nombre)}</h3>
-        <div class="esp-ficha-cab">${chipEstado(p.estado)} ${lugarTexto(p)} <small>${p.dias_en_lista != null ? plural(p.dias_en_lista, 'día', 'días') + ' en lista' : 'sin fecha de alta'} · ${esc(nombreSede(p.sede))} · contacta ${esc(p.dueno_nombre || '—')}</small></div>
+        <div class="esp-ficha-cab">${chipEstado(p.estado)} ${chipFaltan(p.faltan)} ${lugarTexto(p)} <small>${p.dias_en_lista != null ? plural(p.dias_en_lista, 'día', 'días') + ' en lista' : 'sin fecha de alta'} · ${esc(nombreSede(p.sede))} · contacta ${esc(p.dueno_nombre || '—')}</small></div>
+        ${p.estado === 'cerrado_amable' && ayudaEstado(p.estado) ? `<p class="aclara">${esc(ayudaEstado(p.estado))}</p>` : ''}
+        ${p.faltan && p.faltan.length ? `<p class="esp-alerta">✍️ Faltan datos: ${esc(enLista(p.faltan.map(k => DATOS_TXT[k] || k)))}. Completalos acá abajo y guardá.</p>` : ''}
         ${p.baja_pedida ? `<p class="esp-alerta">Pidió la baja de la lista el ${esc(dmy(p.baja_pedida))}: no recibe más mensajes.</p>` : ''}
         <p class="aclara">${p.consentimiento_fecha ? 'Aceptó que le escribamos por WhatsApp (' + esc(dmy(p.consentimiento_fecha)) + ', ' + esc(p.consentimiento_canal) + ').' : 'Todavía no hay registro de que haya aceptado que le escribamos por WhatsApp.'} ${p.referido_por ? 'Lo trajo: ' + esc(p.referido_por) + '.' : ''}</p>
         ${pases}
         <div class="botones"><select data-clave aria-label="Mensaje a armar"><option value="">Armar un mensaje…</option>${E.esp.mensajes.map(m => `<option value="${esc(m.clave)}">${esc(m.titulo)}</option>`).join('')}</select>
           ${p.baja_pedida ? '' : `<button type="button" class="boton claro" data-r="1">Registrar un contacto</button>`}</div>
         <form class="marca-form esp-editar" style="border:0;padding:0">
-          <label class="campo">Nombre<input name="nombre" value="${esc(p.nombre)}" maxlength="80"></label>
+          <label class="campo">Nombre y apellido<input name="nombre" value="${esc(p.nombre)}" maxlength="80"></label>
           <label class="campo">Celular<input name="celular" value="${esc(p.celular)}" inputmode="tel"></label>
           <label class="campo">Horario de interés<input name="horario_texto" value="${esc(p.horario_texto)}" maxlength="120"></label>
           <label class="campo">Franjas <span class="opcional">(para el lugar)</span><select name="franjas"><option value=""${p.franjas.length ? '' : ' selected'}>Sin dato</option><option value="manana"${p.franjas.join() === 'manana' ? ' selected' : ''}>Mañana</option><option value="tarde"${p.franjas.join() === 'tarde' ? ' selected' : ''}>Tarde</option><option value="manana,tarde"${p.franjas.length === 2 ? ' selected' : ''}>Mañana o tarde</option></select></label>
@@ -194,6 +255,7 @@
           <label class="campo">Estado<select name="estado">${estados.map(e => `<option value="${e}"${p.estado === e ? ' selected' : ''}>${esc(E.esp.estados[e])}</option>`).join('')}</select></label>
           ${coord() ? `<label class="campo">Quién lo contacta<select name="contacto_dni"><option value="">Según el horario</option>${E.esp.equipo.filter(u => u.sede === p.sede).map(u => `<option value="${esc(u.dni)}"${p.contacto_dni === u.dni ? ' selected' : ''}>${esc(u.nombre)}</option>`).join('')}</select></label>` : ''}
           <label class="campo">Observaciones<textarea name="observaciones" maxlength="300">${esc(p.observaciones)}</textarea></label>
+          <p class="aclara esp-faltan" data-faltan hidden></p>
           <div class="botones"><button class="boton verde">Guardar</button><button type="button" class="boton claro" data-cerrar>Cerrar</button></div>
         </form>
         ${coord() ? `<details class="espera"><summary>⬆️ Pase de prioridad (coordinación)</summary><form class="marca-form esp-pase" style="border:0;padding:0"><p class="aclara">Lo adelanta hasta N lugares dentro de su prioridad. Queda registrado con el motivo; no hay sorteos. Por referidos (2 personas que se anotan) se da solo: +${E.esp.config.pase_lugares}.</p>
@@ -216,6 +278,9 @@
         const mapa = { nombre: p.nombre, celular: p.celular, horario_texto: p.horario_texto, franjas: p.franjas.join(), prioridad: String(p.prioridad), estado: p.estado, contacto_dni: p.contacto_dni, observaciones: p.observaciones };
         Object.keys(mapa).forEach(k => { if (f.has(k) && String(f.get(k)) !== String(mapa[k])) campos[k] = String(f.get(k)); });
         if (!Object.keys(campos).length) { d.close(); return; }
+        const faltan = faltanParaGuardar(campos);
+        const caja = ev.target.querySelector('[data-faltan]');
+        if (faltan.length) { caja.textContent = textoFaltan(faltan); caja.hidden = false; aviso(textoFaltan(faltan), true); return; }
         try { await cliente.llamar('espera_actualizar', { id: id, campos: campos }); d.close(); await recargar(); aviso('✅ Guardado.'); } catch (e) { falla(e); }
       };
       const fp = d.querySelector('form.esp-pase');
@@ -249,7 +314,7 @@
     function filtrar(personas) {
       const q = E.espBusca.trim().toLowerCase();
       return personas.filter(p => p.sede === E.espSede
-        && (E.espEstado === 'todas' || (E.espEstado === 'fila' ? ['nuevo', 'esperando', 'contactado', 'reconfirmo', 'evaluacion_agendada'].indexOf(p.estado) >= 0 && !p.baja_pedida : p.estado === E.espEstado))
+        && (E.espEstado === 'todas' || (E.espEstado === 'faltan' ? p.faltan && p.faltan.length > 0 : E.espEstado === 'fila' ? ['nuevo', 'esperando', 'contactado', 'reconfirmo', 'evaluacion_agendada'].indexOf(p.estado) >= 0 && !p.baja_pedida : p.estado === E.espEstado))
         && (!E.espFranja || p.franjas.indexOf(E.espFranja) >= 0)
         && (!q || (p.nombre + ' ' + p.celular).toLowerCase().indexOf(q) >= 0));
     }
@@ -258,7 +323,7 @@
     function filaPersona(p) {
       return `<article class="esp-fila${p.baja_pedida ? ' esp-baja' : ''}"><div class="esp-datos"><b>${chipPrio(p.prioridad)} ${esc(p.nombre)}</b>
         <span class="aclara">${esc(p.horario_texto || 'sin horario')} · ${p.dias_en_lista != null ? plural(p.dias_en_lista, 'día', 'días') : 'sin fecha'} · contacta ${esc((p.dueno_nombre || '—').split(' ')[0])}${p.intentos ? ' · ' + plural(p.intentos, 'intento', 'intentos') + ' sin respuesta' : ''}</span>
-        <span>${chipEstado(p.estado)} ${lugarTexto(p)}</span></div>
+        <span>${chipEstado(p.estado)} ${chipFaltan(p.faltan)} ${lugarTexto(p)}</span></div>
         <div class="botones"><button class="boton claro" data-accion="esp-ficha" data-id="${esc(p.id)}">Abrir</button>
         ${p.celular && !p.baja_pedida ? `<a class="boton claro" href="https://wa.me/${esc(p.celular)}" target="_blank" rel="noopener" aria-label="WhatsApp de ${esc(p.nombre)}">💬</a>` : ''}</div></article>`;
     }
@@ -285,7 +350,7 @@
       const ofertas = D.ofertas.map(o => { const p = D.personas.find(x => x.id === o.persona_id); return p && p.sede === E.espSede ? `<li>${esc(p.nombre)}: lugar ofrecido en ${esc(FRANJA[o.franja] || o.franja)}, vence ${esc(dmy(String(o.vence_ts).slice(0, 10)))} ${esc(String(o.vence_ts).slice(11, 16))} UTC</li>` : ''; }).join('');
       return cabeza + `<div class="esp-acciones"><button class="boton verde" data-accion="esp-alta">➕ Agregar a la lista</button><button class="boton claro" data-accion="esp-baja">🧲 Se liberó un lugar</button></div>
         ${ofertas ? `<div class="esp-ofertas"><b>Lugares ofrecidos esperando respuesta</b><ul>${ofertas}</ul></div>` : ''}
-        <div class="filtros">${chip('fila', 'En fila')}${chip('pausa', 'En pausa')}${chip('descartado', 'Descartados')}${chip('ingreso', 'Ingresaron')}${chip('cerrado_amable', 'Cerrado amable')}${chip('todas', 'Todas')}
+        <div class="filtros">${chip('fila', 'En fila')}${chip('pausa', 'En pausa')}${chip('descartado', 'Descartados')}${chip('ingreso', 'Ingresaron')}${chip('cerrado_amable', 'Cerrado: no respondió')}${chip('faltan', '✍️ Faltan datos')}${chip('todas', 'Todas')}
           <select data-accion="esp-franja" aria-label="Horario"><option value="">Todos los horarios</option><option value="manana"${E.espFranja === 'manana' ? ' selected' : ''}>Mañana</option><option value="tarde"${E.espFranja === 'tarde' ? ' selected' : ''}>Tarde</option></select>
           <input type="search" class="buscador" data-esp-busca placeholder="Buscar por nombre o celular" value="${esc(E.espBusca)}" aria-label="Buscar"></div>
         <p class="aclara">${plural(lista.length, 'persona', 'personas')}.</p>
@@ -303,6 +368,7 @@
         else if (a === 'esp-baja') dialogoBaja({});
         else if (a === 'esp-vista') { c.irA('espera'); }
         else if (a === 'esp-ficha') await dialogoFicha(el.dataset.id);
+        else if (a === 'esp-completar') { if (!E.esp) await cargar(); await dialogoFicha(el.dataset.id); }
         else if (a === 'esp-sede') { E.espSede = el.dataset.s; if (E.espSede === 'metricas' && !E.espMetricas) { E.espMetricas = (await cliente.llamar('espera_metricas', {})); } render(); }
         else if (a === 'esp-estado') { E.espEstado = el.dataset.e; render(); }
         else if (a === 'esp-ofrecer') {
@@ -339,5 +405,5 @@
     return { vista, bandaHoy, cargar, cargarHoy, accion, alEscribir, dialogoBaja, copiar };
   }
 
-  raiz.PulsoEspera = { crear: crear };
+  raiz.PulsoEspera = { crear: crear, celularValido: celularValido, faltanParaGuardar: faltanParaGuardar, ESTADO_CLASE: ESTADO_CLASE };
 })(typeof window !== 'undefined' ? window : globalThis);
