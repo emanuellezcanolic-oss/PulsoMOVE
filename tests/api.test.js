@@ -1205,3 +1205,27 @@ test('servidor_ver pide la clave y devuelve lo último', () => {
   assert.equal(r.data.filas.length, 50);
   assert.equal(r.data.filas[49].ts, '59');
 });
+
+test('permisos: coordinación sin admin ve las reservas de cualquier sede; recepción solo la suya', () => {
+  const d = equipo({ proximas: [franja('2026-11-12', '07:00', '', 'puelo')] });
+  const coord = pedir(d, { accion: 'ocupacion_ver', token: entrar(d, '25111222', '0907'), sede: 'puelo' });
+  assert.ok(coord.ok, JSON.stringify(coord));
+  assert.equal(coord.data.sede, 'puelo');
+  assert.equal(pedir(d, { accion: 'ocupacion_ver', token: entrar(d), sede: 'puelo' }).data.sede, 'bolson');
+});
+
+test('permisos: solo admin elige qué pestañas se ocultan, y llegan al entrar y en mi día', () => {
+  const d = equipo({ tareas: [], permisos: [] });
+  const rec = entrar(d), adm = entrar(d, '20000001', '0907');
+  assert.equal(pedir(d, { accion: 'usuario_permisos', token: rec, dni: '30123456', ocultas: [] }).error, 'prohibido');
+  assert.equal(pedir(d, { accion: 'usuario_permisos', token: adm, dni: '30123456', ocultas: ['inventada'] }).error, 'datos_invalidos');
+  assert.ok(pedir(d, { accion: 'usuario_permisos', token: adm, dni: '30123456', ocultas: ['reservas', 'liq'] }).ok);
+  assert.deepEqual(pedir(d, { accion: 'login', dni: '30123456', pin: '4831' }).data.ocultas, ['reservas', 'liq']);
+  assert.deepEqual(pedir(d, { accion: 'mi_dia', token: rec }).data.ocultas, ['reservas', 'liq']);
+  assert.deepEqual(pedir(d, { accion: 'usuarios_listar', token: adm }).data.find(u => u.dni === '30123456').ocultas, ['reservas', 'liq']);
+  // lo oculto tampoco se puede pedir por fuera de la pantalla
+  assert.equal(pedir(d, { accion: 'ocupacion_ver', token: rec }).error, 'prohibido');
+  pedir(d, { accion: 'usuario_permisos', token: adm, dni: '30123456', ocultas: [] });
+  assert.ok(pedir(d, { accion: 'ocupacion_ver', token: rec }).ok);
+  assert.equal(d.repo.leer('permisos').length, 1);
+});

@@ -106,6 +106,8 @@ const COLUMNAS = {
   liqpro_mov: ['periodo', 'profe', 'profe_dni', 'sede', 'datos', 'cargada'],
   // Sesiones de kinesiología por paciente y día. estado: importada (de la planilla vieja, falta confirmar) | confirmada
   liqpro_sesiones: ['id', 'mes', 'fecha', 'kine_dni', 'paciente', 'tipo', 'nota', 'estado', 'por_dni', 'ts'],
+  // Lo que Emanuel decidió que cada persona NO ve (panel de Equipo). ocultas: claves de pestañas separadas por coma
+  permisos: ['dni', 'ocultas', 'actualizado', 'por_dni'],
   garantia: ['id', 'ts', 'sede', 'socio_id', 'socio_nombre', 'profe', 'motivo', 'registra_dni', 'estado', 'decide_dni',
              'comentario', 'decidido_en'],
 };

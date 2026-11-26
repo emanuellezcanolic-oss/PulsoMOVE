@@ -181,6 +181,14 @@
 
   // Con coordinación, las pestañas se ordenan en grupos: lo mío, lo de recepción, lo de profes y lo del equipo (Emanuel, 13/11/2026)
   function pestanasDisponibles() {
+    const s = cliente.sesion();
+    const ocultas = (s && s.ocultas) || [];
+    return pestanasDeRol((s && s.roles) || []).filter(x => ocultas.indexOf(x[0]) < 0);
+  }
+
+  // Todo lo que da el rol, antes de sacar lo que se le ocultó a la persona (panel de Equipo, 26/11/2026)
+  function pestanasDeRol(roles) {
+    const tiene = r => roles.indexOf(r) >= 0;
     const p = [];
     const coord = tiene('coordinador') || tiene('admin');
     if (tiene('profe')) p.push(['planes', 'Mis planes', 'Mi día'], ['pmes', tiene('recepcion') ? 'Mis planes: el mes' : 'Mi mes', 'Mi día']);   // PulsoMOVE Profes: profes y kinesiólogos
@@ -242,7 +250,7 @@
   function vistaReservas() {
     const O = E.ocupacion;
     const selector = (tiene('admin') || tiene('coordinador')) && O && O.sedes.length > 1
-      ? `<div class="filtros">${O.sedes.map(k => `<button class="chip" data-accion="sede-elegir" data-s="${k}" aria-pressed="${(E.sedeElegida || O.sede) === k}">${SEDES[k]}</button>`).join('')}</div>` : '';
+      ? `<div class="filtros">${O.sedes.map(k => `<button class="chip" data-accion="sede-elegir" data-s="${k}" aria-pressed="${!!O && O.sede === k}">${SEDES[k]}</button>`).join('')}</div>` : '';
     if (!O) return selector + '<div class="cargando">Cargando las reservas…</div>';
     if (!O.patron.length) {
       // Sin el promedio de los meses igual sirve lo que viene: son datos distintos y cada uno se baja aparte
@@ -3071,11 +3079,32 @@ ${p.tareas_mes ? `<span class="uso-hoy">📋 Tareas del mes: ${p.tareas_mes.hech
       <td><b>${esc(u.nombre)}</b><br><span class="profe">${esc(SEDES[u.sede] || u.sede)} · ${esc(TURNOS[u.turno] || u.turno)}</span></td>
       <td>${esc(u.roles.join(', '))}</td>
       <td>${u.activo ? (u.bloqueado ? '<span class="estado atrasada">Bloqueado</span>' : '<span class="estado hecha">Activo</span>') : '<span class="estado">Inactivo</span>'}</td>
-      <td style="white-space:nowrap"><button class="boton claro" data-accion="nuevo-pin" data-dni="${esc(u.dni)}" data-nombre="${esc(u.nombre)}">Nuevo PIN</button>
+      <td style="white-space:nowrap">${u.roles.indexOf('admin') >= 0 ? '' : `<button class="boton claro" data-accion="permisos" data-dni="${esc(u.dni)}">👁 Qué ve${(u.ocultas || []).length ? ' (' + u.ocultas.length + ' sin ver)' : ''}</button> `}<button class="boton claro" data-accion="nuevo-pin" data-dni="${esc(u.dni)}" data-nombre="${esc(u.nombre)}">Nuevo PIN</button>
         <button class="boton claro" data-accion="activo" data-dni="${esc(u.dni)}" data-activo="${u.activo ? '0' : '1'}">${u.activo ? 'Desactivar' : 'Activar'}</button></td></tr>`).join('');
     return `<h1 class="titulo">Equipo <span>·</span> ${E.usuarios.length}</h1>
+      <p class="bajada">Con <b>👁 Qué ve</b> elegís las pestañas de cada persona.</p>
       <p class="bajada">El PIN nuevo se muestra una sola vez: anotalo y entregáselo a la persona. En su primer ingreso lo cambia.</p>
       <div class="envoltura-tabla"><table class="tabla"><thead><tr><th>Persona</th><th>Roles</th><th>Estado</th><th></th></tr></thead><tbody>${filas}</tbody></table></div>`;
+  }
+
+  // Panel de accesos: una casilla por cada pestaña que le da su rol. "Mis tareas" no se puede sacar.
+  function dialogoPermisos(dni) {
+    const u = E.usuarios.find(x => x.dni === dni);
+    if (!u) return;
+    const casillas = pestanasDeRol(u.roles).filter(x => x[0] !== 'hoy').map(([k, t, g]) =>
+      `<label class="visto"><input type="checkbox" value="${k}" ${(u.ocultas || []).indexOf(k) < 0 ? 'checked' : ''}> ${k === 'chat' ? '💬 Mensajes' : t} <span class="aclara">${esc(g)}</span></label>`).join('');
+    dialogo(`<h3>Qué ve ${esc(u.nombre)}</h3>
+      <p>Tildado: lo ve. Destildá lo que no querés que vea. Le cambia la próxima vez que entre.</p>
+      ${casillas}
+      <div class="botones"><button class="boton claro" id="perm-no">Cancelar</button><button class="boton" id="perm-ok">Guardar</button></div>`, d => {
+      d.querySelector('#perm-no').addEventListener('click', () => d.close());
+      d.querySelector('#perm-ok').addEventListener('click', async ev => {
+        ev.target.disabled = true;
+        const ocultas = [...d.querySelectorAll('input:not(:checked)')].map(c => c.value);
+        try { await cliente.llamar('usuario_permisos', { dni: dni, ocultas: ocultas }); d.close(); aviso('Guardado'); cargarVista(); }
+        catch (e) { ev.target.disabled = false; aviso(PulsoApi.mensaje(e.codigo || e.message), true); }
+      });
+    });
   }
 
   // ---------- Diálogos ----------
@@ -3180,6 +3209,11 @@ ${p.tareas_mes ? `<span class="uso-hoy">📋 Tareas del mes: ${p.tareas_mes.hech
     if (s && roles && roles.join() !== (s.roles || []).join()) cliente.guardarSesion(Object.assign(s, { roles: roles }));
   }
 
+  function actualizarOcultas(ocultas) {
+    const s = cliente.sesion();
+    if (s && ocultas && ocultas.join() !== (s.ocultas || []).join()) cliente.guardarSesion(Object.assign(s, { ocultas: ocultas }));
+  }
+
   // Si una pantalla no pudo cargar por una demora, se vuelve a pedir sola, cada vez más espaciado.
   const REINTENTABLES = ['red', 'ocupado', 'demora', 'interno'];
   let relojVista = null, fallasVista = 0;
@@ -3209,6 +3243,7 @@ ${p.tareas_mes ? `<span class="uso-hoy">📋 Tareas del mes: ${p.tareas_mes.hech
         E.paraAdelantar = r.para_adelantar || 0;
         E.dia = dia;
         actualizarRoles(E.dia.roles);
+        actualizarOcultas(E.dia.ocultas);
         if (E.dia.cartel && !E.dia.cartel.visto) cartelInicio(E.dia.cartel.clave);
         if (!E.ultimaMarca) E.ultimaMarca = Date.now();
         saludarUnaVez();
@@ -3246,7 +3281,7 @@ ${p.tareas_mes ? `<span class="uso-hoy">📋 Tareas del mes: ${p.tareas_mes.hech
         await cargarChat();
         render();
       } else if (E.vista === 'reservas') {
-        E.ocupacion = await cliente.llamar('ocupacion_ver', tiene('admin') || tiene('coordinador') ? { sede: E.sedeElegida } : {});
+        E.ocupacion = await cliente.llamar('ocupacion_ver', tiene('admin') ? { sede: E.sedeElegida } : tiene('coordinador') ? { sede: E.ocupSede || cliente.sesion().sede } : {});
       } else if (E.vista === 'planes' || E.vista === 'profes' || E.vista === 'pmes' || E.vista === 'phor' || E.vista === 'pliq') {
         if (E.vista === 'profes') cliente.llamar('profes_ver', tiene('admin') ? { sede: E.sedeElegida } : {}).then(c => { E.profes = c.filas; if (E.vista === 'profes' && !E.profeVer && !E.agendaVer) render(); }).catch(() => {});
         const vistaPlanes = E.vista;
@@ -4502,7 +4537,7 @@ ${p.tareas_mes ? `<span class="uso-hoy">📋 Tareas del mes: ${p.tareas_mes.hech
     else if (a === 'ver-persona') { E.personaDni = el.dataset.dni; E.persona = null; render(); cargarVista(); }
     else if (a === 'persona-volver') { E.personaDni = null; E.persona = null; render(); cargarVista(); }
     else if (a === 'ventas-periodo') { E.ventasPeriodo = el.dataset.p; render(); }
-    else if (a === 'sede-elegir') { E.sedeElegida = el.dataset.s; E.sede = null; E.ocupacion = null; E.diaProx = ''; render(); cargarVista(); }
+    else if (a === 'sede-elegir') { E.ocupSede = el.dataset.s; E.sedeElegida = el.dataset.s; E.sede = null; E.ocupacion = null; E.diaProx = ''; render(); cargarVista(); }
     else if (a === 'franja') detalleFranja(Number(el.dataset.d), el.dataset.h);
     else if (a === 'prox-dia') { E.diaProx = el.dataset.f; render(); }
     else if (a === 'prox-clase') detalleClase(el.dataset.id);
@@ -4537,7 +4572,8 @@ ${p.tareas_mes ? `<span class="uso-hoy">📋 Tareas del mes: ${p.tareas_mes.hech
           <button class="boton ancho" data-cerrar>Listo</button>`, d => { d.querySelector('[data-cerrar]').onclick = () => d.close(); });
         cargarVista();
       } catch (e) { falla(e); }
-    } else if (a === 'activo') {
+    } else if (a === 'permisos') dialogoPermisos(el.dataset.dni);
+    else if (a === 'activo') {
       try { await cliente.llamar('usuario_activo', { dni: el.dataset.dni, activo: el.dataset.activo === '1' }); cargarVista(); } catch (e) { falla(e); }
     }
   });

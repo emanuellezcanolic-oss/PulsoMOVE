@@ -51,6 +51,31 @@ function exigirClave(req, deps) {
 
 // ---------- Acciones ----------
 
+// ---------- Qué ve cada persona (Emanuel, 26/11/2026) ----------
+// Por defecto cada una ve lo que le da su rol; acá se guarda solo lo que se le ocultó. A un admin no se le oculta nada.
+const PESTANAS_OCULTABLES = ['planes', 'pmes', 'ppl', 'mes', 'sede', 'rend', 'consultas', 'pase', 'espera', 'reservas', 'liq', 'liqpro', 'pres', 'profes', 'phor', 'pliq', 'ped', 'chat'];
+
+function ocultasDe(u, deps) {
+  if (tieneRol(u, 'admin')) return [];
+  const f = deps.repo.leer('permisos').find(p => p.dni === u.dni);
+  return f && f.ocultas ? String(f.ocultas).split(',') : [];
+}
+
+function exigirVisible(u, pestana, deps) {
+  if (ocultasDe(u, deps).indexOf(pestana) >= 0) falla('prohibido');
+}
+
+function usuarioPermisos(req, deps) {
+  const { usuario, usuarios } = exigirAdmin(req, deps);
+  const u = usuarios.find(v => v.dni === normalizarDni(req.dni));
+  if (!u) falla('no_existe');
+  if (!Array.isArray(req.ocultas) || req.ocultas.some(k => PESTANAS_OCULTABLES.indexOf(k) < 0)) falla('datos_invalidos');
+  const filas = deps.repo.leer('permisos').filter(p => p.dni !== u.dni);
+  filas.push({ dni: u.dni, ocultas: req.ocultas.join(','), actualizado: new Date(deps.ahora()).toISOString(), por_dni: usuario.dni });
+  deps.repo.escribir('permisos', filas);
+  return {};
+}
+
 function login(req, deps) {
   const dni = normalizarDni(req.dni);
   const usuarios = deps.repo.leer('usuarios');
@@ -71,7 +96,7 @@ function login(req, deps) {
   return {
     token: crearToken(dni, ahora, deps.props.SECRETO_TOKEN, deps.hmac),
     nombre: u.nombre, sede: u.sede, turno: u.turno, roles: rolesDe(u),
-    debe_cambiar_pin: esVerdad(u.debe_cambiar_pin),
+    debe_cambiar_pin: esVerdad(u.debe_cambiar_pin), ocultas: ocultasDe(u, deps),
   };
 }
 
@@ -945,7 +970,7 @@ function miDia(req, deps) {
   return {
     medallas: medallas, volvieron: Number(valores.reenganches) || 0, prioritarias: pendientes.filter(t => nivelDeTarea(t) === 1).length,
     equipo: { hechas: deMiSede.filter(t => t.estado === 'hecha' && fechaArgentina(t.hecha_en) === hoy).length, faltan: deMiSede.filter(t => t.estado === 'pendiente' && String(t.fecha) <= hoy).length },
-    roles: rolesDe(usuario),
+    roles: rolesDe(usuario), ocultas: ocultasDe(usuario, deps),
     siguiente: ordenadas[0] ? { nombre: ordenadas[0].socio_nombre, situacion: ordenadas[0].situacion } : null, ayer: anterior,
     para_adelantar: suyas.filter(t => t.estado === 'pendiente' && String(t.fecha) > hoy).length, hora_inicio: usuario.hora_inicio || '',
     dias_sin_plan: Number(valores.dias_sin_plan_largo) || 0,
@@ -1116,7 +1141,7 @@ function respaldo(req, deps) {
   exigirClave(req, deps);
   const usuarios = deps.repo.leer('usuarios').map(u => { const c = Object.assign({}, u); delete c.pin_hash; delete c.sal; return c; });
   const out = { usuarios: usuarios };
-  ['tareas', 'registro', 'garantia', 'actividad', 'rendimiento', 'objetivos', 'cierres', 'profes', 'fichajes', 'reservas_qr', 'avisos', 'uso', 'beneficios', 'stock', 'ventas', 'ventas_largas', 'ocupacion', 'proximas', 'liquidacion', 'liq_qr', 'coberturas', 'consulta_estado', 'pases', 'aviso_condicion', 'aviso_dueno', 'liqpro', 'liqpro_mov', 'liqpro_sesiones'].forEach(h => { out[h] = deps.repo.leer(h); });
+  ['tareas', 'registro', 'garantia', 'actividad', 'rendimiento', 'objetivos', 'cierres', 'profes', 'fichajes', 'reservas_qr', 'avisos', 'uso', 'beneficios', 'stock', 'ventas', 'ventas_largas', 'ocupacion', 'proximas', 'liquidacion', 'liq_qr', 'coberturas', 'consulta_estado', 'pases', 'aviso_condicion', 'aviso_dueno', 'liqpro', 'liqpro_mov', 'liqpro_sesiones', 'permisos'].forEach(h => { out[h] = deps.repo.leer(h); });
   return out;
 }
 
@@ -1245,9 +1270,11 @@ function cargarProximas(req, deps) {
 
 function ocupacionVer(req, deps) {
   const { usuario } = sesion(req, deps);
-  // Recepción ve la suya; quien coordina puede elegir. No es dato sensible de nadie: son cuántos lugares hay por hora.
+  exigirVisible(usuario, 'reservas', deps);
+  // Recepción ve la suya; quien coordina puede elegir cualquiera. No es dato sensible: son cuántos lugares hay por hora.
   const coordina = tieneRol(usuario, 'admin') || tieneRol(usuario, 'coordinador');
-  const sede = coordina ? sedePermitida(usuario, texto(req.sede)) : usuario.sede;
+  const sede = coordina && texto(req.sede) ? texto(req.sede) : usuario.sede;
+  if (SEDES.indexOf(sede) < 0) falla('datos_invalidos');
   const todas = deps.repo.leer('ocupacion');
   const filas = todas.filter(f => f.sede === sede);
   const hoy = deps.hoy();
@@ -1346,7 +1373,7 @@ function usuariosListar(req, deps) {
   const ahora = deps.ahora();
   return usuarios.map(u => ({
     dni: u.dni, nombre: u.nombre, sede: u.sede, turno: u.turno, roles: rolesDe(u),
-    activo: esVerdad(u.activo), bloqueado: Number(u.bloqueado_hasta) > ahora,
+    activo: esVerdad(u.activo), bloqueado: Number(u.bloqueado_hasta) > ahora, ocultas: ocultasDe(u, deps),
   }));
 }
 
@@ -1401,6 +1428,7 @@ const ACCIONES = {
   pin_regenerar: pinRegenerar,
   usuarios_listar: usuariosListar,
   usuario_activo: usuarioActivo,
+  usuario_permisos: usuarioPermisos,
   uso: registrarUso,
   beneficio_crear: beneficioCrear,
   beneficio_decidir: beneficioDecidir,
