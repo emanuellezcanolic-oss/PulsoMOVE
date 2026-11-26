@@ -1076,3 +1076,20 @@ dialog:has(.pl-datos) { width: min(560px, calc(100% - 20px)); max-height: calc(1
 .pds-item .aclara { margin: 0; }
 .pds-item .botones { display: flex; flex-wrap: wrap; gap: 8px; }
 .pds-para { border: 0; padding: 0; margin: 0; display: grid; gap: 4px; }
+
+/* ---------- Liquidación de profes y kinesiología (web/liqpro.js) ---------- */
+.liqpro .liq-grupo td { background: var(--suave); padding-top: 6px; padding-bottom: 6px; font-size: 12px; text-transform: uppercase; letter-spacing: .04em; }
+.liqpro .liq-como { color: var(--gris); font-size: 13px; }
+.liqpro .enlace { background: none; border: 0; padding: 0; cursor: pointer; color: var(--tinta); text-decoration: underline; font: inherit; }
+.liqpro .aviso-bloque { border: 1px solid var(--naranja); background: var(--naranja-claro); border-radius: var(--radio); padding: 10px 12px; margin: 8px 0; display: flex; flex-wrap: wrap; gap: 8px 14px; align-items: center; justify-content: space-between; }
+.liqpro .aviso-bloque p { margin: 0; }
+.lp-sin { margin: 10px 0; }
+.lp-sin p { margin: 0 0 4px; }
+.liqpro .lp-sin .hecha-fila { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 6px; padding: 4px 0; border-bottom: 1px solid var(--linea); }
+.lp-calendario table { min-width: 100%; }
+.lp-calendario th[scope=row] { text-align: left; white-space: nowrap; position: sticky; left: 0; background: var(--hoja); font-weight: 600; }
+.lp-calendario td { padding: 2px; text-align: center; min-width: 34px; }
+.lp-celda { border: 1px dashed var(--linea); background: none; border-radius: 6px; min-width: 32px; padding: 3px 2px; cursor: pointer; font-size: 11px; color: var(--gris); }
+.lp-sesion .lp-celda { border: 1px solid var(--verde); background: var(--verde-claro); color: var(--verde-texto); font-weight: 700; }
+.lp-pendiente .lp-celda { border-color: var(--naranja); background: var(--naranja-claro); color: #8a4a0c; }
+.lp-sesion:not(:has(button)) { background: var(--verde-claro); font-weight: 700; }

@@ -147,7 +147,7 @@
   // ---------- Login y PIN ----------
 
   function vistaLogin() {
-    const practica = DEMO ? `<div class="practica"><b>Modo práctica.</b> Probá con DNI <b>11111111</b> (recepción), <b>22222222</b> (responsable de sede), <b>55555555</b> (profe) o <b>33333333</b> (admin). PIN <b>${PulsoDemo.PIN}</b>.</div>` : '';
+    const practica = DEMO ? `<div class="practica"><b>Modo práctica.</b> Probá con DNI <b>11111111</b> (recepción), <b>22222222</b> (responsable de sede), <b>55555555</b> (profe), <b>55555557</b> (kinesiología) o <b>33333333</b> (admin). PIN <b>${PulsoDemo.PIN}</b>.</div>` : '';
     return `<main class="login"><div class="caja">
       <img src="web/logo.png" alt="The Move Club">
       <svg class="gran-pulso" viewBox="0 0 380 56" aria-hidden="true"><path d="M2 32 H150 l10 -24 l12 44 l10 -32 l8 12 H378"/></svg>
@@ -194,6 +194,8 @@
     if (tiene('recepcion') || coord) p.push(['espera', '⏳ Lista de espera', coord ? 'Recepción' : 'Mi día']);
     if (tiene('recepcion') || coord) p.push(['reservas', 'Reservas', coord ? 'Recepción' : 'Mi día']);
     if (tiene('admin') || tiene('recepcion') || coord) p.push(['liq', tiene('admin') ? 'Liquidación' : 'Mis ingresos', coord ? 'Recepción' : 'Mi día']);   // cada una ve lo suyo; admin ve a todas
+    // Liquidación de profes y kinesiología (25/11/2026): cada profe ve solo la suya; coordinación ve a todos sin plata; admin con plata
+    if (tiene('profe') || coord) p.push(['liqpro', tiene('admin') ? 'Liquidación de profes' : coord ? 'Liquidación (sin montos)' : '💰 Mi liquidación', coord ? 'Profes' : 'Mi día']);
     if (coord) p.push(['pres', 'Resumen', 'Profes'], ['profes', 'Planes y llegadas', 'Profes'], ['ppl', '📋 Planilla', 'Profes'], ['phor', 'Horarios y sábados', 'Profes'], ['pliq', tiene('admin') ? 'Comisiones y tareas' : 'Tareas del mes', 'Profes']);
     if (tiene('admin')) p.push(['resumen', 'Resumen semanal', 'Gestión'], ['admin', 'Equipo', 'Gestión']);
     if (coord) p.push(['ped', '📌 Pedidos', 'Gestión']);   // pedidos de coordinación a recepción y profes (18/11/2026)
@@ -595,6 +597,8 @@
   const ESP = PulsoEspera.crear({ cliente, E, esc, aviso, falla, render: () => render(), dialogo: (h, f) => dialogo(h, f), tiene, irA: v => irA(v) });
   const bandaPedidos = () => PulsoPedidos.bandaMios(E.pedMios, esc);
   // Pendientes con socios (web/pendientes.js, apps-script/Pendientes.js)
+  // Liquidación de profes y kinesiología (web/liqpro.js, apps-script/LiqProfes.js)
+  const PLP = PulsoLiqPro.crear({ cliente, E, esc, aviso, falla, dialogo: (h, f) => dialogo(h, f), tiene, recargar: () => render(), nombreMes: m => nombreMes(m) });
   const PDS = PulsoPendientes.crear({ cliente, E, esc, aviso, falla, dialogo: (h, f) => dialogo(h, f), tiene, recargar: () => cargarVista() });
 
   function cargarPedidosMios() {
@@ -3236,6 +3240,8 @@ ${p.tareas_mes ? `<span class="uso-hoy">📋 Tareas del mes: ${p.tareas_mes.hech
       } else if (E.vista === 'liq') {
         E.liq = await cliente.llamar('liquidacion_ver', E.liqMes ? { mes: E.liqMes } : {});
         E.liqMes = E.liq.mes;
+      } else if (E.vista === 'liqpro') {
+        await PLP.cargar();
       } else if (E.vista === 'chat') {
         await cargarChat();
         render();
@@ -3578,6 +3584,7 @@ ${p.tareas_mes ? `<span class="uso-hoy">📋 Tareas del mes: ${p.tareas_mes.hech
     const cuerpo = E.vista === 'hoy' ? vistaHoy() : E.vista === 'sede' ? vistaSede() : E.vista === 'admin' ? vistaAdmin() : E.vista === 'mes' ? vistaMes() : E.vista === 'rend' ? vistaRendimiento()
       : E.vista === 'reservas' ? vistaReservas()
       : E.vista === 'liq' ? vistaLiquidacion()
+      : E.vista === 'liqpro' ? PLP.vista()
       : E.vista === 'resumen' ? vistaResumen()
       : E.vista === 'consultas' ? vistaConsultas()
       : E.vista === 'pase' ? vistaPase()
@@ -3590,7 +3597,7 @@ ${p.tareas_mes ? `<span class="uso-hoy">📋 Tareas del mes: ${p.tareas_mes.hech
       : E.vista === 'phor' ? (E.planes ? vistaAgendaEquipo(true) : '<div class="cargando">Cargando…</div>')
       : E.vista === 'pliq' ? (E.planes ? `<h1 class="titulo">${tiene('admin') ? 'Comisiones y tareas del mes' : 'Tareas del mes'} <span>·</span> profes</h1>${vistaTareasMesCoord()}${tablaComisiones()}` : '<div class="cargando">Cargando…</div>')
       : '<div class="vacio">Tu usuario no tiene ninguna vista asignada. Avisale a Emanuel.</div>';
-    const sinDatos = { hoy: !E.tareas, sede: E.personaDni ? !E.persona : !E.sede, mes: !E.rend, rend: !E.rend, admin: !E.usuarios, reservas: !E.ocupacion, liq: !E.liq, resumen: !E.resumen, consultas: !E.cons, pase: !E.pase, chat: !E.chat, planes: !E.planes, profes: !E.planes, pmes: !E.planes, phor: !E.planes, pliq: !E.planes, pres: !E.estado, ppl: !E.pl, ped: !E.ped, espera: !E.esp }[E.vista];
+    const sinDatos = { hoy: !E.tareas, sede: E.personaDni ? !E.persona : !E.sede, mes: !E.rend, rend: !E.rend, admin: !E.usuarios, reservas: !E.ocupacion, liq: !E.liq, liqpro: !PLP.cargado(), resumen: !E.resumen, consultas: !E.cons, pase: !E.pase, chat: !E.chat, planes: !E.planes, profes: !E.planes, pmes: !E.planes, phor: !E.planes, pliq: !E.planes, pres: !E.estado, ppl: !E.pl, ped: !E.ped, espera: !E.esp }[E.vista];
     const mostrar = E.errorCarga && sinDatos ? `<div class="vacio" style="margin-top:18px"><p>${esc(E.errorCarga)}</p><p>La pantalla vuelve a intentarlo sola. Tus marcas no se pierden.</p><button class="boton" data-accion="reintentar">Reintentar ahora</button></div>` : cuerpo;
     const bandas = E.vista === 'hoy' ? bandaPedidos() + bandaPase() + bandaVentas() + bandaFichajes() + bandaReservas() : E.vista === 'planes' ? bandaPedidos() : '';
     app.innerHTML = encabezado() + `<main class="contenedor">${bandas}${mostrar}</main>` + (E.vista === 'hoy' && turnoTerminando() ? `<button class="cerrar-app-fijo${DEMO ? ' con-cinta' : ''}" data-accion="cerrar-app">🚪 ${E.dia && E.dia.cierre_hecho ? 'Listo por hoy' : 'Se termina tu turno'}: cerrá la app antes de irte</button>` : '') + (DEMO ? '<div class="cinta-practica">Modo práctica · datos inventados</div>' : '') + botonRanking() + panelRanking();
@@ -4023,6 +4030,7 @@ ${p.tareas_mes ? `<span class="uso-hoy">📋 Tareas del mes: ${p.tareas_mes.hech
     const btn = form.querySelector('button:not([type=button])');
     if (tipo.indexOf('chat-') === 0) { await enviarFormChat(tipo, form); return; }
     if (tipo.indexOf('ped-') === 0) { await enviarFormPedido(tipo, form, btn); return; }
+    if (tipo.indexOf('lp-') === 0) { await PLP.enviar(tipo, form, btn); return; }
     if (tipo === 'login') {
       btn.disabled = true;
       try {
@@ -4167,6 +4175,7 @@ ${p.tareas_mes ? `<span class="uso-hoy">📋 Tareas del mes: ${p.tareas_mes.hech
     else if (a.indexOf('ped-') === 0) await accionPedido(a, el);
     else if (a.indexOf('esp-') === 0) await ESP.accion(a, el);
     else if (a.indexOf('pds-') === 0) await PDS.accion(a, el);
+    else if (a.indexOf('lp-') === 0) await PLP.accion(a, el);
     else if (a === 'fichaje') {
       el.disabled = true;
       try {

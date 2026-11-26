@@ -1112,7 +1112,7 @@ function respaldo(req, deps) {
   exigirClave(req, deps);
   const usuarios = deps.repo.leer('usuarios').map(u => { const c = Object.assign({}, u); delete c.pin_hash; delete c.sal; return c; });
   const out = { usuarios: usuarios };
-  ['tareas', 'registro', 'garantia', 'actividad', 'rendimiento', 'objetivos', 'cierres', 'profes', 'fichajes', 'reservas_qr', 'avisos', 'uso', 'beneficios', 'stock', 'ventas', 'ventas_largas', 'ocupacion', 'proximas', 'liquidacion', 'liq_qr', 'coberturas', 'consulta_estado', 'pases', 'aviso_condicion', 'aviso_dueno'].forEach(h => { out[h] = deps.repo.leer(h); });
+  ['tareas', 'registro', 'garantia', 'actividad', 'rendimiento', 'objetivos', 'cierres', 'profes', 'fichajes', 'reservas_qr', 'avisos', 'uso', 'beneficios', 'stock', 'ventas', 'ventas_largas', 'ocupacion', 'proximas', 'liquidacion', 'liq_qr', 'coberturas', 'consulta_estado', 'pases', 'aviso_condicion', 'aviso_dueno', 'liqpro', 'liqpro_mov', 'liqpro_sesiones'].forEach(h => { out[h] = deps.repo.leer(h); });
   return out;
 }
 
@@ -1495,6 +1495,20 @@ const ACCIONES = {
   pedido_hecho: (r, d) => pedidoHecho(r, d),
   pedido_item_agregar: (r, d) => pedidoItemAgregar(r, d),
   pedido_item_quitar: (r, d) => pedidoItemQuitar(r, d),
+  // Liquidación de profes y kinesiología (LiqProfes.js)
+  liqpro_ver: (r, d) => liqproVer(r, d),
+  liqpro_config_guardar: (r, d) => liqproConfigGuardar(r, d),
+  liqpro_persona_guardar: (r, d) => liqproPersonaGuardar(r, d),
+  liqpro_liquidar: (r, d) => liqproLiquidar(r, d),
+  liqpro_entreno: (r, d) => liqproEntreno(r, d),
+  liqpro_reclamo: (r, d) => liqproReclamo(r, d),
+  liqpro_reclamo_resolver: (r, d) => liqproReclamoResolver(r, d),
+  liqpro_sesion_guardar: (r, d) => liqproSesionGuardar(r, d),
+  liqpro_sesion_borrar: (r, d) => liqproSesionBorrar(r, d),
+  liqpro_sesiones_confirmar: (r, d) => liqproSesionesConfirmar(r, d),
+  cargar_liqpro_mov: (r, d) => cargarLiqproMov(r, d),
+  cargar_liqpro_config: (r, d) => cargarLiqproConfig(r, d),
+  cargar_liqpro_sesiones: (r, d) => cargarLiqproSesiones(r, d),
   // Pendientes con socios (Pendientes.js)
   socio_pendiente_socios: (r, d) => socioPendienteSocios(r, d),
   socio_pendiente_anotar: (r, d) => socioPendienteAnotar(r, d),
@@ -1504,7 +1518,7 @@ const ACCIONES = {
 
 // Las pantallas que solo miran no esperan turno: un pedido trabado no las frena. Lista cerrada: lo que no esté acá espera.
 // Respaldo, bajadas y lo que usan los procesos de la PC siguen con turno porque necesitan los datos completos y sin cambios a mitad.
-const SOLO_LECTURA = ['mis_tareas', 'mi_dia', 'contacto_extra_socios', 'sede', 'tareas_de', 'rendimiento', 'cierres_ver', 'profes_ver', 'fichajes_ver', 'usuarios_listar', 'servidor_ver', 'ocupacion_ver', 'profe_tareas', 'profe_estado', 'profe_planilla', 'liquidacion_ver', 'coberturas_ver', 'ranking_ver', 'ranking_profes', 'resumen_semanal', 'consultas_ver', 'pase_ver', 'chat_personas', 'chat_listar', 'chat_ver', 'chat_novedad', 'pedidos_mios', 'pedidos_ver', 'espera_ver', 'espera_mensaje', 'espera_historial', 'espera_candidatos', 'espera_beneficios_de', 'espera_metricas', 'socio_pendiente_socios'];
+const SOLO_LECTURA = ['mis_tareas', 'mi_dia', 'contacto_extra_socios', 'sede', 'tareas_de', 'rendimiento', 'cierres_ver', 'profes_ver', 'fichajes_ver', 'usuarios_listar', 'servidor_ver', 'ocupacion_ver', 'profe_tareas', 'profe_estado', 'profe_planilla', 'liquidacion_ver', 'liqpro_ver', 'coberturas_ver', 'ranking_ver', 'ranking_profes', 'resumen_semanal', 'consultas_ver', 'pase_ver', 'chat_personas', 'chat_listar', 'chat_ver', 'chat_novedad', 'pedidos_mios', 'pedidos_ver', 'espera_ver', 'espera_mensaje', 'espera_historial', 'espera_candidatos', 'espera_beneficios_de', 'espera_metricas', 'socio_pendiente_socios'];
 const ESPERA_TURNO_MS = 20000;
 const PEDIDO_LENTO_MS = 15000;
 

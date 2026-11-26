@@ -99,6 +99,13 @@ const COLUMNAS = {
   // Pendientes con socios (Pendientes.js, 25/11/2026): lo que un socio le pidió al profe. estado: pendiente | hecho | no_corresponde.
   socio_pendientes: ['id', 'sede', 'socio_id', 'socio_nombre', 'profe_dni', 'profe_nombre', 'que', 'limite', 'estado', 'motivo', 'creado_ts', 'creado_dni', 'creado_nombre',
                      'creado_rol', 'derivado_de_dni', 'derivado_de_nombre', 'resuelto_ts', 'resuelto_dni', 'resuelto_nombre'],
+  // Liquidación de profes y kinesiología (LiqProfes.js, 25/11/2026). tipo: config (dni '*': valores del mes) | persona (lo de cada profe en el mes) |
+  // estado (dni '*': liquidada) | cierre (cuentas congeladas) | reclamo (id) | entreno (id = mes de plan marcado «sí entrenó», con historial). Los valores reales los carga admin; el repositorio no trae ninguno.
+  liqpro: ['mes', 'dni', 'tipo', 'id', 'datos', 'actualizado'],
+  // Movimientos de cada profe por período (pagos del 6 al 5): los calcula la PC. Sin plata.
+  liqpro_mov: ['periodo', 'profe', 'profe_dni', 'sede', 'datos', 'cargada'],
+  // Sesiones de kinesiología por paciente y día. estado: importada (de la planilla vieja, falta confirmar) | confirmada
+  liqpro_sesiones: ['id', 'mes', 'fecha', 'kine_dni', 'paciente', 'tipo', 'nota', 'estado', 'por_dni', 'ts'],
   garantia: ['id', 'ts', 'sede', 'socio_id', 'socio_nombre', 'profe', 'motivo', 'registra_dni', 'estado', 'decide_dni',
              'comentario', 'decidido_en'],
 };
