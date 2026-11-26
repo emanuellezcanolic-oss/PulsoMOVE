@@ -108,6 +108,8 @@ const COLUMNAS = {
   liqpro_sesiones: ['id', 'mes', 'fecha', 'kine_dni', 'paciente', 'tipo', 'nota', 'estado', 'por_dni', 'ts'],
   // Lo que Emanuel decidió que cada persona NO ve (panel de Equipo). ocultas: claves de pestañas separadas por coma
   permisos: ['dni', 'ocultas', 'actualizado', 'por_dni'],
+  // Quién puede consultar en solo lectura (Lectura.js). version sube al quitarlo: lo anterior deja de servir
+  lectura: ['dni', 'activa', 'version', 'actualizado', 'por_dni'],
   garantia: ['id', 'ts', 'sede', 'socio_id', 'socio_nombre', 'profe', 'motivo', 'registra_dni', 'estado', 'decide_dni',
              'comentario', 'decidido_en'],
 };

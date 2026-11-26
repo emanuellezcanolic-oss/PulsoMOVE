@@ -3160,9 +3160,10 @@ ${p.tareas_mes ? `<span class="uso-hoy">📋 Tareas del mes: ${p.tareas_mes.hech
       <td>${esc(u.roles.join(', '))}</td>
       <td>${u.activo ? (u.bloqueado ? '<span class="estado atrasada">Bloqueado</span>' : '<span class="estado hecha">Activo</span>') : '<span class="estado">Inactivo</span>'}</td>
       <td style="white-space:nowrap">${u.roles.indexOf('admin') >= 0 ? '' : `<button class="boton claro" data-accion="permisos" data-dni="${esc(u.dni)}">👁 Qué ve${(u.ocultas || []).length ? ' (' + u.ocultas.length + ' sin ver)' : ''}</button> `}<button class="boton claro" data-accion="nuevo-pin" data-dni="${esc(u.dni)}" data-nombre="${esc(u.nombre)}">Nuevo PIN</button>
+        ${u.roles.indexOf('coordinador') >= 0 && u.roles.indexOf('admin') < 0 ? `<button class="boton claro" data-accion="lectura" data-dni="${esc(u.dni)}" data-nombre="${esc(u.nombre)}" data-activa="${u.lectura ? '0' : '1'}">🔎 Consulta desde Claude: ${u.lectura ? 'sí' : 'no'}</button>` : ''}
         <button class="boton claro" data-accion="activo" data-dni="${esc(u.dni)}" data-activo="${u.activo ? '0' : '1'}">${u.activo ? 'Desactivar' : 'Activar'}</button></td></tr>`).join('');
     return `<h1 class="titulo">Equipo <span>·</span> ${E.usuarios.length}</h1>
-      <p class="bajada">Con <b>👁 Qué ve</b> elegís las pestañas de cada persona.</p>
+      <p class="bajada">Con <b>👁 Qué ve</b> elegís las pestañas de cada persona. Con <b>🔎 Consulta desde Claude</b> le das a coordinación un acceso de solo lectura (vos ya lo tenés).</p>
       <p class="bajada">El PIN nuevo se muestra una sola vez: anotalo y entregáselo a la persona. En su primer ingreso lo cambia.</p>
       <div class="envoltura-tabla"><table class="tabla"><thead><tr><th>Persona</th><th>Roles</th><th>Estado</th><th></th></tr></thead><tbody>${filas}</tbody></table></div>`;
   }
@@ -4684,6 +4685,11 @@ ${p.tareas_mes ? `<span class="uso-hoy">📋 Tareas del mes: ${p.tareas_mes.hech
         cargarVista();
       } catch (e) { falla(e); }
     } else if (a === 'permisos') dialogoPermisos(el.dataset.dni);
+    else if (a === 'lectura') {
+      const dar = el.dataset.activa === '1';
+      if (!confirm(dar ? `¿Dar a ${el.dataset.nombre} acceso de solo lectura para consultar quién hace y quién no en su sede?` : `¿Quitarle a ${el.dataset.nombre} el acceso de consulta? Deja de funcionar al momento.`)) return;
+      try { await cliente.llamar('usuario_lectura', { dni: el.dataset.dni, activa: dar }); aviso('Guardado'); cargarVista(); } catch (e) { falla(e); }
+    }
     else if (a === 'activo') {
       try { await cliente.llamar('usuario_activo', { dni: el.dataset.dni, activo: el.dataset.activo === '1' }); cargarVista(); } catch (e) { falla(e); }
     }

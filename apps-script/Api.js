@@ -1141,7 +1141,7 @@ function respaldo(req, deps) {
   exigirClave(req, deps);
   const usuarios = deps.repo.leer('usuarios').map(u => { const c = Object.assign({}, u); delete c.pin_hash; delete c.sal; return c; });
   const out = { usuarios: usuarios };
-  ['tareas', 'registro', 'garantia', 'actividad', 'rendimiento', 'objetivos', 'cierres', 'profes', 'fichajes', 'reservas_qr', 'avisos', 'uso', 'beneficios', 'stock', 'ventas', 'ventas_largas', 'ocupacion', 'proximas', 'liquidacion', 'liq_qr', 'coberturas', 'consulta_estado', 'pases', 'aviso_condicion', 'aviso_dueno', 'liqpro', 'liqpro_mov', 'liqpro_sesiones', 'permisos'].forEach(h => { out[h] = deps.repo.leer(h); });
+  ['tareas', 'registro', 'garantia', 'actividad', 'rendimiento', 'objetivos', 'cierres', 'profes', 'fichajes', 'reservas_qr', 'avisos', 'uso', 'beneficios', 'stock', 'ventas', 'ventas_largas', 'ocupacion', 'proximas', 'liquidacion', 'liq_qr', 'coberturas', 'consulta_estado', 'pases', 'aviso_condicion', 'aviso_dueno', 'liqpro', 'liqpro_mov', 'liqpro_sesiones', 'permisos', 'lectura'].forEach(h => { out[h] = deps.repo.leer(h); });
   return out;
 }
 
@@ -1373,7 +1373,7 @@ function usuariosListar(req, deps) {
   const ahora = deps.ahora();
   return usuarios.map(u => ({
     dni: u.dni, nombre: u.nombre, sede: u.sede, turno: u.turno, roles: rolesDe(u),
-    activo: esVerdad(u.activo), bloqueado: Number(u.bloqueado_hasta) > ahora, ocultas: ocultasDe(u, deps),
+    activo: esVerdad(u.activo), bloqueado: Number(u.bloqueado_hasta) > ahora, ocultas: ocultasDe(u, deps), lectura: lectPuede(u, deps),
   }));
 }
 
@@ -1429,6 +1429,10 @@ const ACCIONES = {
   usuarios_listar: usuariosListar,
   usuario_activo: usuarioActivo,
   usuario_permisos: usuarioPermisos,
+  // Solo lectura para coordinación (Lectura.js)
+  usuario_lectura: (r, d) => usuarioLectura(r, d),
+  lectura_entrar: (r, d) => lecturaEntrar(r, d),
+  lectura: (r, d) => lecturaVer(r, d),
   uso: registrarUso,
   beneficio_crear: beneficioCrear,
   beneficio_decidir: beneficioDecidir,
@@ -1552,7 +1556,7 @@ const ACCIONES = {
 
 // Las pantallas que solo miran no esperan turno: un pedido trabado no las frena. Lista cerrada: lo que no esté acá espera.
 // Respaldo, bajadas y lo que usan los procesos de la PC siguen con turno porque necesitan los datos completos y sin cambios a mitad.
-const SOLO_LECTURA = ['mis_tareas', 'mi_dia', 'contacto_extra_socios', 'sede', 'tareas_de', 'rendimiento', 'cierres_ver', 'profes_ver', 'fichajes_ver', 'usuarios_listar', 'servidor_ver', 'ocupacion_ver', 'profe_tareas', 'profe_estado', 'profe_planilla', 'liquidacion_ver', 'liqpro_ver', 'coberturas_ver', 'ranking_ver', 'ranking_profes', 'resumen_semanal', 'consultas_ver', 'pase_ver', 'chat_personas', 'chat_listar', 'chat_ver', 'chat_novedad', 'pedidos_mios', 'pedidos_ver', 'espera_ver', 'espera_mensaje', 'espera_historial', 'espera_candidatos', 'espera_beneficios_de', 'espera_metricas', 'socio_pendiente_socios'];
+const SOLO_LECTURA = ['mis_tareas', 'mi_dia', 'contacto_extra_socios', 'sede', 'tareas_de', 'rendimiento', 'cierres_ver', 'profes_ver', 'fichajes_ver', 'usuarios_listar', 'servidor_ver', 'ocupacion_ver', 'profe_tareas', 'profe_estado', 'profe_planilla', 'liquidacion_ver', 'liqpro_ver', 'coberturas_ver', 'ranking_ver', 'ranking_profes', 'resumen_semanal', 'consultas_ver', 'pase_ver', 'chat_personas', 'chat_listar', 'chat_ver', 'chat_novedad', 'pedidos_mios', 'pedidos_ver', 'espera_ver', 'espera_mensaje', 'espera_historial', 'espera_candidatos', 'espera_beneficios_de', 'espera_metricas', 'socio_pendiente_socios', 'lectura'];
 const ESPERA_TURNO_MS = 20000;
 const PEDIDO_LENTO_MS = 15000;
 
