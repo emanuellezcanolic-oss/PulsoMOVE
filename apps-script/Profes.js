@@ -901,6 +901,50 @@ function profeAuditoriaMarcadas(req, deps) {
   return { socios: Object.keys(ids), dejadas: dejadas };
 }
 
+// ---------- Verificación rápida de lo marcado (Emanuel, 26/11/2026) ----------
+// Cuando el profe marca «Lo corregí» o «Listo, lo renové», la PC mira solo a esos socios en MOVE (cada 30 minutos) y,
+// si el cambio está, lo da por hecho sin esperar a la mañana siguiente. Si todavía no está, no se acusa a nadie:
+// queda como estaba y lo vuelve a mirar la auditoría de la mañana.
+const NOTA_COMPROBADO = '✅ Comprobado en MOVE';
+
+function profePorVerificar(req, deps) {
+  exigirClave(req, deps);
+  const desde = sumarDiasProfe(deps.hoy(), -1);
+  return {
+    auditoria: deps.repo.leer('profe_auditoria').filter(h => h.estado === 'marcada' || h.estado === 'no_corregido').filter(h => String(h.marcada_en).slice(0, 10) >= desde)
+      .map(h => ({ id: h.id, socio_id: h.socio_id })),
+    planes: deps.repo.leer('profe_tareas').filter(t => t.estado === 'hecha' && String(t.hecha_en).slice(0, 10) >= desde && String(t.nota).indexOf(NOTA_COMPROBADO) < 0)
+      .map(t => ({ id: t.id, socio_id: t.socio_id, marcada: fechaArgentina(t.hecha_en) })),
+  };
+}
+
+function verificarProfe(req, deps) {
+  exigirClave(req, deps);
+  if (!Array.isArray(req.auditados) || !Array.isArray(req.abiertos) || !Array.isArray(req.planes_ok)) falla('datos_invalidos');
+  const auditados = {}, abiertos = {}, planes = {};
+  req.auditados.forEach(i => { auditados[texto(i)] = true; });
+  req.abiertos.forEach(i => { abiertos[texto(i)] = true; });
+  req.planes_ok.forEach(i => { planes[texto(i)] = true; });
+  const ts = new Date(deps.ahora()).toISOString();
+  let corregidas = 0, comprobados = 0;
+  const aud = deps.repo.leer('profe_auditoria');
+  aud.forEach(h => {
+    if ((h.estado !== 'marcada' && h.estado !== 'no_corregido') || !auditados[h.socio_id] || abiertos[h.id]) return;
+    h.estado = 'corregido';
+    h.corregido_en = ts;
+    corregidas++;
+  });
+  if (corregidas) deps.repo.escribir('profe_auditoria', aud);
+  const tareas = deps.repo.leer('profe_tareas');
+  tareas.forEach(t => {
+    if (!planes[t.id] || t.estado !== 'hecha' || String(t.nota).indexOf(NOTA_COMPROBADO) >= 0) return;
+    t.nota = t.nota ? t.nota + ' · ' + NOTA_COMPROBADO : NOTA_COMPROBADO;
+    comprobados++;
+  });
+  if (comprobados) deps.repo.escribir('profe_tareas', tareas);
+  return { corregidas: corregidas, comprobados: comprobados };
+}
+
 // ---------- Tablero de coordinación (Emanuel, 11/11/2026) ----------
 // La PC sube, por profe, los planes vencidos con cuántas veces vino el socio desde que se le venció, cuántos planes
 // renovó en 30 días, cómo los customizó (criterio 30-80%) y cuánto tiempo pasa armándolos. Se guarda solo la última.

@@ -4201,7 +4201,7 @@ ${p.tareas_mes ? `<span class="uso-hoy">📋 Tareas del mes: ${p.tareas_mes.hech
         const M = E.planes && E.planes.mio;
         if (M) {
           const t = M.hoy.find(x => x.id === r.tarea.id);
-          if (t) { const antes = t.estado; Object.assign(t, r.tarea); if (antes !== t.estado) { const d = t.estado === 'hecha' ? 1 : -1; M.resumen.hechas_hoy += d; M.resumen.hechas_mes += d; M.resumen.pendientes_hoy -= d; if (t.atraso > 0) M.resumen.atrasadas -= d; } }
+          if (t) { const antes = t.estado; Object.assign(t, r.tarea); if (antes !== t.estado) { const d = t.estado === 'hecha' ? 1 : -1; M.resumen.hechas_hoy += d; M.resumen.hechas_mes += d; const quedan = M.hoy.filter(x => x.estado === 'pendiente'); M.resumen.pendientes_hoy = quedan.length; M.resumen.atrasadas = quedan.filter(x => x.atraso > 0).length; } }
           // un plan del profe que está cubriendo (vacaciones)
           (M.cubriendo || []).forEach(c => { const x = c.hoy.find(y => y.id === r.tarea.id); if (x) Object.assign(x, r.tarea); });
         }
