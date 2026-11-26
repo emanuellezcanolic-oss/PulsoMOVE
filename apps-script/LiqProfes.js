@@ -71,7 +71,19 @@ function lpConfigDelMes(filas, mes) {
   };
 }
 
-const LP_HEREDA = ['tipo', 'valor_hora', 'horas_mes', 'horas_semana', 'metas', 'valores', 'monotributo', 'valor_plantilla'];
+const LP_HEREDA = ['tipo', 'valor_hora', 'horas_mes', 'horas_semana', 'metas', 'valores', 'monotributo', 'valor_plantilla', 'tarifas'];
+
+// Tarifa de sesión: la propia de la persona manda; lo que no tiene, sale de la del mes (cada kine cobra distinto, 26/11/2026)
+function lpTarifas(cfg, p) {
+  return Object.assign({}, cfg.tarifas || {}, (p && p.tarifas) || {});
+}
+
+function lpTarifasDe(t) {
+  const out = {};
+  const o = t && typeof t === 'object' ? t : {};
+  Object.keys(o).forEach(k => { if (LP_SESION_TIPOS.indexOf(k) < 0) falla('datos_invalidos'); const n = liqNumero(o[k], 0, 10000000); if (n != null) out[k] = n; });
+  return out;
+}
 
 // Lo de una persona en un mes: lo que se hereda (valor hora, horas, metas…) sale de la última carga hasta ese mes;
 // lo propio del mes (HOME, sábados, extras, plantillas…) solo del mes mismo.
@@ -203,9 +215,10 @@ function lpCalcular(e) {
 
   // Kinesiología: sesiones y plantillas
   const sesiones = (e.sesiones || []).filter(s => s.estado !== 'anulada');
+  const tarifasP = lpTarifas(cfg, p);
   const porTipo = LP_SESION_TIPOS.map(t => {
     const n = sesiones.filter(s => s.tipo === t).length;
-    const tarifa = cfg.tarifas[t] != null && cfg.tarifas[t] !== '' ? Number(cfg.tarifas[t]) : null;
+    const tarifa = tarifasP[t] != null && tarifasP[t] !== '' ? Number(tarifasP[t]) : null;
     return { tipo: t, n: n, tarifa: tarifa, monto: tarifa == null ? 0 : Math.round(n * tarifa) };
   });
   if (tipo === 'kine') {
@@ -294,9 +307,10 @@ function lpBloqueSesiones(deps, dni, mes, cfg, verMontos) {
   const lista = lpSesionesDe(deps, dni, mes).sort((a, b) => String(a.fecha).localeCompare(String(b.fecha)) || String(a.paciente).localeCompare(String(b.paciente)));
   const pacientes = [];
   deps.repo.leer('liqpro_sesiones').filter(s => s.kine_dni === dni).forEach(s => { if (pacientes.indexOf(s.paciente) < 0) pacientes.push(s.paciente); });
+  const tarifasP = lpTarifas(cfg, lpPersonaDelMes(lpFilas(deps), dni, mes));
   const resumen = LP_SESION_TIPOS.map(t => {
     const n = lista.filter(s => s.tipo === t).length;
-    const tarifa = cfg.tarifas[t] != null && cfg.tarifas[t] !== '' ? Number(cfg.tarifas[t]) : null;
+    const tarifa = tarifasP[t] != null && tarifasP[t] !== '' ? Number(tarifasP[t]) : null;
     return verMontos ? { tipo: t, n: n, tarifa: tarifa, monto: tarifa == null ? 0 : Math.round(n * tarifa) } : { tipo: t, n: n };
   });
   return { mes: mes, dias: liqDiasDelMes(mes), tipos: LP_SESION_TIPOS, lista: lista.map(lpVistaSesion), pacientes: pacientes.sort(), resumen: resumen,
@@ -352,7 +366,7 @@ function liqproVer(req, deps) {
       out.sesiones = verMontos ? lpBloqueSesiones(deps, u.dni, mes, cfg, true) : { mes: mes, resumen: LP_SESION_TIPOS.map(t => ({ tipo: t, n: sesAll.filter(s => s.tipo === t).length })), lista: [], pacientes: [], dias: [], tipos: LP_SESION_TIPOS, sin_confirmar: 0 };
     }
     if (admin) {
-      out.edicion = { tipo: p.tipo || 'profe', valor_hora: p.valor_hora == null ? '' : p.valor_hora, horas_mes: p.horas_mes == null ? '' : p.horas_mes, horas_semana: p.horas_semana == null ? '' : p.horas_semana,
+      out.edicion = { tarifas: p.tarifas || {}, tipo: p.tipo || 'profe', valor_hora: p.valor_hora == null ? '' : p.valor_hora, horas_mes: p.horas_mes == null ? '' : p.horas_mes, horas_semana: p.horas_semana == null ? '' : p.horas_semana,
         metas: p.metas || null, valores: p.valores || null, monotributo: p.monotributo == null ? '' : p.monotributo, home_horas: p.home_horas == null ? '' : p.home_horas,
         sabados: p.sabados == null ? '' : p.sabados, plantillas: p.plantillas == null ? '' : p.plantillas, extras: p.extras || [], socios_manual: p.socios_manual || null,
         comision_manual: p.comision_manual == null ? '' : p.comision_manual, nota: p.nota || '' };
@@ -400,9 +414,7 @@ function liqproConfigGuardar(req, deps) {
   if (!mes) falla('datos_invalidos');
   if (lpLiquidada(deps, mes)) falla('liquidada');
   const arr4 = (v, tope) => { if (v == null || (Array.isArray(v) && !v.length)) return null; if (!Array.isArray(v) || v.length !== 4) falla('datos_invalidos'); return v.map(x => liqNumero(x, 0, tope)); };
-  const tarifas = {};
-  const t = req.tarifas && typeof req.tarifas === 'object' ? req.tarifas : {};
-  Object.keys(t).forEach(k => { if (LP_SESION_TIPOS.indexOf(k) < 0) falla('datos_invalidos'); const n = liqNumero(t[k], 0, 10000000); if (n != null) tarifas[k] = n; });
+  const tarifas = lpTarifasDe(req.tarifas);
   lpEscribir(deps, 'config', mes, '*', '', {
     valores: arr4(req.valores, 10000000), factores: arr4(req.factores, 1000), tarifas: tarifas, valor_plantilla: liqNumero(req.valor_plantilla, 0, 10000000),
     sabado_mult: liqNumero(req.sabado_mult, 0, 24), nuevos_en_activos: !(req.nuevos_en_activos === false || req.nuevos_en_activos === 'false'),
@@ -423,7 +435,9 @@ function liqproPersonaGuardar(req, deps) {
   const valores = Array.isArray(d.valores) && d.valores.length ? d.valores : null;
   if (valores && (!metas || valores.length !== metas.length)) falla('datos_invalidos');
   const sm = d.socios_manual && typeof d.socios_manual === 'object' ? { activos: liqNumero(d.socios_manual.activos, 0, 1000), cobran: liqNumero(d.socios_manual.cobran, 0, 1000) } : null;
+  const propias = lpTarifasDe(d.tarifas);
   const datos = {
+    tarifas: Object.keys(propias).length ? propias : null,
     tipo: d.tipo === 'kine' ? 'kine' : 'profe', valor_hora: liqNumero(d.valor_hora, 0, 1000000), horas_mes: liqNumero(d.horas_mes, 0, 500), horas_semana: liqNumero(d.horas_semana, 0, 80),
     metas: metas ? metas.map(x => liqNumero(x, 0, 1000)) : null, valores: valores ? valores.map(x => liqNumero(x, 0, 10000000)) : null,
     monotributo: liqNumero(d.monotributo, 0, 100000000), home_horas: liqNumero(d.home_horas, 0, 500), sabados: liqNumero(d.sabados, 0, 10), plantillas: liqNumero(d.plantillas, 0, 1000),

@@ -216,6 +216,7 @@
           <div class="liq-fila"><label class="campo">Objetivos propios: metas de socios <span class="opcional">(separadas por coma, por ejemplo 10, 15, 20, 30; vacío = metas por horas)</span><input name="metas" value="${esc((e.metas || []).join(', '))}"></label>
             <label class="campo">Valor por socio de cada nivel <span class="opcional">(uno por meta; vacío = los del mes)</span><input name="valores" value="${esc((e.valores || []).join(', '))}"></label></div>
           <div class="liq-fila"><b>Socios a mano (solo si MOVE no los tiene, por ejemplo RF de kinesiología)</b>${campo('sm_activos', 'Activos', sm.activos)}${campo('sm_cobran', 'Cobran', sm.cobran)}${campo('comision_manual', 'Comisión a mano', e.comision_manual, 'pisa la regla')}</div>
+          <div class="liq-fila"><b>Tarifas propias de sesión (kinesiología)</b> <span class="opcional">vacío = la tarifa del mes</span>${D.sesion_tipos.map((t, i) => campo('pt' + i, t, (e.tarifas || {})[t])).join('')}</div>
           <div class="liq-fila"><b>Extras y descuentos</b></div>${slots.join('')}
           <label class="campo">Nota<input name="nota" maxlength="300" value="${esc(e.nota)}"></label>
           <div class="botones"><button class="boton verde">Guardar</button></div>
@@ -312,8 +313,10 @@
           const extras = [...form.querySelectorAll('[data-lp-extra]')].map(x => ({ c: x.querySelector('select').value, m: x.querySelector('input').value })).filter(x => x.c && x.m !== '').map(x => ({ c: x.c, m: Number(x.m) }));
           const metas = lista(v('metas')), valores = lista(v('valores'));
           const sm = v('sm_activos') !== '' || v('sm_cobran') !== '' ? { activos: v('sm_activos'), cobran: v('sm_cobran') } : null;
+          const propias = {};
+          L.D.sesion_tipos.forEach((t, i) => { if (v('pt' + i) !== '') propias[t] = Number(v('pt' + i)); });
           await cliente.llamar('liqpro_persona_guardar', { dni: form.dataset.dni, mes: form.dataset.mes, datos: {
-            tipo: v('tipo'), valor_hora: v('valor_hora'), horas_mes: v('horas_mes'), horas_semana: v('horas_semana'), monotributo: v('monotributo'), home_horas: v('home_horas'),
+            tarifas: propias, tipo: v('tipo'), valor_hora: v('valor_hora'), horas_mes: v('horas_mes'), horas_semana: v('horas_semana'), monotributo: v('monotributo'), home_horas: v('home_horas'),
             sabados: v('sabados'), plantillas: v('plantillas'), metas: metas.length ? metas : null, valores: valores.length ? valores : null, comision_manual: v('comision_manual'),
             socios_manual: sm, extras: extras, nota: v('nota') } });
           await refrescar(); aviso('Guardado.');

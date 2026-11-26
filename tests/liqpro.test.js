@@ -360,3 +360,21 @@ test('objetivos del profesional: activos contra metas y deserción contra los tr
   assert.equal(o.desercion.puntos, 10);
   assert.match(o.aclaracion, /no se pagan/);
 });
+
+test('cada kine puede tener sus tarifas: la propia manda y lo que no tiene sale del mes', () => {
+  const d = base();
+  const ta = entrar(d, ADMIN.dni);
+  assert.ok(pedir(d, { accion: 'liqpro_config_guardar', token: ta, mes: '2026-10', valores: [1, 2, 3, 4], tarifas: { X1: 100, X2: 200 } }).ok);
+  assert.equal(pedir(d, { accion: 'liqpro_persona_guardar', token: ta, dni: KI.dni, mes: '2026-10', datos: { tipo: 'kine', tarifas: { Raro: 1 } } }).error, 'datos_invalidos');
+  assert.ok(pedir(d, { accion: 'liqpro_persona_guardar', token: ta, dni: KI.dni, mes: '2026-10', datos: { tipo: 'kine', tarifas: { X1: 150 } } }).ok);
+  d.repo.hojas.liqpro_sesiones = [
+    { id: 's1', kine_dni: KI.dni, fecha: '2026-10-05', paciente: 'Paciente Uno', tipo: 'X1', estado: 'cargada', nota: '' },
+    { id: 's2', kine_dni: KI.dni, fecha: '2026-10-06', paciente: 'Paciente Uno', tipo: 'X2', estado: 'cargada', nota: '' },
+  ];
+  const k = ver(d, ADMIN.dni).data.personas.find(p => p.dni === KI.dni);
+  const por = t => k.liquidacion.sesiones.find(x => x.tipo === t);
+  assert.equal(por('X1').tarifa, 150, 'la propia');
+  assert.equal(por('X2').tarifa, 200, 'la del mes');
+  assert.equal(por('X1').monto + por('X2').monto, 350);
+  assert.deepEqual(k.edicion.tarifas, { X1: 150 });
+});
