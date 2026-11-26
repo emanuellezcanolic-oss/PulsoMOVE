@@ -378,7 +378,7 @@ function ventasDeSede(usuario, sede, deps) {
 
 // Cada recepcionista ve lo que vendió, sin plata: la plata queda para coordinación (Emanuel, 04 y 05/11/2026)
 function ventasDePersona(dni, mes, coordina, filas) {
-  return filas.filter(f => f.dni === dni && String(f.fecha).indexOf(mes) === 0 && String(f.fecha) >= INICIO_REAL).map(f => {
+  return filas.filter(f => f.dni === dni && String(f.fecha).indexOf(mes) === 0 && String(f.fecha) >= INICIO_VENTAS).map(f => {
     const o = Object.assign({}, f);
     if (!coordina) CAMPOS_PLATA_VENTAS.forEach(k => { delete o[k]; });
     return o;
@@ -411,7 +411,11 @@ function cargarVentasLargas(req, deps) {
   let nuevas = 0;
   req.filas.forEach(f => {
     const v = ya[texto(f.id)];
-    if (v) { if (!v.sugerido_dni) v.sugerido_dni = texto(f.sugerido_dni); return; }
+    if (v) {
+      if (!v.sugerido_dni) v.sugerido_dni = texto(f.sugerido_dni);
+      if (v.estado === 'cobro' && texto(f.tipo)) v.tipo = texto(f.tipo);   // si cambia la regla de "nuevo", se corrige lo que nadie tocó
+      return;
+    }
     nuevas++;
     filas.push({ id: texto(f.id), fecha: texto(f.fecha), sede: texto(f.sede), dni_cobro: texto(f.dni_cobro), nombre_cobro: texto(f.nombre_cobro), socio_id: texto(f.socio_id), socio_nombre: texto(f.socio_nombre), largo: texto(f.largo), plan: texto(f.plan), tipo: texto(f.tipo), sugerido_dni: texto(f.sugerido_dni), estado: 'cobro', pide_dni: '', responde_dni: '', hacia_dni: '', dni_vendio: '', ts_pedido: '', ts_decidido: '', decide_dni: '' });
   });
@@ -485,14 +489,14 @@ function ventaLargaDecidir(req, deps) {
 // Los planes de 3 meses se cuentan de las propias filas de ventas_largas (no del cálculo del día, que puede ir atrasado):
 // cada plan es de quien cobró, salvo que otra persona lo haya reclamado y se le haya asignado (Emanuel, 18/11/2026).
 function largosDeFilas(dni, mes, filas) {
-  const delMes = filas.filter(v => String(v.fecha).indexOf(mes) === 0 && String(v.fecha) >= INICIO_REAL && v.largo !== 'no');
+  const delMes = filas.filter(v => String(v.fecha).indexOf(mes) === 0 && String(v.fecha) >= INICIO_VENTAS && v.largo !== 'no');
   if (!delMes.length) return null;
   return delMes.filter(v => (v.estado === 'asignada' ? v.dni_vendio : v.dni_cobro) === dni).length;
 }
 
 function ajustarVentasLargas(valores, dni, mes, filas) {
   const propios = largosDeFilas(dni, mes, filas);
-  filas.filter(v => v.estado === 'asignada' && v.dni_vendio !== v.dni_cobro && String(v.fecha).indexOf(mes) === 0 && String(v.fecha) >= INICIO_REAL).forEach(v => {
+  filas.filter(v => v.estado === 'asignada' && v.dni_vendio !== v.dni_cobro && String(v.fecha).indexOf(mes) === 0 && String(v.fecha) >= INICIO_VENTAS).forEach(v => {
     const signo = dni === v.dni_vendio ? 1 : dni === v.dni_cobro ? -1 : 0;
     if (!signo) return;
     const clave = v.tipo === 'nuevo' ? 'nuevos' : 'renovaciones';

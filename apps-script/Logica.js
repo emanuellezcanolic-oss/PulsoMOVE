@@ -480,6 +480,7 @@ const TIPOS_NIVEL_3 = ['Contacto extra', 'Socio antiguo', 'Revisar profesor', 'C
 // La semana del 04 al 06/11/2026 fue de práctica: las estadísticas de recepción arrancan de cero el lunes 09/11 (Emanuel, 07/11/2026).
 // No se borra nada: lo anterior queda guardado pero no cuenta, y lo pendiente de la práctica empieza a contar desde el lunes.
 var INICIO_REAL = '2026-11-09';   // var: las pruebas lo mueven
+var INICIO_VENTAS = '2026-11-01';   // las ventas cuentan el mes entero (Emanuel, 26/11/2026)
 function pendienteDesde(t) {
   const p = String(t.pendiente_desde);
   return p < INICIO_REAL ? INICIO_REAL : p;

@@ -878,6 +878,19 @@ test('planes de 3 meses: cuentan para quien cobró aunque el cálculo del día v
   assert.equal(r.find(p => p.dni === TARDE.dni).valores.planes_largos, 3);
 });
 
+test('ventas: los planes de 3 meses cuentan desde el 1/11 y el tipo se corrige si nadie tocó la venta', () => {
+  const clave = 'clave-prueba';
+  const fila = tipo => ({ id: 'a', fecha: '2026-11-02', sede: 'bolson', dni_cobro: TARDE.dni, nombre_cobro: TARDE.nombre, socio_id: '5', socio_nombre: 'Socia', plan: 'plan de 3 meses', tipo, sugerido_dni: '' });
+  const d = equipo({ rendimiento: [{ mes: '2026-11', dni: TARDE.dni, datos: JSON.stringify({ planes_largos: 0 }), actualizado: '' }] });
+  conInicioReal(() => {
+    pedir(d, { accion: 'cargar_ventas_largas', clave, filas: [fila('renovacion')] });
+    pedir(d, { accion: 'cargar_ventas_largas', clave, filas: [fila('nuevo')] });
+    assert.equal(d.repo.leer('ventas_largas')[0].tipo, 'nuevo');
+    const r = pedir(d, { accion: 'rendimiento', token: entrar(d, '20000001', '0907'), sede: 'bolson', mes: '2026-11' }).data.personas;
+    assert.equal(r.find(p => p.dni === TARDE.dni).valores.planes_largos, 1);
+  });
+});
+
 test('fichaje: recepción en turno ve el recordatorio, se cierra solo y se puede marcar', () => {
   const u = { ...usuario(), hora_inicio: '00:00', hora_fin: '23:59' };
   const d = entorno([u, TARDE, COORD, COORD_PUELO, ADMIN, DE_PUELO]);
