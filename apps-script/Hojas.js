@@ -58,7 +58,7 @@ const COLUMNAS = {
   // Comisión por renovaciones de cada profe por mes (la calcula la PC; solo la ve coordinación con rol admin)
   profe_liq: ['mes', 'profe', 'profe_dni', 'sede', 'datos', 'cargada'],
   // Vacaciones y licencias de los profes, con quién los cubre
-  profe_ausencias: ['id', 'profe', 'profe_dni', 'desde', 'hasta', 'tipo', 'reemplazo', 'reemplazo_dni', 'nota', 'por_dni', 'en'],
+  profe_ausencias: ['id', 'profe', 'profe_dni', 'desde', 'hasta', 'tipo', 'reemplazo', 'reemplazo_dni', 'nota', 'por_dni', 'en', 'cubren'],
   // Estado del Gym: analíticas de MOVE por sede y por profe, mes a mes (JSON). Solo la última carga
   profe_estado: ['clave', 'tipo', 'nombre', 'sede', 'datos', 'cargada'],
   profe_coord: ['fecha', 'profe', 'profe_dni', 'sede', 'datos'],

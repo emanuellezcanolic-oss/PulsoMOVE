@@ -23,9 +23,8 @@ test('coordinación carga quién va cada sábado y el profe ve el aviso esa sema
   conTareas(d);
   const tk = entrar(d, '20555666');
   assert.deepEqual(pedir(d, { accion: 'profe_sabados_guardar', token: tk, sabados: [{ fecha: '2026-11-14', sede: 'bolson', profe: 'Belén Juárez' }, { fecha: '2026-11-21', sede: 'bolson', profe_dni: '20333444' }] }).data, { guardados: 2 });
-  // no es sábado / otra sede
+  // no es sábado
   assert.equal(pedir(d, { accion: 'profe_sabados_guardar', token: tk, sabados: [{ fecha: '2026-11-13', sede: 'bolson', profe: 'Belén Juárez' }] }).error, 'datos_invalidos');
-  assert.equal(pedir(d, { accion: 'profe_sabados_guardar', token: tk, sabados: [{ fecha: '2026-11-14', sede: 'puelo', profe: 'Belén Juárez' }] }).error, 'prohibido');
   // recepción y profe no pueden
   assert.equal(pedir(d, { accion: 'profe_sabados_guardar', token: entrar(d, '20111222'), sabados: [{ fecha: '2026-11-14', sede: 'bolson', profe: 'x' }] }).error, 'prohibido');
   const mio = pedir(d, { accion: 'profe_tareas', token: entrar(d, '20111222') }).data.mio.sabados;
@@ -49,7 +48,7 @@ test('el aviso aparece desde el lunes de esa semana', () => {
   assert.equal(s.proximos.length, 2);
 });
 
-test('horarios: coordinación edita los de su sede y el tablero usa los de la app', () => {
+test('horarios: coordinación edita los de todas las sedes y el tablero usa los de la app', () => {
   const d = entorno();
   conTareas(d);
   pedir(d, { accion: 'cargar_profe_coordinacion', clave: PROPS.CLAVE_CARGA, hoy: '2026-11-11', filas: [{ profe: 'Belen Juarez', profe_dni: '20111222', sede: 'bolson', datos: JSON.stringify({ socios: 5, horas_semana: 30, horario: 'viejo' }) }] });
@@ -58,13 +57,15 @@ test('horarios: coordinación edita los de su sede y el tablero usa los de la ap
   assert.equal(r.horas_semana, 36.5);
   assert.equal(r.horario, 'El Bolsón: lun a vie 07:00 a 13:30 · El Bolsón: sáb 08:00 a 12:00');
   assert.equal(pedir(d, { accion: 'profe_horarios_guardar', token: tk, profe: 'Belén Juárez', sede: 'bolson', filas: [{ dias: '0-4', desde: '13:00', hasta: '09:00' }] }).error, 'datos_invalidos');
-  assert.equal(pedir(d, { accion: 'profe_horarios_guardar', token: tk, profe: 'Javi', sede: 'puelo', filas: [] }).error, 'prohibido');
+  assert.equal(pedir(d, { accion: 'profe_horarios_guardar', token: tk, profe: 'Javi', sede: 'puelo', filas: [] }).ok, true);
+  assert.equal(pedir(d, { accion: 'profe_horarios_guardar', token: entrar(d, '20111222'), profe: 'Javi', sede: 'puelo', filas: [] }).error, 'prohibido');
   // el admin puede cualquier sede
   assert.equal(pedir(d, { accion: 'profe_horarios_guardar', token: entrar(d, '20777888'), profe: 'Javier Larramendy', sede: 'puelo', filas: [{ dias: '0-4', desde: '08:00', hasta: '15:00' }] }).data.horas_semana, 35);
   const out = pedir(d, { accion: 'profe_tareas', token: tk }).data;
   const c = out.equipo.find(p => p.profe === 'Belen Juarez').coord;
   assert.equal(c.horas_semana, 36.5);
-  assert.equal(out.agenda.editables.join(), 'bolson');
+  assert.equal(out.agenda.editables.slice().sort().join(), 'bariloche,bolson,puelo');
+  assert.equal(out.agenda.sede, '');
   assert.equal(out.agenda.horarios.length, 3);
   assert.ok(out.agenda.profes.some(p => p.dni === '20333444'));
   // la PC ya no los pisa
@@ -158,5 +159,6 @@ test('coordinación tilda quiénes trabajan los sábados', () => {
   assert.deepEqual(sab.slice(1, 5).map(s => s.profe.split(' ')[0]).sort(), ['Belén', 'Belén', 'Enzo', 'Enzo']);
   A = pedir(d, { accion: 'profe_tareas', token: tk }).data.agenda;
   assert.equal(A.rotacion_elegida.bolson, true);
-  assert.equal(pedir(d, { accion: 'profe_rotacion_guardar', token: tk, sede: 'puelo', profes: ['X'] }).error, 'prohibido');
+  assert.equal(pedir(d, { accion: 'profe_rotacion_guardar', token: tk, sede: 'puelo', profes: ['X'] }).ok, true);       // todas las sedes
+  assert.equal(pedir(d, { accion: 'profe_rotacion_guardar', token: entrar(d, '20111222'), sede: 'puelo', profes: ['X'] }).error, 'prohibido');
 });

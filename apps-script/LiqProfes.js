@@ -171,7 +171,7 @@ function lpSabadosAuto(deps, dni, mes) {
 }
 
 // ---------- El cálculo (puro) ----------
-// entrada: { p (persona del mes), cfg, mov (o null), sesiones (lista del mes), sabados_auto }
+// entrada: { p (persona del mes), cfg, mov (o null), sesiones (lista del mes), sabados_auto, reemplazos (de reemplazosDe) }
 // Cada línea trae `como`: la cuenta hecha, para que el profe entienda y pueda reclamar.
 function lpCalcular(e) {
   const p = e.p, cfg = e.cfg, mov = e.mov;
@@ -187,6 +187,12 @@ function lpCalcular(e) {
   linea('horas', 'Horas del mes', 'horas', horas * vh, `${liqRedondeo(horas, 2)} h × ${lpPlata(vh)}`, { cant: horas });
   if (home) linea('home', 'Horas extra HOME', 'horas', home * vh, `${liqRedondeo(home, 2)} h × ${lpPlata(vh)}`, { cant: home });
   if (sab) linea('sabados', 'Sábados trabajados', 'horas', sab * cfg.sabado_mult * vh, `${sab} ${sab === 1 ? 'sábado' : 'sábados'} × ${cfg.sabado_mult} h × ${lpPlata(vh)}${p.sabados != null && p.sabados !== '' ? '' : ' (según la rotación de sábados)'}`, { cant: sab });
+  // Reemplazos (vacaciones y licencias de otros): salen solos de lo que cargó coordinación, a su valor hora
+  (e.reemplazos || []).forEach((r, i) => {
+    const dias = r.dias.map(f => f.slice(8, 10) + '/' + f.slice(5, 7));
+    const cuales = dias.length <= 6 ? dias.join(', ') : 'del ' + dias[0] + ' al ' + dias[dias.length - 1];
+    linea('reemplazo' + i, 'Reemplazaste a ' + r.profe, 'horas', r.horas * vh, `${String(r.horas).replace('.', ',')} h en ${dias.length} ${dias.length === 1 ? 'día' : 'días'} (${cuales}) × ${lpPlata(vh)}`, { cant: r.horas });
+  });
   const base = lineas.reduce((a, l) => a + l.monto, 0);
 
   // Comisión por renovaciones
@@ -350,7 +356,7 @@ function liqproVer(req, deps) {
     const p = lpPersonaDelMes(filas, u.dni, mes);
     const mov = lpMovConMarcas(lpMovDe(deps, u, mes), filas, u.dni, mes);
     const sesAll = lpSesionesDe(deps, u.dni, mes);
-    const calc = lpCalcular({ p: p, cfg: cfg, mov: mov, sesiones: sesAll, sabados_auto: lpSabadosAuto(deps, u.dni, mes) });
+    const calc = lpCalcular({ p: p, cfg: cfg, mov: mov, sesiones: sesAll, sabados_auto: lpSabadosAuto(deps, u.dni, mes), reemplazos: reemplazosDe(deps, u.dni, mes) });
     const cierre = filas.find(f => f.tipo === 'cierre' && f.dni === u.dni && f.mes === mes);
     const congelada = estado === 'liquidada' && cierre ? liqJson(cierre.datos) : null;
     const liq = congelada && congelada.liq ? congelada.liq : calc;
@@ -472,7 +478,7 @@ function liqproLiquidar(req, deps) {
   const ts = new Date(deps.ahora()).toISOString();
   usuarios.filter(u => esVerdad(u.activo) && esProfe(u)).forEach(u => {
     const p = lpPersonaDelMes(filas, u.dni, mes);
-    const liq = lpCalcular({ p: p, cfg: cfg, mov: lpMovConMarcas(lpMovDe(deps, u, mes), filas, u.dni, mes), sesiones: lpSesionesDe(deps, u.dni, mes), sabados_auto: lpSabadosAuto(deps, u.dni, mes) });
+    const liq = lpCalcular({ p: p, cfg: cfg, mov: lpMovConMarcas(lpMovDe(deps, u, mes), filas, u.dni, mes), sesiones: lpSesionesDe(deps, u.dni, mes), sabados_auto: lpSabadosAuto(deps, u.dni, mes), reemplazos: reemplazosDe(deps, u.dni, mes) });
     nuevas.push({ mes: mes, dni: u.dni, tipo: 'cierre', id: '', datos: JSON.stringify({ liq: liq, ts: ts }), actualizado: ts });
   });
   nuevas.push({ mes: mes, dni: '*', tipo: 'estado', id: '', datos: JSON.stringify({ liquidada: true, ts: ts, por: usuario.dni }), actualizado: ts });

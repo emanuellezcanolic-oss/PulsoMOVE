@@ -1308,6 +1308,7 @@
       <h1 class="titulo">${esc(tituloDia(E.planes.hoy))} <span>·</span> tus planes</h1>
       ${bloqueAvisosDueno(M.avisos_dueno)}
       ${bloqueAvisosCondicion(M.avisos_condicion, 'planes')}
+      ${avisoCubrir(M)}
       ${avisoSabado(M)}
       ${avisoAusencia(M)}
       ${avisoTareasMes(M)}
@@ -1500,25 +1501,65 @@
 
   // ---------- Vacaciones y reemplazos (Emanuel, 13/11/2026) ----------
   const TIPO_AUS = { vacaciones: '🏖️ Vacaciones', licencia: '🩹 Licencia', otro: '📌 Ausencia' };
-  function bloqueAusencias(A, editables) {
-    const aus = A.ausencias || [];
-    const profes = A.profes.filter(p => editables.indexOf(p.sede) >= 0);
+  const nombreCorto = n => String(n || '').split(' ')[0];
+  const franjaTxt = c => (c.hora_desde ? 'de ' + c.hora_desde + ' a ' + c.hora_hasta : 'todo su horario');
+  const diasTxt = c => (c.desde === c.hasta ? 'el ' + ddmm(c.desde) : 'del ' + ddmm(c.desde) + ' al ' + ddmm(c.hasta));
+
+  // Una fila "quién lo cubre": profe, días (vacío = toda la ausencia) y franja horaria (vacía = todo el horario)
+  function filaCubre(A) {
+    return `<div class="fila-cubre" data-cubre>
+      <label>Quién lo cubre<select data-c="profe"><option value="">— elegir —</option>${A.profes.map(p => `<option value="${esc(p.dni)}">${esc(p.nombre)} · ${esc(SEDES[p.sede] || p.sede)}</option>`).join('')}</select></label>
+      <label>Del<input type="date" data-c="desde"></label>
+      <label>Al<input type="date" data-c="hasta"></label>
+      <label>Desde las<input type="time" data-c="hora_desde"></label>
+      <label>Hasta las<input type="time" data-c="hora_hasta"></label>
+      <button type="button" class="chip" data-accion="cubre-quitar-fila" title="Quitar esta fila">✕</button></div>`;
+  }
+
+  // Lee las filas "quién lo cubre" de un formulario; null si alguna está a medias
+  function leerCubren(caja) {
+    const out = [];
+    for (const f of caja.querySelectorAll('[data-cubre]')) {
+      const v = k => f.querySelector('[data-c="' + k + '"]').value;
+      const c = { profe_dni: v('profe'), desde: v('desde'), hasta: v('hasta'), hora_desde: v('hora_desde'), hora_hasta: v('hora_hasta') };
+      if (!c.profe_dni) { if (c.desde || c.hasta || c.hora_desde || c.hora_hasta) { aviso('Elegí quién cubre en cada fila.', true); return null; } continue; }
+      if (!c.hora_desde !== !c.hora_hasta || (c.hora_desde && c.hora_desde >= c.hora_hasta)) { aviso('La franja horaria necesita las dos horas, y "desde" antes que "hasta". Dejá las dos vacías si cubre todo el horario.', true); return null; }
+      out.push(c);
+    }
+    return out;
+  }
+
+  // Dos coberturas el mismo día y a la misma hora: se les paga a las dos, conviene revisarlo
+  function sePisan(cubren) {
+    return cubren.some((x, i) => cubren.slice(i + 1).some(y => x.desde <= y.hasta && y.desde <= x.hasta && (!x.hora_desde || !y.hora_desde || (x.hora_desde < y.hora_hasta && y.hora_desde < x.hora_hasta))));
+  }
+  const horasTxt = c => (c.horas ? ' · <b>' + String(c.horas).replace('.', ',') + ' h</b>' : ' · <span class="amarillo">0 h: cargale la franja horaria</span>');
+
+  function bloqueAusencias(A, sedes) {
     const hoy = E.planes.hoy;
-    const fila = a => `<li class="${a.hasta < hoy ? 'pasada' : ''}"><b>${esc(a.profe)}</b> · ${esc(TIPO_AUS[a.tipo] || a.tipo)} del ${esc(ddmm(a.desde))} al ${esc(ddmm(a.hasta))}
-      · ${a.reemplazo ? `lo cubre <b>${esc(a.reemplazo)}</b>` : '<span class="amarillo">sin reemplazo: no se le agenda nada esos días</span>'}${a.nota ? ` <small>(${esc(a.nota)})</small>` : ''}
-      ${profes.some(p => p.dni === a.profe_dni) ? `<button class="enlace chico" data-accion="aus-borrar" data-id="${esc(a.id)}">quitar</button>` : ''}</li>`;
-    const opciones = profes.map(p => `<option value="${esc(p.dni)}">${esc(p.nombre)}</option>`).join('');
+    const profes = A.profes.filter(p => sedes.indexOf(p.sede) >= 0);
+    const deEstasSedes = a => { const p = A.profes.find(x => x.dni === a.profe_dni); return !p || sedes.indexOf(p.sede) >= 0; };
+    const aus = (A.ausencias || []).filter(deEstasSedes);
+    const edita = A.editables.length > 0;
+    const fila = a => `<li class="${a.hasta < hoy ? 'pasada' : ''}" data-aus-id="${esc(a.id)}"><b>${esc(a.profe)}</b> · ${esc(TIPO_AUS[a.tipo] || a.tipo)} del ${esc(ddmm(a.desde))} al ${esc(ddmm(a.hasta))}${a.nota ? ` <small>(${esc(a.nota)})</small>` : ''}
+      ${edita ? `<button class="enlace chico" data-accion="aus-borrar" data-id="${esc(a.id)}">quitar</button>` : ''}
+      ${a.cubren.length ? `<ul class="lista-cubren">${a.cubren.map((c, i) => `<li>🔁 <b>${esc(c.profe)}</b> ${esc(diasTxt(c))}, ${esc(franjaTxt(c))}${horasTxt(c)} ${edita && a.hasta >= hoy ? `<button class="enlace chico" data-accion="cubre-sacar" data-id="${esc(a.id)}" data-i="${i}">sacar</button>` : ''}</li>`).join('')}</ul>`
+        : '<div class="amarillo">Sin reemplazo: no se le agenda nada esos días.</div>'}
+      ${sePisan(a.cubren) ? '<div class="amarillo">⚠️ Hay dos coberturas el mismo día y a la misma hora: se les paga a las dos. Si se repartieron el día, cargá la franja de cada una.</div>' : ''}
+      ${edita && a.hasta >= hoy ? `<details class="agregar-cubre"><summary>+ Agregar quién lo cubre</summary>${filaCubre(A)}<button type="button" class="boton claro" data-accion="cubre-agregar" data-id="${esc(a.id)}">Agregar</button></details>` : ''}</li>`;
     return `<section class="grupo"><h2>🏖️ Vacaciones y reemplazos</h2>
-      <p class="intro-grupo">Con reemplazo, los planes de esos días le aparecen al reemplazo como "Cubrís a…" y lo que hace queda a su nombre (se cuenta para liquidarle ese trabajo). Sin reemplazo, no se le agenda nada esos días: se le adelanta antes de irse y se le reparte a la vuelta. La comisión por renovaciones se le liquida igual al profe: son sus socios. Esos sábados tampoco se le asignan.</p>
+      <p class="intro-grupo">Podés poner uno o varios profes para cubrir a uno, cada uno con sus días y su franja horaria. Las horas de cada reemplazo (la franja cargada o, si la dejás vacía, el horario de quien falta, de lunes a viernes) se le suman solas a su liquidación a medida que pasan los días. Al que cubre le avisa la app desde 5 días antes, y esos días los planes del ausente le aparecen como "Cubrís a…": lo que marca queda a su nombre (se cuenta para liquidarle ese trabajo). Los días sin nadie que cubra no se agenda nada: se le adelanta antes de irse y se le reparte a la vuelta. La comisión por renovaciones se le liquida igual al profe: son sus socios. Esos sábados tampoco se le asignan.</p>
       ${aus.length ? `<ul class="lista-aus">${aus.map(fila).join('')}</ul>` : '<p class="aclara">No hay vacaciones cargadas.</p>'}
-      ${profes.length ? `<div class="form-aus">
-        <label>Profe<select data-aus="profe">${opciones}</select></label>
+      ${edita && profes.length ? `<h3 class="sub-coord">Cargar vacaciones o licencia</h3><div class="form-aus">
+        <label>Profe que falta<select data-aus="profe">${profes.map(p => `<option value="${esc(p.dni)}">${esc(p.nombre)} · ${esc(SEDES[p.sede] || p.sede)}</option>`).join('')}</select></label>
         <label>Desde<input type="date" data-aus="desde" value="${esc(hoy)}"></label>
         <label>Hasta<input type="date" data-aus="hasta" value="${esc(hoy)}"></label>
         <label>Tipo<select data-aus="tipo"><option value="vacaciones">Vacaciones</option><option value="licencia">Licencia</option><option value="otro">Otro</option></select></label>
-        <label>Lo cubre<select data-aus="reemplazo"><option value="">Nadie (se le reparte antes y después)</option>${A.profes.map(p => `<option value="${esc(p.dni)}">${esc(p.nombre)}</option>`).join('')}</select></label>
         <label class="ancho">Nota<input type="text" data-aus="nota" placeholder="Opcional"></label>
-        <button class="boton verde" data-accion="aus-guardar">Guardar</button></div>` : ''}
+        <div class="cubren-nuevos">${filaCubre(A)}</div>
+        <p class="aclara">Si dejás los días vacíos, cubre toda la ausencia; si dejás las horas vacías, cubre todo el horario.</p>
+        <div class="fila-accion"><button type="button" class="boton claro" data-accion="cubre-otro">+ Otro profe</button><button class="boton verde" data-accion="aus-guardar">Guardar</button></div></div>
+        <template id="tpl-cubre">${filaCubre(A)}</template>` : ''}
     </section>`;
   }
 
@@ -1528,15 +1569,24 @@
     const hoy = E.planes.hoy;
     const ya = a.desde <= hoy;
     return `<div class="aviso-mes">🏖️ <b>${ya ? 'Estás de ' + esc((TIPO_AUS[a.tipo] || '').replace(/^\S+ /, '').toLowerCase()) + ' hasta el ' + esc(ddmm(a.hasta)) : 'Del ' + esc(ddmm(a.desde)) + ' al ' + esc(ddmm(a.hasta)) + ' tenés ' + esc((TIPO_AUS[a.tipo] || '').replace(/^\S+ /, '').toLowerCase())}.</b>
-      ${a.reemplazo ? `Te cubre ${esc(a.reemplazo)}: tus planes de esos días los ve y los hace él/ella.` : (ya ? 'No se te agenda nada: a la vuelta se te reparte lo pendiente.' : 'Antes de irte se te adelantan los planes de esos días.')} Tu comisión por renovaciones se liquida igual.</div>`;
+      ${a.cubren.length ? `Te cubre ${a.cubren.map(c => `${esc(c.profe)} (${esc(diasTxt(c))}, ${esc(franjaTxt(c))})`).join(' y ')}: esos días ven y hacen tus planes.` : (ya ? 'No se te agenda nada: a la vuelta se te reparte lo pendiente.' : 'Antes de irte se te adelantan los planes de esos días.')} Tu comisión por renovaciones se liquida igual.</div>`;
   }
+
+  // Aviso grande al que le toca cubrir: desde 5 días antes y mientras dura
+  function avisoCubrir(M) {
+    const hoy = E.planes.hoy;
+    return (M.avisos_cubrir || []).map(c => `<div class="aviso-sabado" role="status"><span class="aviso-sabado-ico">🔁</span><div><b>${c.desde <= hoy ? 'Hoy cubrís a ' + esc(c.profe) : 'Recordá: tenés que cubrir a ' + esc(c.profe)}</b>
+      <span>${c.desde === c.hasta ? 'El ' + esc(diaCompleto(c.desde)) : 'Del ' + esc(diaCompleto(c.desde)) + ' al ' + esc(diaCompleto(c.hasta))}, ${c.hora_desde ? 'de ' + esc(c.hora_desde) + ' a ' + esc(c.hora_hasta) : 'en todo su horario'} · ${esc(SEDES[c.sede] || c.sede)}.</span></div></div>`).join('');
+  }
+
+  const diaCompleto = f => { const d = new Date(f + 'T12:00:00Z'); return ['domingo', 'lunes', 'martes', 'miércoles', 'jueves', 'viernes', 'sábado'][d.getUTCDay()] + ' ' + d.getUTCDate() + ' de ' + MESES[d.getUTCMonth()]; };
 
   function bloqueCobertura(M) {
     const C = M.cubriendo || [];
     if (!C.length) return '';
     let i = 500;
     return C.map(c => `<section class="grupo cubriendo"><h2>🔁 Cubrís a ${esc(c.profe)} <span class="cuenta">${c.hoy.length}</span></h2>
-      <p class="intro-grupo">Está de ${esc((TIPO_AUS[c.tipo] || '').replace(/^\S+ /, '').toLowerCase())} hasta el ${esc(ddmm(c.hasta))}. Lo que marques queda a tu nombre y se cuenta para tu liquidación.</p>
+      <p class="intro-grupo">Está de ${esc((TIPO_AUS[c.tipo] || '').replace(/^\S+ /, '').toLowerCase())}. Lo cubrís hasta el ${esc(ddmm(c.hasta))}${c.franja ? ', de ' + esc(c.franja) : ''}. Lo que marques queda a tu nombre y se cuenta para tu liquidación.</p>
       ${c.hoy.length ? c.hoy.map(t => tarjetaPlan(t, i++, true)).join('') : '<div class="vacio">Hoy no hay planes para renovar.</div>'}</section>`).join('');
   }
 
@@ -1544,7 +1594,8 @@
     const A = E.planes.agenda;
     if (!A) return '<div class="vacio">No tenés acceso a los horarios del equipo.</div>';
     const hoy = E.planes.hoy;
-    const sedes = (A.sede ? [A.sede] : Object.keys(SEDES)).filter(k => A.editables.indexOf(k) >= 0 || tiene('admin'));
+    const sedes = Object.keys(SEDES).filter(k => (!E.agSede || E.agSede === k) && (A.editables.indexOf(k) >= 0 || tiene('admin')));
+    const filtro = `<div class="filtros">${[['', 'Todas las sedes']].concat(Object.keys(SEDES).map(k => [k, SEDES[k]])).map(([k, n]) => `<button class="chip" data-accion="ag-sede" data-s="${k}" aria-pressed="${(E.agSede || '') === k}">${esc(n)}</button>`).join('')}</div>`;
     const fechas = sabadosDesde(hoy, 2, 16);
     const desdeHoy = fechas[2];
     const celda = (f, sede) => {
@@ -1574,7 +1625,8 @@
     A.horarios.forEach(h => { if ((sedes.indexOf(h.sede) >= 0) && !nombres.some(n => mismoN(n, h.profe))) nombres.push(h.profe); });
     A.profes.forEach(p => { if (sedes.indexOf(p.sede) >= 0 && !nombres.some(n => mismoN(n, p.nombre))) nombres.push(p.nombre); });
     nombres.sort((a, b) => a.localeCompare(b));
-    const editables = sedes.filter(k => A.editables.indexOf(k) >= 0);
+    const primera = E.agSede || cliente.sesion().sede;
+    const editables = A.editables.slice().sort((a, b) => (b === primera) - (a === primera));
     const bloqueProfe = n => {
       const suyos = A.horarios.filter(h => mismoN(h.profe, n));
       const horas = Math.round(suyos.reduce((t, h) => { const m = x => Number(x.slice(0, 2)) * 60 + Number(x.slice(3, 5)); const d = String(h.dias).indexOf('-') > 0 ? Number(h.dias.split('-')[1]) - Number(h.dias.split('-')[0]) + 1 : String(h.dias).split(',').length; return t + d * (m(h.hasta) - m(h.desde)); }, 0) / 6) / 10;
@@ -1584,7 +1636,8 @@
     };
     return `${propia ? '' : '<button class="chip" data-accion="agenda-cerrar">← Volver a los profes</button>'}
       <h1 class="titulo">Horarios y sábados <span>·</span> profes y kinesiólogos</h1>
-      <p class="bajada">Lo carga coordinación. A cada profe le aparece un aviso grande en "Mis planes" desde el lunes de la semana en que le toca el sábado.</p>
+      <p class="bajada">Lo carga coordinación, en todas las sedes. A cada profe le aparece un aviso grande en "Mis planes" desde el lunes de la semana en que le toca el sábado.</p>
+      ${filtro}
       <section class="grupo"><h2>🗓️ Quién trabaja cada sábado</h2>
         <p class="intro-grupo">Se arma solo: en cada sede rotan los profes de turno (mañana, tarde y noche; en Lago Puelo, los dos), y cada sábado le toca a quien hace más tiempo que no va. Se completa todas las mañanas para los próximos 4 meses. Podés cambiar cualquier sábado: se guarda al elegir. Si un sábado es feriado, te preguntamos si se trabaja.</p>
         ${preguntaFeriado(A)}
@@ -1596,7 +1649,7 @@
       <section class="grupo"><h2>🕒 Horario de cada uno</h2>
         <p class="intro-grupo">Marcá los días y el horario en que cada uno está en la sede. Se usa para proponer las reevaluaciones y para las horas por semana del tablero.</p>
         ${nombres.map(bloqueProfe).join('') || '<div class="vacio">No hay profes cargados.</div>'}</section>
-      ${bloqueAusencias(A, editables)}
+      ${bloqueAusencias(A, sedes)}
       <template id="tpl-franja">${filaFranja(null, editables.length ? editables : ['bolson'])}</template>`;
   }
 
@@ -1907,7 +1960,7 @@
       ${tablaEquipo(eq)}
       ${bloqueProfes()}
       ${eq.length ? `<div class="personas">${eq.map(p => `<div class="persona"><b>${esc(p.profe)}</b><span class="turno">${p.con_usuario ? 'Con usuario' : 'Todavía sin usuario en PulsoMOVE'}</span>${cifrasPlanes(p.resumen)}${p.auditoria && p.auditoria.puntaje != null ? `<span class="uso-hoy aud-linea ${(NIVEL_AUD[p.auditoria.nivel] || [''])[0]}">🧾 Auditoría: <b>${p.auditoria.puntaje}</b> ${esc((NIVEL_AUD[p.auditoria.nivel] || ['', ''])[1])}${p.auditoria.cambio_semana ? ` (${p.auditoria.cambio_semana > 0 ? '▲' : '▼'} ${Math.abs(p.auditoria.cambio_semana)})` : ''} · ${p.auditoria.cuantos.pendientes} para corregir${p.auditoria.cuantos.no_corregidos ? ` · ${p.auditoria.cuantos.no_corregidos} dijo que corrigió y sigue` : ''}${p.auditoria.cuantos.dejadas ? ` · ${p.auditoria.cuantos.dejadas} dejó así` : ''}</span>` : ''}${p.dias ? `<span class="uso-hoy">Días completos este mes: ${p.dias.completos} (en menos de 1 hora: ${p.dias.en_una_hora})${p.revisiones && p.revisiones.resumen.minutos_mediana != null ? ` · arma un plan en ~${p.revisiones.resumen.minutos_mediana} min` : ''}${p.resumen.en_papel ? ` · en papel: ${p.resumen.en_papel}` : ''}</span>` : ''}${p.revisiones ? `<span class="uso-hoy">Planes renovados (30 días): ${p.revisiones.resumen.revisados} · en 30-80%: ${p.revisiones.resumen.en_rango} · casi todo cambiado: ${p.revisiones.resumen.casi_todo}${p.revisiones.resumen.con_saltos ? ` · con saltos: ${p.revisiones.resumen.con_saltos} (${p.revisiones.resumen.saltos_sin_responder} sin responder, ${p.revisiones.resumen.corregir} a corregir)` : ''}</span>` : ''}
-${p.tareas_mes ? `<span class="uso-hoy">📋 Tareas del mes: ${p.tareas_mes.hechas}/${p.tareas_mes.total}</span>` : ''}${p.ausente ? `<span class="uso-hoy amarillo">🏖️ De ${esc(p.ausente.tipo)} hasta el ${esc(ddmm(p.ausente.hasta))}${p.ausente.reemplazo ? ' · lo cubre ' + esc(p.ausente.reemplazo.split(' ')[0]) : ' · sin reemplazo'}</span>` : ''}${p.cubrio_mes ? `<span class="uso-hoy">🔁 Este mes hizo ${p.cubrio_mes} ${p.cubrio_mes === 1 ? 'plan' : 'planes'} cubriendo a otro profe</span>` : ''}
+${p.tareas_mes ? `<span class="uso-hoy">📋 Tareas del mes: ${p.tareas_mes.hechas}/${p.tareas_mes.total}</span>` : ''}${p.ausente ? `<span class="uso-hoy amarillo">🏖️ De ${esc(p.ausente.tipo)} hasta el ${esc(ddmm(p.ausente.hasta))}${p.ausente.cubren.length ? ' · lo cubre ' + esc([...new Set(p.ausente.cubren.map(c => nombreCorto(c.profe)))].join(' y ')) : ' · sin reemplazo'}</span>` : ''}${p.cubrio_mes ? `<span class="uso-hoy">🔁 Este mes hizo ${p.cubrio_mes} ${p.cubrio_mes === 1 ? 'plan' : 'planes'} cubriendo a otro profe</span>` : ''}
         <button class="chip ver-lista" data-accion="profe-ver" data-p="${esc(p.profe)}">Ver lo de hoy</button></div>`).join('')}</div>`
         : '<div class="vacio">Todavía no hay planes cargados para esta sede.</div>'}`;
   }
@@ -2541,7 +2594,10 @@ ${p.tareas_mes ? `<span class="uso-hoy">📋 Tareas del mes: ${p.tareas_mes.hech
     return ev.clientX < r.left || ev.clientX > r.right || ev.clientY < r.top || ev.clientY > r.bottom;
   }
 
-  // Cierre de turno: 15 minutos antes de terminar, unas preguntas según lo que pasó en el día
+  // Cierre de turno: 15 minutos antes de terminar, unas preguntas según lo que pasó en el día.
+  // No ser demasiado exigentes (Emanuel, 26/11/2026): a quien cumplió la meta se lo felicita y no se le pregunta qué faltó;
+  // y "¿por qué quedaron?" solo va si no llegó a la meta y además le quedaron varias (no por una o dos).
+  const PENDIENTES_PARA_PREGUNTAR = 5;
   function dialogoCierre(prueba) {
     if (document.querySelector('dialog')) return;
     const D = E.dia;
@@ -2554,14 +2610,16 @@ ${p.tareas_mes ? `<span class="uso-hoy">📋 Tareas del mes: ${p.tareas_mes.hech
     // Solo una pregunta de lo que faltó, la más importante: que el cierre siga siendo corto
     let preguntas = [];
     if (!D.hoy.consultas) preguntas.push(['consultas', 'Hoy no registraste consultas. ¿No vino nadie a averiguar por los servicios?']);
-    if (!D.hoy.mensajes) preguntas.push(['mensajes', 'Hoy no registraste mensajes. ¿Qué pasó?']);
-    // Cumplir la meta y tener pendientes no se contradice, pero leído así confunde: la pregunta lo dice (Emanuel, 09/11/2026)
     const cumplioMeta = D.hoy.meta && D.hoy.hechas >= D.hoy.meta;
-    if (D.hoy.pendientes) preguntas.push(['pendientes', cumplioMeta
-      ? `Cumpliste tu meta de hoy: ${D.hoy.hechas} de ${D.hoy.meta}. ¡Bien ahí! La meta es lo mínimo del día, no toda la lista, así que igual ${D.hoy.pendientes === 1 ? 'quedó 1 tarea sin hacer' : `quedaron ${D.hoy.pendientes} tareas sin hacer`}. ¿Qué pasó con esas?`
-      : `Te ${D.hoy.pendientes === 1 ? 'quedó 1 tarea pendiente' : `quedaron ${D.hoy.pendientes} tareas pendientes`}. ¿Por qué motivo?`]);
+    const exigir = !cumplioMeta && D.hoy.pendientes >= PENDIENTES_PARA_PREGUNTAR;
+    if (exigir && !D.hoy.mensajes) preguntas.push(['mensajes', 'Hoy no registraste mensajes. ¿Qué pasó?']);
+    if (exigir) preguntas.push(['pendientes', `Te quedaron ${D.hoy.pendientes} tareas pendientes. ¿Qué pasó hoy?`]);
     preguntas = preguntas.slice(-1);
+    const felicitacion = cumplioMeta ? `🎉 ¡Felicitaciones! Cumpliste tu meta de hoy: ${D.hoy.hechas} de ${D.hoy.meta}.`
+      : !D.hoy.pendientes ? '🎉 ¡Felicitaciones! Dejaste todo al día.'
+      : D.hoy.pendientes < PENDIENTES_PARA_PREGUNTAR && D.hoy.hechas ? `👏 ¡Muy bien! Hiciste ${D.hoy.hechas} ${D.hoy.hechas === 1 ? 'tarea' : 'tareas'} y te quedó muy poco.` : '';
     dialogo(`<h3>Cierre de turno</h3>
+      ${felicitacion ? `<div class="aviso-mes">${esc(felicitacion)}</div>` : ''}
       <form class="marca-form" style="border:0;padding:0">
         <div class="campo-titulo">Antes de irte, tildá lo que ya hiciste</div>
         ${checklistHtml(items)}
@@ -3129,7 +3187,7 @@ ${p.tareas_mes ? `<span class="uso-hoy">📋 Tareas del mes: ${p.tareas_mes.hech
       <ul>
         <li>Hacé el checklist de apertura al llegar y el de cierre antes de irte.</li>
         <li>Cumplí todas las tareas del día: es lo que más ayuda a los socios y a MOVE.</li>
-        <li>Si alguna no pudiste hacerla, contá por qué en el cierre del turno.</li>
+        <li>Si no llegaste a la meta y te quedaron varias, en el cierre te vamos a preguntar qué pasó.</li>
       </ul>
       <label class="visto"><input type="checkbox" id="cartel-visto"> Lo leí y lo entendí</label>
       <div class="botones"><button class="boton" id="cartel-ok" disabled>Listo</button></div>`, d => {
@@ -3320,6 +3378,7 @@ ${p.tareas_mes ? `<span class="uso-hoy">📋 Tareas del mes: ${p.tareas_mes.hech
 
   // Velocidad (13/11/2026): al volver a una pestaña se muestra al instante lo último que se cargó y se actualiza por detrás.
   const MEMORIA = {};
+  const recargarEquipo = async () => { E.planes = await cliente.llamar('profe_tareas', E.sedeElegida && tiene('admin') ? { sede: E.sedeElegida } : {}); render(); };
   const clavePlanes = v => (['profes', 'phor', 'pliq'].indexOf(v) >= 0 ? 'equipo|' + (tiene('admin') ? E.sedeElegida : '') : 'mio');
   const claveRend = v => v + '|' + (E.rendMes || '') + '|' + (tiene('admin') ? E.sedeElegida : '');
   function recordar(clave, dato) { if (dato) MEMORIA[clave] = dato; }
@@ -4286,16 +4345,40 @@ ${p.tareas_mes ? `<span class="uso-hoy">📋 Tareas del mes: ${p.tareas_mes.hech
       } catch (e) { el.disabled = false; aviso(PulsoApi.mensaje(e.codigo || e.message), true); }
     }
     else if (a === 'tmes-nota') { await marcarTareaMes(el.dataset.id, null); }
+    else if (a === 'ag-sede') { E.agSede = el.dataset.s; render(); }
+    else if (a === 'cubre-otro') { el.closest('.form-aus').querySelector('.cubren-nuevos').insertAdjacentHTML('beforeend', app.querySelector('#tpl-cubre').innerHTML); }
+    else if (a === 'cubre-quitar-fila') { const f = el.closest('[data-cubre]'); if (f.parentElement.querySelectorAll('[data-cubre]').length > 1) f.remove(); else f.querySelectorAll('[data-c]').forEach(x => { x.value = ''; }); }
     else if (a === 'aus-guardar') {
       const v = k => (app.querySelector('[data-aus="' + k + '"]') || {}).value || '';
       if (!v('desde') || !v('hasta') || v('hasta') < v('desde')) { aviso('Revisá las fechas: "hasta" no puede ser antes de "desde".', true); return; }
+      const cubren = leerCubren(el.closest('.form-aus'));
+      if (!cubren) return;
       el.disabled = true;
       try {
-        await cliente.llamar('profe_ausencia_guardar', { profe_dni: v('profe'), desde: v('desde'), hasta: v('hasta'), tipo: v('tipo'), reemplazo_dni: v('reemplazo'), nota: v('nota') });
-        E.planes = await cliente.llamar('profe_tareas', E.sedeElegida && tiene('admin') ? { sede: E.sedeElegida } : {});
-        render();
+        await cliente.llamar('profe_ausencia_guardar', { profe_dni: v('profe'), desde: v('desde'), hasta: v('hasta'), tipo: v('tipo'), nota: v('nota'), cubren });
+        await recargarEquipo();
         aviso('✅ Guardado. Desde mañana a las 6:00 el reparto ya lo tiene en cuenta.');
-      } catch (e) { el.disabled = false; aviso(PulsoApi.mensaje(e.codigo || e.message), true); }
+      } catch (e) { el.disabled = false; aviso(e.codigo === 'datos_invalidos' ? 'Revisá quién cubre: sus días tienen que estar dentro de la ausencia y no puede cubrirse a sí mismo.' : PulsoApi.mensaje(e.codigo || e.message), true); }
+    }
+    else if (a === 'cubre-agregar' || a === 'cubre-sacar') {
+      const au = (E.planes.agenda.ausencias || []).find(x => x.id === el.dataset.id);
+      if (!au) return;
+      let cubren;
+      if (a === 'cubre-sacar') {
+        if (!confirm('¿Sacar esta cobertura?')) return;
+        cubren = au.cubren.filter((c, i) => i !== Number(el.dataset.i));
+      } else {
+        const nuevos = leerCubren(el.closest('.agregar-cubre'));
+        if (!nuevos) return;
+        if (!nuevos.length) { aviso('Elegí quién lo cubre.', true); return; }
+        cubren = au.cubren.concat(nuevos);
+      }
+      el.disabled = true;
+      try {
+        await cliente.llamar('profe_ausencia_guardar', { id: au.id, cubren });
+        await recargarEquipo();
+        aviso('✅ Guardado.');
+      } catch (e) { el.disabled = false; aviso(e.codigo === 'datos_invalidos' ? 'Revisá quién cubre: sus días tienen que estar dentro de la ausencia y no puede cubrirse a sí mismo.' : PulsoApi.mensaje(e.codigo || e.message), true); }
     }
     else if (a === 'aus-borrar') {
       if (!confirm('¿Quitar estas vacaciones?')) return;

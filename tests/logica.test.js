@@ -380,7 +380,9 @@ test('aviso de media hora: recomienda y recuerda lo pendiente', () => {
   assert.match(a.titulo, /Ara, falta media hora/);
   assert.match(a.cuerpo, /baños/);
   assert.match(a.cuerpo, /quedan 3 tareas/);
-  assert.match(a.cuerpo, /contar por qué/);
+  assert.match(a.cuerpo, /ya casi/);
+  assert.doesNotMatch(a.cuerpo, /por qué/);                 // no ser exigentes (Emanuel, 26/11/2026)
+  assert.match(L.avisoMediaHora('Ara', 10, 0).cuerpo, /quedan 10 tareas: avanzá/);
   assert.match(L.avisoMediaHora('Ara', 0, 1).cuerpo, /al día/);
   assert.notEqual(L.avisoMediaHora('Ara', 0, 0).cuerpo, L.avisoMediaHora('Ara', 0, 1).cuerpo);
 });

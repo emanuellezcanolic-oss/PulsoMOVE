@@ -785,6 +785,14 @@ th.mes-actual, td.mes-actual { background: #eef6f2; }
 .form-aus { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 8px; align-items: end; }
 .form-aus label { display: flex; flex-direction: column; gap: 4px; font-size: .8rem; font-weight: 600; }
 .form-aus .ancho { grid-column: span 2; }
+.form-aus .cubren-nuevos, .form-aus > .aclara, .form-aus > .fila-accion { grid-column: 1 / -1; }
+.fila-cubre { display: grid; grid-template-columns: minmax(180px, 2fr) repeat(4, minmax(110px, 1fr)) auto; gap: 8px; align-items: end; margin: 6px 0; }
+.fila-cubre label { display: flex; flex-direction: column; gap: 4px; font-size: .8rem; font-weight: 600; }
+.fila-cubre select, .fila-cubre input { font: inherit; padding: 6px 8px; border-radius: 8px; border: 1px solid #c9d3dc; min-width: 0; width: 100%; }
+.lista-cubren { list-style: none; padding: 0 0 0 14px; margin: 4px 0; }
+.lista-aus .lista-cubren li { border: 0; padding: 2px 0; }
+.agregar-cubre summary { cursor: pointer; font-size: .85rem; }
+@media (max-width: 760px) { .fila-cubre { grid-template-columns: 1fr 1fr; } .fila-cubre label:first-child { grid-column: 1 / -1; } }
 .form-aus select, .form-aus input { font: inherit; padding: 6px 8px; border-radius: 8px; border: 1px solid #c9d3dc; }
 .uso-hoy.amarillo { color: #a06000; }
 

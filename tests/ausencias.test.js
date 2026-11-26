@@ -25,8 +25,9 @@ test('coordinación carga vacaciones con reemplazo; el reemplazo ve y marca los 
   assert.equal(a.reemplazo, 'Enzo Legammari');
   // se superpone: no
   assert.equal(pedir(d, { accion: 'profe_ausencia_guardar', token: tc, profe_dni: '20111222', desde: '2026-11-20', hasta: '2026-11-30' }).error, 'ya_anotado');
-  // otra sede no
-  assert.equal(pedir(d, { accion: 'profe_ausencia_guardar', token: entrar(d, '20666777'), profe_dni: '20111222', desde: '2026-12-01', hasta: '2026-12-02' }).error, 'prohibido');
+  // coordinación de otra sede también puede (Emanuel, 26/11/2026)
+  const o = pedir(d, { accion: 'profe_ausencia_guardar', token: entrar(d, '20666777'), profe_dni: '20111222', desde: '2026-12-01', hasta: '2026-12-02' }).data.ausencia;
+  pedir(d, { accion: 'profe_ausencia_guardar', token: tc, borrar: o.id });
   // Belén ve su aviso; Enzo ve lo que cubre
   assert.equal(pedir(d, { accion: 'profe_tareas', token: entrar(d, '20111222') }).data.mio.ausencia.reemplazo, 'Enzo Legammari');
   const te = entrar(d, '20333444');
@@ -68,4 +69,76 @@ test('estado del gym: lo sube la PC y lo ve coordinación (cada coordinador su s
   assert.deepEqual(r.filas.map(f => f.sede), ['bolson']);
   assert.equal(r.filas[0].datos['2026-10'].activos, 300);
   assert.equal(pedir(d, { accion: 'profe_estado', token: entrar(d, '20111222') }).error, 'prohibido');
+});
+
+const SOL = usuario({ dni: '20777888', nombre: 'Sol Prueba', roles: 'profe', sede: 'puelo' });
+
+test('dos profes cubren a uno, cada uno con sus días y su franja; avisa 5 días antes', () => {
+  const d = entorno();
+  d.repo.hojas.usuarios.push(Object.assign({}, SOL));
+  const tc = entrar(d, '20555666');
+  const base = { accion: 'profe_ausencia_guardar', token: tc, profe_dni: '20111222', desde: '2026-11-23', hasta: '2026-11-27', tipo: 'vacaciones' };
+  // franja a medias, días fuera de la ausencia o cubrirse a sí mismo: no
+  assert.equal(pedir(d, Object.assign({}, base, { cubren: [{ profe_dni: '20333444', hora_desde: '08:00' }] })).error, 'datos_invalidos');
+  assert.equal(pedir(d, Object.assign({}, base, { cubren: [{ profe_dni: '20333444', desde: '2026-11-20' }] })).error, 'datos_invalidos');
+  assert.equal(pedir(d, Object.assign({}, base, { cubren: [{ profe_dni: '20111222' }] })).error, 'datos_invalidos');
+  const a = pedir(d, Object.assign({}, base, { cubren: [{ profe_dni: '20333444', hora_desde: '08:00', hora_hasta: '12:00' }] })).data.ausencia;
+  assert.equal(a.cubren.length, 1);
+  assert.equal(a.cubren[0].desde, '2026-11-23');
+  assert.equal(a.cubren[0].hasta, '2026-11-27');
+  // después se le agrega otro
+  const b = pedir(d, { accion: 'profe_ausencia_guardar', token: tc, id: a.id, cubren: a.cubren.concat([{ profe_dni: '20777888', desde: '2026-11-26', hasta: '2026-11-27', hora_desde: '12:00', hora_hasta: '16:00' }]) }).data.ausencia;
+  assert.equal(b.reemplazo, 'Enzo Legammari y Sol Prueba');
+  assert.equal(b.cubren.length, 2);
+  // 16/11: faltan 7 días, todavía no avisa
+  assert.equal(pedir(d, { accion: 'profe_tareas', token: entrar(d, '20333444') }).data.mio.avisos_cubrir.length, 0);
+  // 18/11: faltan 5, avisa
+  const antes = Object.assign({}, d, { hoy: () => '2026-11-18', ahora: () => Date.parse('2026-11-18T15:00:00Z') });
+  const av = pedir(antes, { accion: 'profe_tareas', token: entrar(antes, '20333444') }).data.mio.avisos_cubrir;
+  assert.deepEqual(av, [{ profe: 'Belén Juárez', sede: 'bolson', desde: '2026-11-23', hasta: '2026-11-27', hora_desde: '08:00', hora_hasta: '12:00' }]);
+  // 23/11: Enzo cubre, Sol todavía no
+  const lunes = Object.assign({}, d, { hoy: () => '2026-11-23', ahora: () => Date.parse('2026-11-23T15:00:00Z') });
+  assert.equal(pedir(lunes, { accion: 'profe_tareas', token: entrar(lunes, '20333444') }).data.mio.cubriendo.length, 1);
+  assert.equal(pedir(lunes, { accion: 'profe_tareas', token: entrar(lunes, '20777888') }).data.mio.cubriendo.length, 0);
+  assert.equal(pedir(lunes, { accion: 'profe_marcar', token: entrar(lunes, '20777888'), id: 'pp-1' }).error, 'prohibido');
+  // 26/11: los dos
+  const jueves = Object.assign({}, d, { hoy: () => '2026-11-26', ahora: () => Date.parse('2026-11-26T15:00:00Z') });
+  const cs = pedir(jueves, { accion: 'profe_tareas', token: entrar(jueves, '20777888') }).data.mio.cubriendo;
+  assert.equal(cs.length, 1);
+  assert.equal(cs[0].franja, '12:00 a 16:00');
+  assert.equal(pedir(jueves, { accion: 'profe_marcar', token: entrar(jueves, '20777888'), id: 'pp-1' }).ok, true);
+  // se saca a todos: queda sin reemplazo
+  const c = pedir(d, { accion: 'profe_ausencia_guardar', token: tc, id: a.id, cubren: [] }).data.ausencia;
+  assert.deepEqual([c.reemplazo, c.reemplazo_dni, c.cubren.length], ['', '', 0]);
+});
+
+test('lo reemplazado se paga: horas en la liquidación de cada reemplazo (Emanuel, 26/11/2026)', () => {
+  const d = entorno();
+  d.repo.hojas.usuarios.push(Object.assign({}, SOL));
+  const en = hoy => Object.assign({}, d, { hoy: () => hoy, ahora: () => Date.parse(hoy + 'T15:00:00Z') });
+  const tc = entrar(d, '20555666');
+  pedir(d, { accion: 'cargar_profe_horarios', clave: PROPS.CLAVE_CARGA, filas: [{ profe: 'Belén Juárez', sede: 'bolson', dias: '0-4', desde: '07:00', hasta: '13:30' }] });
+  pedir(d, { accion: 'cargar_liqpro_config', clave: PROPS.CLAVE_CARGA, filas: [
+    { tipo: 'persona', mes: '2026-11', dni: '20333444', datos: { tipo: 'profe', valor_hora: 1000, horas_mes: 10 } },
+    { tipo: 'persona', mes: '2026-11', dni: '20777888', datos: { tipo: 'profe', valor_hora: 2000, horas_mes: 10 } }] });
+  pedir(d, { accion: 'profe_ausencia_guardar', token: tc, profe_dni: '20111222', desde: '2026-11-23', hasta: '2026-12-02', tipo: 'vacaciones', cubren: [
+    { profe_dni: '20333444', desde: '2026-11-23', hasta: '2026-11-25' },
+    { profe_dni: '20777888', desde: '2026-11-26', hasta: '2026-12-02', hora_desde: '12:00', hora_hasta: '16:00' }] });
+  const ver = (hoy, dni, mes) => { const dd = en(hoy); const p = pedir(dd, { accion: 'liqpro_ver', token: entrar(dd, dni), mes }).data.personas.find(x => x.dni === dni); return p.liquidacion; };
+  // Enzo: 3 días del horario de Belén (6,5 h) = 19,5 h
+  const e = ver('2026-11-30', '20333444', '2026-11');
+  const l = e.lineas.find(x => x.k.indexOf('reemplazo') === 0);
+  assert.equal(l.t, 'Reemplazaste a Belén Juárez');
+  assert.equal(l.cant, 19.5);
+  assert.equal(l.monto, 19500);
+  assert.match(l.como, /19,5 h en 3 días \(23\/11, 24\/11, 25\/11\)/);
+  assert.equal(e.total, 10000 + 19500);
+  // Sol: solo lo que ya pasó (26, 27 y 30/11, el finde no cuenta) = 12 h; diciembre va a la liquidación de diciembre
+  assert.equal(ver('2026-11-30', '20777888', '2026-11').lineas.find(x => x.k.indexOf('reemplazo') === 0).cant, 12);
+  assert.equal(ver('2026-12-04', '20777888', '2026-12').lineas.find(x => x.k.indexOf('reemplazo') === 0).cant, 8);
+  // antes de que pase no suma nada
+  assert.equal(ver('2026-11-23', '20777888', '2026-11').lineas.some(x => x.k.indexOf('reemplazo') === 0), false);
+  // coordinación ve las horas de cada reemplazo (todas las cargadas, sin plata)
+  const aus = pedir(d, { accion: 'profe_tareas', token: tc }).data.agenda.ausencias[0];
+  assert.deepEqual(aus.cubren.map(c => c.horas).join(), '19.5,20');
 });

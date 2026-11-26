@@ -633,7 +633,8 @@ const IDEAS_CIERRE = [
 function avisoMediaHora(nombre, pendientes, semilla) {
   const pila = String(nombre || '').trim().split(/\s+/)[0];
   const idea = IDEAS_CIERRE[Math.abs(Number(semilla) || 0) % IDEAS_CIERRE.length];
-  const resto = pendientes > 0 ? ' Te ' + (pendientes === 1 ? 'queda 1 tarea' : 'quedan ' + pendientes + ' tareas') + ': si no llegás, al cerrar vas a contar por qué.' : ' Tus tareas están al día. ¡Bien ahí!';
+  const resto = pendientes <= 0 ? ' Tus tareas están al día. ¡Bien ahí!'
+    : ' Te ' + (pendientes === 1 ? 'queda 1 tarea' : 'quedan ' + pendientes + ' tareas') + (pendientes < 5 ? ': ¡ya casi!' : ': avanzá con lo que puedas.');
   return { titulo: '⏰ ' + pila + ', falta media hora para tu cierre', cuerpo: '¿Qué te parece si ' + idea + '?' + resto };
 }
 
