@@ -792,6 +792,7 @@ th.mes-actual, td.mes-actual { background: #eef6f2; }
 .lista-cubren { list-style: none; padding: 0 0 0 14px; margin: 4px 0; }
 .lista-aus .lista-cubren li { border: 0; padding: 2px 0; }
 .agregar-cubre summary { cursor: pointer; font-size: .85rem; }
+.aus-pago { font: inherit; font-size: .85rem; padding: 4px 8px; border-radius: 8px; border: 1px solid #c9d3dc; margin-left: 8px; }
 @media (max-width: 760px) { .fila-cubre { grid-template-columns: 1fr 1fr; } .fila-cubre label:first-child { grid-column: 1 / -1; } }
 .form-aus select, .form-aus input { font: inherit; padding: 6px 8px; border-radius: 8px; border: 1px solid #c9d3dc; }
 .uso-hoy.amarillo { color: #a06000; }

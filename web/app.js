@@ -1303,7 +1303,7 @@
     M.proximas.forEach(t => { (porDia[t.fecha] = porDia[t.fecha] || []).push(t); });
     return `<div class="dos-columnas"><aside class="lado"><div class="persona"><b>Tu mes</b>${cifrasPlanes(M.resumen)}</div>
         <p class="aclara">Cada día tenés una cantidad pareja de planes: así, a fin de mes, todos tus socios quedan con el plan al día. Lo que no llegás a hacer pasa al día siguiente.</p>
-        ${bloqueTareasMes(M)}${bloquePlanExtra(M)}${proximosSabados(M)}</aside>
+        ${bloqueTareasMes(M)}${bloquePlanExtra(M)}${proximosSabados(M)}${resumenVacaciones(M.vacaciones)}</aside>
       <div class="principal">
       <h1 class="titulo">${esc(tituloDia(E.planes.hoy))} <span>·</span> tus planes</h1>
       ${bloqueAvisosDueno(M.avisos_dueno)}
@@ -1535,26 +1535,49 @@
   }
   const horasTxt = c => (c.horas ? ' · <b>' + String(c.horas).replace('.', ',') + ' h</b>' : ' · <span class="amarillo">0 h: cargale la franja horaria</span>');
 
+  const PAGO_AUS = [['', 'Pago sin definir'], ['vacaciones', 'Paga, a cuenta de vacaciones'], ['paga', 'Paga (retribuida)'], ['no_paga', 'No retribuida (se descuenta)']];
+  const opcionesPago = sel => PAGO_AUS.map(([v, n]) => `<option value="${v}" ${v === sel ? 'selected' : ''}>${n}</option>`).join('');
+  const diasTxtN = n => n + (n === 1 ? ' día' : ' días');
+
+  // Lo que lleva cada uno en el año (profes en "Mis planes", recepción en "Mis ingresos")
+  function resumenVacaciones(v) {
+    if (!v) return '';
+    const otras = [v.otras_pagas ? diasTxtN(v.otras_pagas) + ' de licencia paga' : '', v.sin_goce ? diasTxtN(v.sin_goce) + ' sin goce' : '', v.sin_definir ? diasTxtN(v.sin_definir) + ' de licencia sin definir si se paga' : ''].filter(Boolean);
+    return `<div class="persona"><b>🏖️ Tus vacaciones ${esc(v.anio)}</b><span>${v.habiles ? `<strong>${diasTxtN(v.habiles)} hábiles</strong> pedidos (${v.corridos} corridos): ya tomados: ${v.habiles_tomados} · por venir: ${v.habiles_por_venir}.` : 'Todavía no pediste días este año.'}</span>
+      ${otras.length ? `<span class="aclara">Además: ${otras.join(' · ')}.</span>` : ''}<span class="aclara">Es por año calendario: lo que no se usa antes de fin de año se pierde.</span></div>`;
+  }
+
+  function tablaVacacionesEquipo(A, sedes) {
+    const lista = (A.vacaciones || []).filter(x => sedes.indexOf(x.sede) >= 0);
+    if (!lista.length) return '';
+    return `<h3 class="sub-coord">Días pedidos en ${esc(lista[0].anio)} (se reinicia en enero)</h3><div class="envoltura-tabla"><table class="tabla compacta"><thead><tr><th>Persona</th><th>Sede</th><th>Vacaciones (hábiles)</th><th>Corridos</th><th>Ya tomados</th><th>Por venir</th><th>Licencia paga</th><th>Sin goce</th><th>Sin definir</th></tr></thead><tbody>${lista.map(x => `<tr><td>${esc(x.nombre)}</td><td>${esc(SEDES[x.sede] || x.sede)}</td><td class="num"><b>${x.habiles}</b></td><td class="num">${x.corridos}</td><td class="num">${x.habiles_tomados}</td><td class="num">${x.habiles_por_venir}</td><td class="num">${x.otras_pagas || '·'}</td><td class="num">${x.sin_goce || '·'}</td><td class="num">${x.sin_definir || '·'}</td></tr>`).join('')}</tbody></table></div>`;
+  }
+
   function bloqueAusencias(A, sedes) {
     const hoy = E.planes.hoy;
     const profes = A.profes.filter(p => sedes.indexOf(p.sede) >= 0);
-    const deEstasSedes = a => { const p = A.profes.find(x => x.dni === a.profe_dni); return !p || sedes.indexOf(p.sede) >= 0; };
+    const recepcion = (A.recepcion || []).filter(p => sedes.indexOf(p.sede) >= 0);
+    const esRecepcion = dni => (A.recepcion || []).some(x => x.dni === dni);
+    const deEstasSedes = a => { const p = A.profes.concat(A.recepcion || []).find(x => x.dni === a.profe_dni); return !p || sedes.indexOf(p.sede) >= 0; };
     const aus = (A.ausencias || []).filter(deEstasSedes);
     const edita = A.editables.length > 0;
     const fila = a => `<li class="${a.hasta < hoy ? 'pasada' : ''}" data-aus-id="${esc(a.id)}"><b>${esc(a.profe)}</b> · ${esc(TIPO_AUS[a.tipo] || a.tipo)} del ${esc(ddmm(a.desde))} al ${esc(ddmm(a.hasta))}${a.nota ? ` <small>(${esc(a.nota)})</small>` : ''}
       ${edita ? `<button class="enlace chico" data-accion="aus-borrar" data-id="${esc(a.id)}">quitar</button>` : ''}
-      ${a.cubren.length ? `<ul class="lista-cubren">${a.cubren.map((c, i) => `<li>🔁 <b>${esc(c.profe)}</b> ${esc(diasTxt(c))}, ${esc(franjaTxt(c))}${horasTxt(c)} ${edita && a.hasta >= hoy ? `<button class="enlace chico" data-accion="cubre-sacar" data-id="${esc(a.id)}" data-i="${i}">sacar</button>` : ''}</li>`).join('')}</ul>`
+      ${a.tipo !== 'vacaciones' ? (edita ? `<select class="aus-pago" data-accion="aus-pago" data-id="${esc(a.id)}" aria-label="¿Se paga?">${opcionesPago(a.pago)}</select>` : `<span class="aclara">${esc((PAGO_AUS.find(x => x[0] === a.pago) || PAGO_AUS[0])[1])}</span>`) : ''}
+      ${esRecepcion(a.profe_dni) ? '<div class="aclara">Recepción: quién la cubre se carga en Sede → Coberturas y cambios de turno.</div>' : a.cubren.length ? `<ul class="lista-cubren">${a.cubren.map((c, i) => `<li>🔁 <b>${esc(c.profe)}</b> ${esc(diasTxt(c))}, ${esc(franjaTxt(c))}${horasTxt(c)} ${edita && a.hasta >= hoy ? `<button class="enlace chico" data-accion="cubre-sacar" data-id="${esc(a.id)}" data-i="${i}">sacar</button>` : ''}</li>`).join('')}</ul>`
         : '<div class="amarillo">Sin reemplazo: no se le agenda nada esos días.</div>'}
       ${sePisan(a.cubren) ? '<div class="amarillo">⚠️ Hay dos coberturas el mismo día y a la misma hora: se les paga a las dos. Si se repartieron el día, cargá la franja de cada una.</div>' : ''}
-      ${edita && a.hasta >= hoy ? `<details class="agregar-cubre"><summary>+ Agregar quién lo cubre</summary>${filaCubre(A)}<button type="button" class="boton claro" data-accion="cubre-agregar" data-id="${esc(a.id)}">Agregar</button></details>` : ''}</li>`;
+      ${edita && a.hasta >= hoy && !esRecepcion(a.profe_dni) ? `<details class="agregar-cubre"><summary>+ Agregar quién lo cubre</summary>${filaCubre(A)}<button type="button" class="boton claro" data-accion="cubre-agregar" data-id="${esc(a.id)}">Agregar</button></details>` : ''}</li>`;
     return `<section class="grupo"><h2>🏖️ Vacaciones y reemplazos</h2>
-      <p class="intro-grupo">Podés poner uno o varios profes para cubrir a uno, cada uno con sus días y su franja horaria. Las horas de cada reemplazo (la franja cargada o, si la dejás vacía, el horario de quien falta, de lunes a viernes) se le suman solas a su liquidación a medida que pasan los días. Al que cubre le avisa la app desde 5 días antes, y esos días los planes del ausente le aparecen como "Cubrís a…": lo que marca queda a su nombre (se cuenta para liquidarle ese trabajo). Los días sin nadie que cubra no se agenda nada: se le adelanta antes de irse y se le reparte a la vuelta. La comisión por renovaciones se le liquida igual al profe: son sus socios. Esos sábados tampoco se le asignan.</p>
+      <p class="intro-grupo">Podés poner uno o varios profes para cubrir a uno, cada uno con sus días y su franja horaria. Las horas de cada reemplazo (la franja cargada o, si la dejás vacía, el horario de quien falta, de lunes a viernes) se le suman solas a su liquidación a medida que pasan los días. Al que cubre le avisa la app desde 5 días antes, y esos días los planes del ausente le aparecen como "Cubrís a…": lo que marca queda a su nombre (se cuenta para liquidarle ese trabajo). En una licencia podés marcar si se paga (las vacaciones se pagan siempre); lo marcado como no retribuida se descuenta solo. Los días sin nadie que cubra no se agenda nada: se le adelanta antes de irse y se le reparte a la vuelta. La comisión por renovaciones se le liquida igual al profe: son sus socios. Esos sábados tampoco se le asignan.</p>
       ${aus.length ? `<ul class="lista-aus">${aus.map(fila).join('')}</ul>` : '<p class="aclara">No hay vacaciones cargadas.</p>'}
-      ${edita && profes.length ? `<h3 class="sub-coord">Cargar vacaciones o licencia</h3><div class="form-aus">
-        <label>Profe que falta<select data-aus="profe">${profes.map(p => `<option value="${esc(p.dni)}">${esc(p.nombre)} · ${esc(SEDES[p.sede] || p.sede)}</option>`).join('')}</select></label>
+      ${tablaVacacionesEquipo(A, sedes)}
+      ${edita && (profes.length || recepcion.length) ? `<h3 class="sub-coord">Cargar vacaciones o licencia</h3><div class="form-aus">
+        <label>Quién falta<select data-aus="profe">${[['Profes y kinesiólogos', profes], ['Recepción', recepcion]].filter(g => g[1].length).map(([n, l]) => `<optgroup label="${n}">${l.map(p => `<option value="${esc(p.dni)}">${esc(p.nombre)} · ${esc(SEDES[p.sede] || p.sede)}</option>`).join('')}</optgroup>`).join('')}</select></label>
         <label>Desde<input type="date" data-aus="desde" value="${esc(hoy)}"></label>
         <label>Hasta<input type="date" data-aus="hasta" value="${esc(hoy)}"></label>
         <label>Tipo<select data-aus="tipo"><option value="vacaciones">Vacaciones</option><option value="licencia">Licencia</option><option value="otro">Otro</option></select></label>
+        <label>¿Se paga? <span class="opcional">(licencia u otro)</span><select data-aus="pago">${opcionesPago('')}</select></label>
         <label class="ancho">Nota<input type="text" data-aus="nota" placeholder="Opcional"></label>
         <div class="cubren-nuevos">${filaCubre(A)}</div>
         <p class="aclara">Si dejás los días vacíos, cubre toda la ausencia; si dejás las horas vacías, cubre todo el horario.</p>
@@ -2612,7 +2635,6 @@ ${p.tareas_mes ? `<span class="uso-hoy">📋 Tareas del mes: ${p.tareas_mes.hech
     if (!D.hoy.consultas) preguntas.push(['consultas', 'Hoy no registraste consultas. ¿No vino nadie a averiguar por los servicios?']);
     const cumplioMeta = D.hoy.meta && D.hoy.hechas >= D.hoy.meta;
     const exigir = !cumplioMeta && D.hoy.pendientes >= PENDIENTES_PARA_PREGUNTAR;
-    if (exigir && !D.hoy.mensajes) preguntas.push(['mensajes', 'Hoy no registraste mensajes. ¿Qué pasó?']);
     if (exigir) preguntas.push(['pendientes', `Te quedaron ${D.hoy.pendientes} tareas pendientes. ¿Qué pasó hoy?`]);
     preguntas = preguntas.slice(-1);
     const felicitacion = cumplioMeta ? `🎉 ¡Felicitaciones! Cumpliste tu meta de hoy: ${D.hoy.hechas} de ${D.hoy.meta}.`
@@ -4043,14 +4065,16 @@ ${p.tareas_mes ? `<span class="uso-hoy">📋 Tareas del mes: ${p.tareas_mes.hech
       <section class="bloque"><div class="bloque-cab"><h2>${admin ? 'Liquidación del mes' : 'Mis ingresos del mes'}</h2><span class="sello bien">${liqPlata(l.total)}</span></div>
         <table class="tabla compacta liq-resumen"><tbody>
           ${filaC(`Horas: ${liqNum(l.horas)} h × ${liqPlata(l.valor_hora)}`, liqPlata(l.base))}
-          ${l.ajuste_horas ? filaC(`<span class="profe">Incluye ${l.ajuste_horas > 0 ? '+' : ''}${liqNum(l.ajuste_horas)} h por coberturas (planilla: ${liqNum(l.horas_planilla)} h)</span>`, '', 'liq-aparte') : ''}
+          ${l.ajuste_horas ? filaC(`<span class="profe">Incluye ${l.ajuste_horas > 0 ? '+' : ''}${liqNum(l.ajuste_horas)} h por coberturas y permisos (planilla: ${liqNum(l.horas_planilla)} h)</span>`, '', 'liq-aparte') : ''}
           ${(p.coberturas || []).map(c => filaC(`<span class="profe">${ddmm(c.fecha)} · ${c.rol === 'cubrio' ? 'Cubriste a ' + esc(c.con || 'otra persona') + ' · +' : (c.con ? esc(c.con) + ' te cubrió · ' + (c.descuenta ? '−' : 'con goce, ') : 'Cambio · ' + (c.descuenta ? '−' : ''))}${liqNum(c.horas)} h</span>`, '', 'liq-aparte')).join('')}
+          ${p.sin_goce && p.sin_goce.horas ? filaC(`<span class="profe">Licencia no retribuida (${p.sin_goce.dias.map(ddmm).join(', ')}) · −${liqNum(p.sin_goce.horas)} h</span>`, '', 'liq-aparte') : ''}
           ${filaC(`Comisión por ingresos nuevos${l.comision_manual ? ' (cargada a mano)' : l.tramo != null ? ` · ${l.nuevos} × ${liqPlata(l.tarifa)} · ${esc(l.etiqueta)}` : ''}`, liqPlata(l.comision))}
           ${dif ? filaC(`<span class="profe">Con la regla de objetivos daría ${liqPlata(l.comision_calculada)}</span>`, '', 'liq-aparte') : ''}
           ${extras}
           ${filaC('<b>Total a liquidar</b>', `<b>${liqPlata(l.total)}</b>`, 'liq-total')}
         </tbody></table>
         ${l.nota ? `<p class="aclara">${esc(l.nota)}</p>` : ''}</section>
+      ${admin ? '' : resumenVacaciones(p.vacaciones)}
       <section class="bloque"><div class="bloque-cab"><h2>Objetivos de ingresos nuevos</h2></div>${metas}</section>
       ${admin ? liqFormulario(p, l, D) : ''}
       ${liqProgresion(p, D)}
@@ -4227,6 +4251,10 @@ ${p.tareas_mes ? `<span class="uso-hoy">📋 Tareas del mes: ${p.tareas_mes.hech
     if (el.dataset.accion === 'esp-franja') { ESP.alEscribir(el); return; }
     if (el.dataset.accion === 'tipo') { E.tipo = el.value; render(); }
     if (el.dataset.tmes) { marcarTareaMes(el.dataset.tmes, el.checked); }
+    if (el.dataset.accion === 'aus-pago') {
+      cliente.llamar('profe_ausencia_guardar', { id: el.dataset.id, pago: el.value }).then(recargarEquipo).then(() => aviso('✅ Guardado.')).catch(falla);
+      return;
+    }
     if (el.dataset.accion === 'sabado-elegir') {
       const A = E.planes && E.planes.agenda;
       const s = { fecha: el.dataset.f, sede: el.dataset.s, profe: el.value };
@@ -4355,7 +4383,7 @@ ${p.tareas_mes ? `<span class="uso-hoy">📋 Tareas del mes: ${p.tareas_mes.hech
       if (!cubren) return;
       el.disabled = true;
       try {
-        await cliente.llamar('profe_ausencia_guardar', { profe_dni: v('profe'), desde: v('desde'), hasta: v('hasta'), tipo: v('tipo'), nota: v('nota'), cubren });
+        await cliente.llamar('profe_ausencia_guardar', { profe_dni: v('profe'), desde: v('desde'), hasta: v('hasta'), tipo: v('tipo'), pago: v('tipo') === 'vacaciones' ? '' : v('pago'), nota: v('nota'), cubren });
         await recargarEquipo();
         aviso('✅ Guardado. Desde mañana a las 6:00 el reparto ya lo tiene en cuenta.');
       } catch (e) { el.disabled = false; aviso(e.codigo === 'datos_invalidos' ? 'Revisá quién cubre: sus días tienen que estar dentro de la ausencia y no puede cubrirse a sí mismo.' : PulsoApi.mensaje(e.codigo || e.message), true); }

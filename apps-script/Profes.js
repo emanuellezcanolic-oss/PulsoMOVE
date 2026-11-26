@@ -133,6 +133,7 @@ function profeTareas(req, deps) {
     out.mio.ausencia = mia ? vistaAusencia(mia) : null;
     out.mio.cubriendo = coberturaDe(usuario, deps, filas, hoy);
     out.mio.avisos_cubrir = avisosCubrirDe(usuario, usuarios, deps, hoy);
+    out.mio.vacaciones = vacacionesDe(deps.repo.leer('profe_ausencias'), usuario.dni, hoy);
     out.mio.mediciones = medicionesDeProfe(deps, usuario, hoy, out.mio.tareas_mes);
     // Pendientes con socios (Pendientes.js): aparte de los planes, así no bajan nada mientras están pendientes
     out.mio.pendientes_socio = psDeProfe(usuario, deps, hoy);
@@ -149,7 +150,9 @@ function profeTareas(req, deps) {
     const coord = coordinacionPorProfe(deps, sede);
     const diasMes = deps.repo.leer('profe_dias').filter(d => String(d.fecha).slice(0, 7) === hoy.slice(0, 7));
     out.agenda = agendaEquipo(usuario, usuarios, deps, hoy);
-    out.agenda.ausencias = ausenciasActivas(deps, sumarDiasProfe(hoy, -DIAS_AUSENCIA_ATRAS)).map(vistaAusencia);
+    out.agenda.ausencias = ausenciasActivas(deps, desdeLista(hoy)).map(vistaAusencia);
+    out.agenda.recepcion = recepcionDelEquipo(usuarios);
+    out.agenda.vacaciones = tablaVacaciones(deps.repo.leer('profe_ausencias'), out.agenda.profes.concat(out.agenda.recepcion), hoy);
     out.agenda.ausencias.forEach(a => a.cubren.forEach(c => { c.horas = horasDeCobertura(out.agenda.horarios, a.profe, c).horas; }));
     const cubrio = cubiertosPorDni(filas, mesDe(hoy));
     const ausHoy = deps.repo.leer('profe_ausencias');
@@ -1540,6 +1543,8 @@ const TIPOS_AUSENCIA = ['vacaciones', 'licencia', 'otro'];
 const DIAS_AUSENCIA_ATRAS = 31;
 const DIAS_AVISO_CUBRIR = 5;         // al que cubre le aparece el aviso desde 5 días antes
 const MAX_CUBREN = 20;
+// Licencia u otra ausencia: si se paga (opcional). '' = sin definir; vacaciones = paga y a cuenta de sus vacaciones
+const PAGOS_AUSENCIA = ['', 'vacaciones', 'paga', 'no_paga'];
 
 // Quiénes cubren una ausencia: [{profe, profe_dni, desde, hasta, hora_desde, hora_hasta}]. Lo cargado antes tenía uno solo.
 function cubrenDe(a) {
@@ -1588,6 +1593,52 @@ function reemplazosDe(deps, dni, mes) {
   return Object.keys(por).sort().map(k => Object.assign(por[k], { dias: por[k].dias.sort() }));
 }
 
+const cuentaVacaciones = a => a.tipo === 'vacaciones' || a.pago === 'vacaciones';
+
+// Días de una persona en el año calendario (Emanuel, 26/11/2026: lo que no se usa se pierde al pasar a enero).
+// Hábiles = lunes a viernes; corridos = todos. "tomados" = hasta hoy; "por venir" = cargados para más adelante.
+function vacacionesDe(ausencias, dni, hoy) {
+  const anio = hoy.slice(0, 4);
+  const dias = { vac: {}, paga: {}, no_paga: {}, sin: {} };
+  ausencias.filter(a => a.profe_dni === dni).forEach(a => {
+    const clase = cuentaVacaciones(a) ? 'vac' : a.pago === 'paga' ? 'paga' : a.pago === 'no_paga' ? 'no_paga' : 'sin';
+    const fin = a.hasta < anio + '-12-31' ? a.hasta : anio + '-12-31';
+    for (let f = a.desde > anio + '-01-01' ? a.desde : anio + '-01-01'; f <= fin; f = sumarDiasProfe(f, 1)) dias[clase][f] = true;
+  });
+  const habiles = o => Object.keys(o).filter(f => (new Date(f + 'T12:00:00Z').getUTCDay() + 6) % 7 < 5);
+  const vac = habiles(dias.vac);
+  return { anio, habiles: vac.length, corridos: Object.keys(dias.vac).length, habiles_tomados: vac.filter(f => f <= hoy).length,
+    habiles_por_venir: vac.filter(f => f > hoy).length, otras_pagas: habiles(dias.paga).length, sin_goce: habiles(dias.no_paga).length, sin_definir: habiles(dias.sin).length };
+}
+
+// Lo no retribuido de un profe en el mes y ya pasado, en horas de su horario
+function sinGoceDeProfe(deps, dni, mes) {
+  const horarios = deps.repo.leer('profe_horarios').map(filaHorario);
+  const hoy = deps.hoy();
+  const fin = hoy < mes + '-31' ? hoy : mes + '-31';
+  const dias = {};
+  let horas = 0;
+  deps.repo.leer('profe_ausencias').filter(a => a.profe_dni === dni && a.pago === 'no_paga' && a.tipo !== 'vacaciones').forEach(a => {
+    const r = horasDeCobertura(horarios, a.profe, { desde: a.desde, hasta: a.hasta, hora_desde: '' }, mes + '-01', fin);
+    horas += r.horas;
+    r.dias.forEach(f => { dias[f] = true; });
+  });
+  return { horas: Math.round(horas * 100) / 100, dias: Object.keys(dias).sort() };
+}
+
+// Para coordinación: cuántos días lleva cada persona este año
+function tablaVacaciones(ausencias, personas, hoy) {
+  return personas.map(u => Object.assign({ nombre: u.nombre, dni: u.dni, sede: u.sede }, vacacionesDe(ausencias, u.dni, hoy)))
+    .filter(x => x.corridos || x.otras_pagas || x.sin_goce || x.sin_definir)
+    .sort((a, b) => String(a.nombre).localeCompare(String(b.nombre)));
+}
+
+// Recepcionistas que no son profes: se les anotan vacaciones y licencias (su reemplazo va en Sede → Coberturas)
+function recepcionDelEquipo(usuarios) {
+  return usuarios.filter(u => esVerdad(u.activo) && tieneRol(u, 'recepcion') && !esProfe(u)).map(u => ({ nombre: u.nombre, dni: u.dni, sede: u.sede }))
+    .sort((a, b) => String(a.nombre).localeCompare(String(b.nombre)));
+}
+
 function validarCubren(lista, profes, a) {
   if (!Array.isArray(lista) || lista.length > MAX_CUBREN) falla('datos_invalidos');
   return lista.map(x => {
@@ -1621,6 +1672,12 @@ function avisosCubrirDe(usuario, usuarios, deps, hoy) {
   return out.sort((x, y) => (x.desde < y.desde ? -1 : 1));
 }
 
+// Lo que se lista y se puede cargar hacia atrás: el año en curso (o el último mes, si recién arranca el año)
+function desdeLista(hoy) {
+  const mes = sumarDiasProfe(hoy, -DIAS_AUSENCIA_ATRAS), anio = hoy.slice(0, 4) + '-01-01';
+  return mes < anio ? mes : anio;
+}
+
 function ausenciasActivas(deps, desde) {
   return deps.repo.leer('profe_ausencias').filter(a => a.hasta >= desde).sort((a, b) => (a.desde < b.desde ? -1 : 1));
 }
@@ -1630,19 +1687,21 @@ function ausenteEl(ausencias, dni, fecha) {
 }
 
 function vistaAusencia(a) {
-  return { id: a.id, profe: a.profe, profe_dni: a.profe_dni, desde: a.desde, hasta: a.hasta, tipo: a.tipo, reemplazo: a.reemplazo, reemplazo_dni: a.reemplazo_dni, cubren: cubrenDe(a), nota: a.nota };
+  return { id: a.id, profe: a.profe, profe_dni: a.profe_dni, desde: a.desde, hasta: a.hasta, tipo: a.tipo, reemplazo: a.reemplazo, reemplazo_dni: a.reemplazo_dni, cubren: cubrenDe(a), pago: a.pago || '', nota: a.nota };
 }
 
-// Coordinación: agregar una ausencia, cambiar quiénes la cubren (id + cubren) o borrarla (borrar: id)
+// Coordinación: agregar una ausencia, cambiar quiénes la cubren (id + cubren) o si se paga (id + pago), o borrarla (borrar: id)
 function profeAusenciaGuardar(req, deps) {
   const { usuario, usuarios } = sesion(req, deps);
   if (!tieneRol(usuario, 'admin') && !tieneRol(usuario, 'coordinador')) falla('prohibido');
   const filas = deps.repo.leer('profe_ausencias');
   const profes = profesDelEquipo(usuarios);
+  const todos = profes.concat(recepcionDelEquipo(usuarios));
+  if (req.pago != null && PAGOS_AUSENCIA.indexOf(texto(req.pago)) < 0) falla('datos_invalidos');
   if (req.borrar) {
     const a = filas.find(x => x.id === texto(req.borrar));
     if (!a) falla('no_existe');
-    const p = profes.find(x => x.dni === a.profe_dni);
+    const p = todos.find(x => x.dni === a.profe_dni);
     if (p) sedeEditable(usuario, p.sede);
     deps.repo.escribir('profe_ausencias', filas.filter(x => x !== a));
     return { borrada: a.id };
@@ -1650,23 +1709,28 @@ function profeAusenciaGuardar(req, deps) {
   if (req.id) {
     const a = filas.find(x => x.id === texto(req.id));
     if (!a) falla('no_existe');
-    const p = profes.find(x => x.dni === a.profe_dni);
+    const p = todos.find(x => x.dni === a.profe_dni);
     if (p) sedeEditable(usuario, p.sede);
-    ponerCubren(a, validarCubren(req.cubren, profes, a));
+    if (req.cubren != null) {
+      if (!profes.some(x => x.dni === a.profe_dni) && req.cubren.length) falla('datos_invalidos');
+      ponerCubren(a, validarCubren(req.cubren, profes, a));
+    }
+    if (req.pago != null) a.pago = a.tipo === 'vacaciones' ? '' : texto(req.pago);
     Object.assign(a, { por_dni: usuario.dni, en: new Date(deps.ahora()).toISOString() });
     deps.repo.escribir('profe_ausencias', filas);
     return { ausencia: vistaAusencia(a) };
   }
-  const p = profes.find(x => x.dni === normalizarDni(req.profe_dni));
+  const p = todos.find(x => x.dni === normalizarDni(req.profe_dni));
   if (!p) falla('datos_invalidos');
   sedeEditable(usuario, p.sede);
   const desde = texto(req.desde), hasta = texto(req.hasta);
   const tipo = TIPOS_AUSENCIA.indexOf(texto(req.tipo)) >= 0 ? texto(req.tipo) : 'vacaciones';
-  if (!fechaIsoValida(desde) || !fechaIsoValida(hasta) || hasta < desde || hasta < sumarDiasProfe(deps.hoy(), -DIAS_AUSENCIA_ATRAS) || sumarDiasProfe(desde, 120) < hasta) falla('datos_invalidos');
+  if (!fechaIsoValida(desde) || !fechaIsoValida(hasta) || hasta < desde || hasta < desdeLista(deps.hoy()) || sumarDiasProfe(desde, 120) < hasta) falla('datos_invalidos');
   const pedidos = req.cubren != null ? req.cubren : (texto(req.reemplazo_dni) ? [{ profe_dni: req.reemplazo_dni }] : []);
+  if (!profes.some(x => x.dni === p.dni) && pedidos.length) falla('datos_invalidos');
   const cubren = validarCubren(pedidos, profes, { profe_dni: p.dni, desde, hasta });
   if (filas.some(x => x.profe_dni === p.dni && x.desde <= hasta && desde <= x.hasta)) falla('ya_anotado');
-  const a = { id: 'au-' + p.dni + '-' + desde, profe: p.nombre, profe_dni: p.dni, desde, hasta, tipo,
+  const a = { id: 'au-' + p.dni + '-' + desde, profe: p.nombre, profe_dni: p.dni, desde, hasta, tipo, pago: tipo === 'vacaciones' ? '' : texto(req.pago),
     nota: texto(req.nota).slice(0, 200), por_dni: usuario.dni, en: new Date(deps.ahora()).toISOString() };
   ponerCubren(a, cubren);
   filas.push(a);

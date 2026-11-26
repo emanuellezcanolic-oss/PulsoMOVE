@@ -142,3 +142,46 @@ test('lo reemplazado se paga: horas en la liquidación de cada reemplazo (Emanue
   const aus = pedir(d, { accion: 'profe_tareas', token: tc }).data.agenda.ausencias[0];
   assert.deepEqual(aus.cubren.map(c => c.horas).join(), '19.5,20');
 });
+
+test('licencia paga o sin goce, y contador anual de vacaciones (Emanuel, 26/11/2026)', () => {
+  const d = entorno();
+  const REC = usuario({ dni: '20999000', nombre: 'Rocío Recepción', roles: 'recepcion', sede: 'bolson' });
+  d.repo.hojas.usuarios.push(Object.assign({}, REC));
+  const en = hoy => Object.assign({}, d, { hoy: () => hoy, ahora: () => Date.parse(hoy + 'T15:00:00Z') });
+  const tc = entrar(d, '20555666');
+  const guardar = x => pedir(d, Object.assign({ accion: 'profe_ausencia_guardar', token: tc }, x));
+  pedir(d, { accion: 'cargar_profe_horarios', clave: PROPS.CLAVE_CARGA, filas: [{ profe: 'Belén Juárez', sede: 'bolson', dias: '0-4', desde: '08:00', hasta: '12:00' }] });
+  pedir(d, { accion: 'cargar_liqpro_config', clave: PROPS.CLAVE_CARGA, filas: [{ tipo: 'persona', mes: '2026-11', dni: '20111222', datos: { tipo: 'profe', valor_hora: 1000, horas_mes: 80 } }] });
+  // vacaciones cargadas de meses atrás (para el contador del año), pero no del año pasado
+  assert.ok(guardar({ profe_dni: '20111222', desde: '2026-02-02', hasta: '2026-02-08', tipo: 'vacaciones' }).ok);
+  assert.equal(guardar({ profe_dni: '20111222', desde: '2025-12-01', hasta: '2025-12-05', tipo: 'vacaciones' }).error, 'datos_invalidos');
+  // licencia a cuenta de vacaciones: cuenta; sin goce: no cuenta y se descuenta
+  assert.ok(guardar({ profe_dni: '20111222', desde: '2026-11-09', hasta: '2026-11-10', tipo: 'licencia', pago: 'vacaciones' }).ok);
+  const sg = guardar({ profe_dni: '20111222', desde: '2026-11-11', hasta: '2026-11-12', tipo: 'licencia' }).data.ausencia;
+  assert.equal(sg.pago, '');
+  assert.equal(guardar({ id: sg.id, pago: 'cualquiera' }).error, 'datos_invalidos');
+  assert.equal(guardar({ id: sg.id, pago: 'no_paga' }).data.ausencia.pago, 'no_paga');
+  guardar({ profe_dni: '20111222', desde: '2026-12-28', hasta: '2027-01-08', tipo: 'vacaciones' });
+  const mio = pedir(d, { accion: 'profe_tareas', token: entrar(d, '20111222') }).data.mio.vacaciones;
+  assert.equal(mio.anio, '2026');
+  assert.deepEqual([mio.habiles, mio.corridos, mio.habiles_tomados, mio.habiles_por_venir, mio.sin_goce, mio.otras_pagas, mio.sin_definir], [11, 13, 7, 4, 2, 0, 0]);
+  // en enero arranca de cero (solo lo que cae en el año nuevo)
+  const enero = en('2027-01-04');
+  assert.equal(pedir(enero, { accion: 'profe_tareas', token: entrar(enero, '20111222') }).data.mio.vacaciones.habiles, 6);
+  // sin goce: 2 días de 4 h se le descuentan
+  const liq = pedir(d, { accion: 'liqpro_ver', token: entrar(d, '20111222'), mes: '2026-11' }).data.personas[0].liquidacion;
+  const l = liq.lineas.find(x => x.k === 'sin_goce');
+  assert.deepEqual([l.t, l.grupo, l.cant, l.monto], ['Permiso no retribuido', 'descuentos', 8, -8000]);
+  assert.equal(liq.total, 80000 - 8000);
+  // coordinación ve el contador de todos
+  const tabla = pedir(d, { accion: 'profe_tareas', token: tc }).data.agenda.vacaciones;
+  assert.equal(tabla.find(x => x.nombre === 'Belén Juárez').habiles, 11);
+
+  // recepción: se anota igual, sin reemplazo en este bloque; sin goce le descuenta horas de su liquidación
+  assert.equal(guardar({ profe_dni: '20999000', desde: '2026-11-18', hasta: '2026-11-18', tipo: 'vacaciones', cubren: [{ profe_dni: '20333444' }] }).error, 'datos_invalidos');
+  assert.ok(guardar({ profe_dni: '20999000', desde: '2026-11-18', hasta: '2026-11-19', tipo: 'vacaciones' }).ok);
+  assert.ok(guardar({ profe_dni: '20999000', desde: '2026-11-23', hasta: '2026-11-24', tipo: 'licencia', pago: 'no_paga' }).ok);
+  pedir(d, { accion: 'cargar_liquidacion', clave: PROPS.CLAVE_CARGA, filas: [{ dni: '20999000', mes: '2026-11', datos: { valor_hora: 100, horas: 120 } }, { dni: '20999000', mes: 'horas', datos: { dias: [6, 6, 6, 6, 6, 0, 0] } }] });
+  const p = pedir(d, { accion: 'liquidacion_ver', token: entrar(d, '20999000'), mes: '2026-11' }).data.personas[0];
+  assert.deepEqual([p.vacaciones.habiles, p.sin_goce.horas, p.liquidacion.horas], [2, 12, 108]);
+});

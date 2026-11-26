@@ -225,6 +225,23 @@ function liqCoberturasDe(filas, dni, mes) {
   return { ajuste: liqRedondeo(ajuste, 2), omitir: omitir, lista: delMes };
 }
 
+// Licencias sin goce de recepción: descuenta las horas previstas de cada día. Si ese día ya se descontó con una cobertura, no se repite.
+// `dias` del resultado son todos los días de vacaciones o licencia del mes (para no contarlos como "días sin QR").
+function liqAusenciasDe(ausencias, dni, mes, horasPorDia, yaDescontados) {
+  const out = { horas: 0, sin_goce: [], dias: [] };
+  ausencias.filter(a => a.profe_dni === dni).forEach(a => {
+    const fin = a.hasta < mes + '-31' ? a.hasta : mes + '-31';
+    for (let f = a.desde > mes + '-01' ? a.desde : mes + '-01'; f <= fin; f = sumarDiasProfe(f, 1)) {
+      if (out.dias.indexOf(f) < 0) out.dias.push(f);
+      const h = Number(horasPorDia[(new Date(f + 'T12:00:00Z').getUTCDay() + 6) % 7]) || 0;
+      if (a.tipo !== 'vacaciones' && a.pago === 'no_paga' && h && yaDescontados.indexOf(f) < 0 && out.sin_goce.indexOf(f) < 0) { out.sin_goce.push(f); out.horas += h; }
+    }
+  });
+  out.horas = liqRedondeo(out.horas, 2);
+  out.sin_goce.sort();
+  return out;
+}
+
 function liqRecepcionistas(usuarios) {
   return usuarios.filter(u => esVerdad(u.activo) && tieneRol(u, 'recepcion'));
 }
@@ -247,6 +264,9 @@ function liquidacionVer(req, deps) {
   const qr = deps.repo.leer('liq_qr');
   const rendimiento = deps.repo.leer('rendimiento');
   const coberturas = deps.repo.leer('coberturas');
+  const ausencias = deps.repo.leer('profe_ausencias');
+  const yaDescontados = dni => coberturas.filter(c => c.titular_dni === dni && c.descuenta !== 'false').map(c => c.fecha);
+  const ausDe = (dni, m) => liqAusenciasDe(ausencias, dni, m, liqDiasDe(filas, dni), yaDescontados(dni));
   const nombreDe = dni => ((usuarios.find(u => u.dni === dni) || {}).nombre) || 'Otra persona';
   const configs = {};
   const config = m => configs[m] || (configs[m] = liqConfigDelMes(filas, m));
@@ -265,16 +285,18 @@ function liquidacionVer(req, deps) {
     if (meses.indexOf(mes) < 0 && mes <= hoy.slice(0, 7)) meses.push(mes);
     meses.sort();
     const serie = meses.slice(-12).map(m => {
-      const l = liqCalcular(u.sede, propias.find(f => f.mes === m) || null, previaDe(m), config(m), nuevosApp(u.dni, m), liqCoberturasDe(coberturas, u.dni, m).ajuste);
+      const l = liqCalcular(u.sede, propias.find(f => f.mes === m) || null, previaDe(m), config(m), nuevosApp(u.dni, m), liqCoberturasDe(coberturas, u.dni, m).ajuste - ausDe(u.dni, m).horas);
       return { mes: m, cargado: l.cargado, base: l.base, comision: l.comision, extras: l.total_extras, extras_detalle: l.extras, total: l.total, nuevos: l.nuevos, horas: l.horas };
     });
     const cob = liqCoberturasDe(coberturas, u.dni, mes);
-    const actual = liqCalcular(u.sede, propias.find(f => f.mes === mes) || null, previaDe(mes), config(mes), nuevosApp(u.dni, mes), cob.ajuste);
+    const aus = ausDe(u.dni, mes);
+    const actual = liqCalcular(u.sede, propias.find(f => f.mes === mes) || null, previaDe(mes), config(mes), nuevosApp(u.dni, mes), cob.ajuste - aus.horas);
     const dias = liqDiasDe(filas, u.dni);
     return {
       dni: u.dni, nombre: u.nombre, sede: u.sede, turno: u.turno,
       liquidacion: actual, serie: serie, dias_horas: dias,
-      qr: liqHorasQr(qr.filter(f => f.dni === u.dni), dias, mes, hoy, cob.omitir),
+      qr: liqHorasQr(qr.filter(f => f.dni === u.dni), dias, mes, hoy, cob.omitir.concat(aus.dias)),
+      vacaciones: vacacionesDe(ausencias, u.dni, hoy), sin_goce: { horas: aus.horas, dias: aus.sin_goce },
       coberturas: cob.lista.map(c => ({ id: c.id, fecha: c.fecha, horas: Number(c.horas) || 0, rol: c.cubre_dni === u.dni ? 'cubrio' : 'cubierta', con: nombreDe(c.cubre_dni === u.dni ? c.titular_dni : c.cubre_dni), descuenta: c.descuenta !== 'false', motivo: c.motivo })).sort((a, b) => String(a.fecha).localeCompare(String(b.fecha))),
     };
   }).sort((a, b) => String(a.sede).localeCompare(String(b.sede)) || String(a.nombre).localeCompare(String(b.nombre)));
