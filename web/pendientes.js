@@ -59,6 +59,16 @@
         <div class="fila-accion"><button class="boton claro" data-accion="pds-anotar">➕ Anotar pedido del socio</button>${P.hechos_mes ? `<span class="aclara">Este mes resolviste ${plural(P.hechos_mes, 'pedido', 'pedidos')}.</span>` : ''}</div></section>`;
     }
 
+    // Panel lateral del profe: quién pidió qué, y anotar uno nuevo sin bajar hasta el final (Emanuel, 26/11/2026)
+    function bloqueLado(M) {
+      const P = M && M.pendientes_socio;
+      if (!P) return '';
+      const abiertos = P.abiertos || [];
+      return `<div class="persona pds-lado"><b>📌 Pedidos de socios</b>
+        ${abiertos.length ? `<ul class="pl-contactos">${abiertos.map(p => `<li><b>${esc(p.socio_nombre)}</b>${esc(p.que)}${p.limite ? ` <small>(para el ${esc(dmy(p.limite))})</small>` : ''}</li>`).join('')}</ul>` : '<span class="turno">¿Un socio te pidió algo? Anotalo con su nombre y para cuándo.</span>'}
+        <button class="boton verde ancho" data-accion="pds-anotar">➕ Anotar pedido de un socio</button></div>`;
+    }
+
     // ---------- Coordinación: lo que lleva más de 3 días hábiles ----------
     function bloqueCoord(lista) {
       if (!lista || !lista.length) return '';
@@ -174,7 +184,7 @@
       } catch (e) { if (el) el.disabled = false; falla(e); }
     }
 
-    return { bloqueProfe, bloqueCoord, dialogoAnotar, accion };
+    return { bloqueProfe, bloqueLado, bloqueCoord, dialogoAnotar, accion };
   }
 
   raiz.PulsoPendientes = { crear: crear, elegirSocio: elegirSocio, conEtiquetas: conEtiquetas, SEDES: SEDES };

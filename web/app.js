@@ -1303,7 +1303,7 @@
     M.proximas.forEach(t => { (porDia[t.fecha] = porDia[t.fecha] || []).push(t); });
     return `<div class="dos-columnas"><aside class="lado"><div class="persona"><b>Tu mes</b>${cifrasPlanes(M.resumen)}</div>
         <p class="aclara">Cada día tenés una cantidad pareja de planes: así, a fin de mes, todos tus socios quedan con el plan al día. Lo que no llegás a hacer pasa al día siguiente.</p>
-        ${bloqueTareasMes(M)}${bloquePlanExtra(M)}${proximosSabados(M)}${resumenVacaciones(M.vacaciones)}</aside>
+        ${PDS.bloqueLado(M)}${bloqueTareasMes(M)}${bloquePlanExtra(M)}${proximosSabados(M)}${resumenVacaciones(M.vacaciones)}</aside>
       <div class="principal">
       <h1 class="titulo">${esc(tituloDia(E.planes.hoy))} <span>·</span> tus planes</h1>
       ${bloqueAvisosDueno(M.avisos_dueno)}
