@@ -1102,3 +1102,25 @@ dialog:has(.pl-datos) { width: min(560px, calc(100% - 20px)); max-height: calc(1
 .lp-sesion .lp-celda { border: 1px solid var(--verde); background: var(--verde-claro); color: var(--verde-texto); font-weight: 700; }
 .lp-pendiente .lp-celda { border-color: var(--naranja); background: var(--naranja-claro); color: #8a4a0c; }
 .lp-sesion:not(:has(button)) { background: var(--verde-claro); font-weight: 700; }
+
+/* Calendario del equipo */
+.cal-mes { display: flex; align-items: center; justify-content: center; gap: 14px; margin: 10px 0; text-transform: capitalize; }
+.cal-grilla { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 3px; }
+.cal-cabeza { text-align: center; font-size: 12px; font-weight: 700; padding: 2px 0; }
+.cal-dia { display: flex; flex-direction: column; align-items: stretch; justify-content: flex-start; gap: 2px; min-height: 64px; padding: 4px 3px; background: var(--hoja); border: 1px solid var(--linea); border-radius: 8px; text-align: left; font-size: 11px; overflow: hidden; color: var(--tinta); }
+.cal-dia b { font-size: 12.5px; }
+.cal-dia.finde { background: var(--suave); }
+.cal-dia.hoy { border: 2px solid var(--verde); }
+.cal-dia[aria-pressed="true"] { border: 2px solid var(--tinta); }
+.cal-dia span { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; border-radius: 4px; padding: 0 2px; }
+.cal-falta { background: var(--rojo-claro); color: var(--rojo); }
+.cal-feriado { font-weight: 700; }
+.cal-sab, .cal-cob { background: var(--verde-claro); color: var(--verde-texto); }
+.cal-sab.cal-falta { background: var(--rojo-claro); color: var(--rojo); }
+.cal-detalle { margin-top: 14px; background: var(--hoja); border: 1px solid var(--linea); border-radius: var(--radio); padding: 12px 14px; }
+.cal-detalle h2 { margin: 0 0 6px; font-size: 16px; }
+.cal-detalle h2::first-letter { text-transform: uppercase; }
+.cal-detalle h3 { margin: 12px 0 4px; font-size: 13px; }
+.cal-detalle ul { margin: 0; padding-left: 18px; }
+.cal-detalle li { margin: 3px 0; }
+.cal-cubre { background: var(--verde-claro); color: var(--verde-texto); border-radius: 4px; padding: 0 5px; font-size: 12px; }

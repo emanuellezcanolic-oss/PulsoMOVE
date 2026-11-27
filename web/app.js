@@ -206,6 +206,7 @@
     if (tiene('profe') || coord) p.push(['liqpro', tiene('admin') ? 'Liquidación de profes' : coord ? 'Liquidación (sin montos)' : '💰 Mi liquidación', coord ? 'Profes' : 'Mi día']);
     if (coord) p.push(['pres', 'Resumen', 'Profes'], ['profes', 'Planes y llegadas', 'Profes'], ['ppl', '📋 Planilla', 'Profes'], ['phor', 'Horarios y sábados', 'Profes'], ['pliq', tiene('admin') ? 'Comisiones y tareas' : 'Tareas del mes', 'Profes']);
     if (tiene('admin')) p.push(['resumen', 'Resumen semanal', 'Gestión'], ['admin', 'Equipo', 'Gestión']);
+    p.push(['cal', '📅 Calendario', coord ? 'Gestión' : 'Mi día']);   // quién está, quién falta y quién cubre: todo el equipo (26/11/2026)
     if (coord) p.push(['ped', '📌 Pedidos', 'Gestión']);   // pedidos de coordinación a recepción y profes (18/11/2026)
     p.push(['chat', chatEtiqueta(), coord ? 'Gestión' : 'Mi día']);   // mensajes entre el equipo: todos
     return p;
@@ -3315,6 +3316,7 @@ ${p.tareas_mes ? `<span class="uso-hoy">📋 Tareas del mes: ${p.tareas_mes.hech
       if (E.vista === 'hoy' || E.vista === 'planes') cargarPedidosMios();   // por detrás: la pantalla no espera
       if (E.vista === 'hoy' && tiene('recepcion')) ESP.cargarHoy(() => { if (E.vista === 'hoy' && !document.activeElement.closest('.esp-banda')) render(); });
       if (E.vista === 'espera') { await ESP.cargar(); if (E.espSede === 'metricas' && coordinaEsp()) E.espMetricas = await cliente.llamar('espera_metricas', {}); }
+      if (E.vista === 'cal') E.cal = await cliente.llamar('calendario_ver', E.calMes ? { mes: E.calMes } : {});
       if (E.vista === 'ped') {
         if (E.pedForm) return;   // se está escribiendo un pedido: no pisarlo
         E.ped = await cliente.llamar('pedidos_ver');
@@ -3709,12 +3711,13 @@ ${p.tareas_mes ? `<span class="uso-hoy">📋 Tareas del mes: ${p.tareas_mes.hech
       : E.vista === 'planes' ? vistaPlanes() : E.vista === 'profes' ? vistaProfes() : E.vista === 'pmes' ? vistaMesProfe()
       : E.vista === 'pres' ? vistaResumenProfes()
       : E.vista === 'ppl' ? vistaPlanilla()
+      : E.vista === 'cal' ? PulsoCalendario.vista(E.cal, E.calSede || '', E.calDia, esc)
       : E.vista === 'ped' ? PulsoPedidos.vistaCoord(E.ped, E.pedForm, esc)
       : E.vista === 'espera' ? ESP.vista()
       : E.vista === 'phor' ? (E.planes ? vistaAgendaEquipo(true) : '<div class="cargando">Cargando…</div>')
       : E.vista === 'pliq' ? (E.planes ? `<h1 class="titulo">${tiene('admin') ? 'Comisiones y tareas del mes' : 'Tareas del mes'} <span>·</span> profes</h1>${vistaTareasMesCoord()}${tablaComisiones()}` : '<div class="cargando">Cargando…</div>')
       : '<div class="vacio">Tu usuario no tiene ninguna vista asignada. Avisale a Emanuel.</div>';
-    const sinDatos = { hoy: !E.tareas, sede: E.personaDni ? !E.persona : !E.sede, mes: !E.rend, rend: !E.rend, admin: !E.usuarios, reservas: !E.ocupacion, liq: !E.liq, liqpro: !PLP.cargado(), resumen: !E.resumen, consultas: !E.cons, pase: !E.pase, chat: !E.chat, planes: !E.planes, profes: !E.planes, pmes: !E.planes, phor: !E.planes, pliq: !E.planes, pres: !E.estado, ppl: !E.pl, ped: !E.ped, espera: !E.esp }[E.vista];
+    const sinDatos = { hoy: !E.tareas, sede: E.personaDni ? !E.persona : !E.sede, mes: !E.rend, rend: !E.rend, admin: !E.usuarios, reservas: !E.ocupacion, liq: !E.liq, liqpro: !PLP.cargado(), resumen: !E.resumen, consultas: !E.cons, pase: !E.pase, chat: !E.chat, planes: !E.planes, profes: !E.planes, pmes: !E.planes, phor: !E.planes, pliq: !E.planes, pres: !E.estado, ppl: !E.pl, ped: !E.ped, espera: !E.esp, cal: !E.cal }[E.vista];
     const mostrar = E.errorCarga && sinDatos ? `<div class="vacio" style="margin-top:18px"><p>${esc(E.errorCarga)}</p><p>La pantalla vuelve a intentarlo sola. Tus marcas no se pierden.</p><button class="boton" data-accion="reintentar">Reintentar ahora</button></div>` : cuerpo;
     const bandas = E.vista === 'hoy' ? bandaPedidos() + bandaPase() + bandaVentas() + bandaFichajes() + bandaReservas() : E.vista === 'planes' ? bandaPedidos() : '';
     app.innerHTML = encabezado() + `<main class="contenedor">${bandas}${mostrar}</main>` + (E.vista === 'hoy' && turnoTerminando() ? `<button class="cerrar-app-fijo${DEMO ? ' con-cinta' : ''}" data-accion="cerrar-app">🚪 ${E.dia && E.dia.cierre_hecho ? 'Listo por hoy' : 'Se termina tu turno'}: cerrá la app antes de irte</button>` : '') + (DEMO ? '<div class="cinta-practica">Modo práctica · datos inventados</div>' : '') + botonRanking() + panelRanking();
@@ -4285,6 +4288,9 @@ ${p.tareas_mes ? `<span class="uso-hoy">📋 Tareas del mes: ${p.tareas_mes.hech
     const el = ev.target.closest('[data-accion]');
     if (!el || el.tagName === 'SELECT') return;
     const a = el.dataset.accion;
+    if (a === 'cal-sede') { E.calSede = el.dataset.s; render(); return; }
+    if (a === 'cal-dia') { E.calDia = el.dataset.f; render(); const d = app.querySelector('.cal-detalle'); if (d) d.scrollIntoView({ behavior: 'smooth', block: 'nearest' }); return; }
+    if (a === 'cal-mes') { E.calMes = el.dataset.m; E.calDia = ''; cargarVista(); return; }
     if (a === 'ir-socio') {
       ev.preventDefault(); ev.stopPropagation();
       window.open(MOVE_ADMIN + encodeURIComponent(el.dataset.s) + (el.dataset.t ? '?tab=' + encodeURIComponent(el.dataset.t) : ''), '_blank', 'noopener');

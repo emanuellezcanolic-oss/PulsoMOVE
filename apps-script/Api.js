@@ -53,7 +53,7 @@ function exigirClave(req, deps) {
 
 // ---------- Qué ve cada persona (Emanuel, 26/11/2026) ----------
 // Por defecto cada una ve lo que le da su rol; acá se guarda solo lo que se le ocultó. A un admin no se le oculta nada.
-const PESTANAS_OCULTABLES = ['planes', 'pmes', 'ppl', 'mes', 'sede', 'rend', 'consultas', 'pase', 'espera', 'reservas', 'liq', 'liqpro', 'pres', 'profes', 'phor', 'pliq', 'ped', 'chat'];
+const PESTANAS_OCULTABLES = ['planes', 'pmes', 'ppl', 'mes', 'sede', 'rend', 'consultas', 'pase', 'espera', 'reservas', 'liq', 'liqpro', 'pres', 'profes', 'phor', 'pliq', 'ped', 'chat', 'cal'];
 
 function ocultasDe(u, deps) {
   if (tieneRol(u, 'admin')) return [];
@@ -1528,6 +1528,7 @@ const ACCIONES = {
   // Pedidos de coordinación (Pedidos.js)
   pedidos_mios: (r, d) => pedidosMios(r, d),
   pedidos_ver: (r, d) => pedidosVer(r, d),
+  calendario_ver: (r, d) => calendarioVer(r, d),
   pedido_guardar: (r, d) => pedidoGuardar(r, d),
   pedido_borrar: (r, d) => pedidoBorrar(r, d),
   pedido_hecho: (r, d) => pedidoHecho(r, d),
@@ -1556,7 +1557,7 @@ const ACCIONES = {
 
 // Las pantallas que solo miran no esperan turno: un pedido trabado no las frena. Lista cerrada: lo que no esté acá espera.
 // Respaldo, bajadas y lo que usan los procesos de la PC siguen con turno porque necesitan los datos completos y sin cambios a mitad.
-const SOLO_LECTURA = ['mis_tareas', 'mi_dia', 'contacto_extra_socios', 'sede', 'tareas_de', 'rendimiento', 'cierres_ver', 'profes_ver', 'fichajes_ver', 'usuarios_listar', 'servidor_ver', 'ocupacion_ver', 'profe_tareas', 'profe_estado', 'profe_planilla', 'liquidacion_ver', 'liqpro_ver', 'coberturas_ver', 'ranking_ver', 'ranking_profes', 'resumen_semanal', 'consultas_ver', 'pase_ver', 'chat_personas', 'chat_listar', 'chat_ver', 'chat_novedad', 'pedidos_mios', 'pedidos_ver', 'espera_ver', 'espera_mensaje', 'espera_historial', 'espera_candidatos', 'espera_beneficios_de', 'espera_metricas', 'socio_pendiente_socios', 'lectura'];
+const SOLO_LECTURA = ['mis_tareas', 'mi_dia', 'contacto_extra_socios', 'sede', 'tareas_de', 'rendimiento', 'cierres_ver', 'profes_ver', 'fichajes_ver', 'usuarios_listar', 'servidor_ver', 'ocupacion_ver', 'profe_tareas', 'profe_estado', 'profe_planilla', 'liquidacion_ver', 'liqpro_ver', 'coberturas_ver', 'ranking_ver', 'ranking_profes', 'resumen_semanal', 'consultas_ver', 'pase_ver', 'chat_personas', 'chat_listar', 'chat_ver', 'chat_novedad', 'pedidos_mios', 'pedidos_ver', 'espera_ver', 'espera_mensaje', 'espera_historial', 'espera_candidatos', 'espera_beneficios_de', 'espera_metricas', 'socio_pendiente_socios', 'lectura', 'calendario_ver'];
 const ESPERA_TURNO_MS = 20000;
 const PEDIDO_LENTO_MS = 15000;
 
