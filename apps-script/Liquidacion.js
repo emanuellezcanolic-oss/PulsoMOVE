@@ -225,6 +225,14 @@ function liqCoberturasDe(filas, dni, mes) {
   return { ajuste: liqRedondeo(ajuste, 2), omitir: omitir, lista: delMes };
 }
 
+// Vacaciones y licencias pagas se cobran siempre (Emanuel, 26/11/2026): la cobertura de esos días no le descuenta a quien faltó,
+// aunque se haya cargado sin tildar «se le paga igual».
+function liqCoberturasConGoce(coberturas, ausencias) {
+  const paga = a => a.tipo === 'vacaciones' || a.pago === 'vacaciones' || a.pago === 'paga';
+  return coberturas.map(c => c.titular_dni && ausencias.some(a => a.profe_dni === c.titular_dni && a.desde <= c.fecha && c.fecha <= a.hasta && paga(a))
+    ? Object.assign({}, c, { descuenta: 'false' }) : c);
+}
+
 // Licencias sin goce de recepción: descuenta las horas previstas de cada día. Si ese día ya se descontó con una cobertura, no se repite.
 // `dias` del resultado son todos los días de vacaciones o licencia del mes (para no contarlos como "días sin QR").
 function liqAusenciasDe(ausencias, dni, mes, horasPorDia, yaDescontados) {
@@ -263,8 +271,8 @@ function liquidacionVer(req, deps) {
   const filas = deps.repo.leer('liquidacion');
   const qr = deps.repo.leer('liq_qr');
   const rendimiento = deps.repo.leer('rendimiento');
-  const coberturas = deps.repo.leer('coberturas');
   const ausencias = deps.repo.leer('profe_ausencias');
+  const coberturas = liqCoberturasConGoce(deps.repo.leer('coberturas'), ausencias);
   const yaDescontados = dni => coberturas.filter(c => c.titular_dni === dni && c.descuenta !== 'false').map(c => c.fecha);
   const ausDe = (dni, m) => liqAusenciasDe(ausencias, dni, m, liqDiasDe(filas, dni), yaDescontados(dni));
   const nombreDe = dni => ((usuarios.find(u => u.dni === dni) || {}).nombre) || 'Otra persona';
@@ -431,7 +439,7 @@ function coberturasVer(req, deps) {
   const dnis = {};
   equipo.forEach(u => { dnis[u.dni] = 1; });
   const nombreDe = dni => ((usuarios.find(u => u.dni === dni) || {}).nombre) || '';
-  const lista = deps.repo.leer('coberturas').filter(c => texto(c.fecha).slice(0, 7) === mes && (dnis[c.cubre_dni] || dnis[c.titular_dni]))
+  const lista = liqCoberturasConGoce(deps.repo.leer('coberturas'), deps.repo.leer('profe_ausencias')).filter(c => texto(c.fecha).slice(0, 7) === mes && (dnis[c.cubre_dni] || dnis[c.titular_dni]))
     .map(c => ({ id: c.id, fecha: c.fecha, titular_dni: c.titular_dni, titular: nombreDe(c.titular_dni), cubre_dni: c.cubre_dni, cubre: nombreDe(c.cubre_dni), horas: Number(c.horas) || 0, descuenta: c.descuenta !== 'false', motivo: c.motivo, nota: c.nota }))
     .sort((a, b) => String(b.fecha).localeCompare(String(a.fecha)));
   return { mes: mes, hoy: hoy, coberturas: lista, motivos: LIQ_MOTIVOS_COB, personas: equipo.map(u => ({ dni: u.dni, nombre: u.nombre, sede: u.sede, dias: liqDiasDe(filas, u.dni) })) };

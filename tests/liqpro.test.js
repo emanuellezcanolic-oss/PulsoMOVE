@@ -132,7 +132,7 @@ test('total: horas + HOME + sábados×4 + comisión + extras − descuentos + mo
 test('los sábados salen de la rotación si coordinación no los cargó, sin los feriados que no se trabajan', () => {
   const d = base();
   d.repo.hojas.profe_sabados = ['2026-10-03', '2026-10-10', '2026-10-17', '2026-10-24'].map(f => ({ fecha: f, sede: 'bolson', profe: 'Ana Profe', profe_dni: PA.dni }));
-  d.repo.hojas.profe_feriados = [{ fecha: '2026-10-10', nombre: 'Feriado', se_trabaja: 'false', borrado: '' }];
+  d.repo.hojas.profe_feriados = [{ fecha: '2026-10-10', nombre: 'Feriado', se_trabaja: 'no', borrado: '' }];
   const l = ver(d, ADMIN.dni).data.personas.find(p => p.dni === PA.dni).liquidacion;
   assert.equal(l.sabados, 3);
 });

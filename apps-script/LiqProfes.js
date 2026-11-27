@@ -163,11 +163,14 @@ function lpMovConMarcas(mov, filas, dni, mes) {
   return Object.assign({}, mov, { sin_asistencia: sin, entreno_manual: sin.filter(x => x.marcado).length });
 }
 
-// Sábados que le tocaron en el mes (rotación de coordinación), salvo feriados que no se trabajan
+// Sábados que le tocaron en el mes (rotación de coordinación). Solo se paga el sábado trabajado (Emanuel, 26/11/2026):
+// no cuentan los feriados que no se trabajan ni los sábados en que estaba de vacaciones o licencia.
 function lpSabadosAuto(deps, dni, mes) {
   const noSeTrabaja = {};
-  deps.repo.leer('profe_feriados').forEach(f => { if (f.se_trabaja === 'false' && f.borrado !== 'true') noSeTrabaja[f.fecha] = 1; });
-  return deps.repo.leer('profe_sabados').filter(s => s.profe_dni === dni && String(s.fecha).slice(0, 7) === mes && !noSeTrabaja[s.fecha]).length;
+  deps.repo.leer('profe_feriados').forEach(f => { if (f.se_trabaja === 'no' && f.borrado !== '1') noSeTrabaja[f.fecha] = 1; });
+  const ausente = deps.repo.leer('profe_ausencias').filter(a => a.profe_dni === dni);
+  return deps.repo.leer('profe_sabados').filter(s => s.profe_dni === dni && String(s.fecha).slice(0, 7) === mes && !noSeTrabaja[s.fecha]
+    && !ausente.some(a => a.desde <= s.fecha && s.fecha <= a.hasta)).length;
 }
 
 // ---------- El cálculo (puro) ----------

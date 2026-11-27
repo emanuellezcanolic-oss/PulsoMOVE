@@ -3086,7 +3086,7 @@ ${p.tareas_mes ? `<span class="uso-hoy">📋 Tareas del mes: ${p.tareas_mes.hech
     const lista = C.coberturas.map(c => `<div class="fila-cob"><span><b>${esc(c.cubre)}</b> ${c.titular ? 'cubrió a <b>' + esc(c.titular) + '</b>' : 'hizo horas extra'} · ${ddmm(c.fecha)} · ${String(c.horas).replace('.', ',')} h · ${esc(c.motivo || '')}${c.titular && !c.descuenta ? ' · con goce' : ''}${c.nota ? ' · ' + esc(c.nota) : ''}</span>
       <button class="chip" data-accion="cob-borrar" data-id="${esc(c.id)}">Quitar</button></div>`).join('');
     return `<section class="grupo"><h2>🔁 Coberturas y cambios de turno <span class="cuenta">${C.coberturas.length}</span></h2>
-      <p class="bajada">Cuando alguien cubre a otra persona o cambia el horario por un día. Se suma a quien cubre y se descuenta a quien faltó, y la liquidación del mes se ajusta sola. Es eventual: no cambia el horario fijo de nadie.</p>
+      <p class="bajada">Cuando alguien cubre a otra persona o cambia el horario por un día. Se suma a quien cubre y se descuenta a quien faltó, y la liquidación del mes se ajusta sola. Es eventual: no cambia el horario fijo de nadie. Las vacaciones y licencias pagas cargadas en Vacaciones se pagan siempre: esos días no se le descuenta nada a quien faltó.</p>
       <form data-form="cob-guardar" class="liq-fila">
         <label class="campo">Día<input name="fecha" type="date" value="${esc(C.hoy)}" required></label>
         <label class="campo">Quién cubrió<select name="cubre" required>${opciones(false)}</select></label>

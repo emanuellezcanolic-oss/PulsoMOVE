@@ -185,3 +185,23 @@ test('licencia paga o sin goce, y contador anual de vacaciones (Emanuel, 26/11/2
   const p = pedir(d, { accion: 'liquidacion_ver', token: entrar(d, '20999000'), mes: '2026-11' }).data.personas[0];
   assert.deepEqual([p.vacaciones.habiles, p.sin_goce.horas, p.liquidacion.horas], [2, 12, 108]);
 });
+
+test('vacaciones cubiertas sin tildar «con goce»: no se le descuenta a quien está de vacaciones (Emanuel, 26/11/2026)', () => {
+  const cobs = [{ id: 'C-1', fecha: '2026-11-23', titular_dni: 'a', cubre_dni: 'b', horas: '6', descuenta: 'true' },
+    { id: 'C-2', fecha: '2026-11-30', titular_dni: 'a', cubre_dni: 'b', horas: '6', descuenta: 'true' }];
+  const aus = [{ profe_dni: 'a', desde: '2026-11-23', hasta: '2026-11-27', tipo: 'vacaciones', pago: '' },
+    { profe_dni: 'a', desde: '2026-11-30', hasta: '2026-11-30', tipo: 'licencia', pago: 'no_paga' }];
+  const r = L.liqCoberturasConGoce(cobs, aus);
+  assert.deepEqual(r.map(c => c.descuenta), ['false', 'true']);
+  assert.equal(L.liqCoberturasDe(r, 'a', '2026-11').ajuste, -6);
+  assert.equal(L.liqCoberturasDe(r, 'b', '2026-11').ajuste, 12);
+});
+
+test('solo se paga el sábado trabajado: ni en vacaciones ni en feriado cerrado (Emanuel, 26/11/2026)', () => {
+  const hojas = {
+    profe_sabados: ['2026-11-07', '2026-11-14', '2026-11-21', '2026-11-28'].map(fecha => ({ fecha, profe_dni: 'a' })),
+    profe_feriados: [{ fecha: '2026-11-21', se_trabaja: 'no', borrado: '' }],
+    profe_ausencias: [{ profe_dni: 'a', desde: '2026-11-09', hasta: '2026-11-15', tipo: 'vacaciones' }],
+  };
+  assert.equal(L.lpSabadosAuto({ repo: { leer: h => hojas[h] || [] } }, 'a', '2026-11'), 2);
+});
