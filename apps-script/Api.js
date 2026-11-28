@@ -1141,7 +1141,7 @@ function respaldo(req, deps) {
   exigirClave(req, deps);
   const usuarios = deps.repo.leer('usuarios').map(u => { const c = Object.assign({}, u); delete c.pin_hash; delete c.sal; return c; });
   const out = { usuarios: usuarios };
-  ['tareas', 'registro', 'garantia', 'actividad', 'rendimiento', 'objetivos', 'cierres', 'profes', 'fichajes', 'reservas_qr', 'avisos', 'uso', 'beneficios', 'stock', 'ventas', 'ventas_largas', 'ocupacion', 'proximas', 'liquidacion', 'liq_qr', 'coberturas', 'consulta_estado', 'pases', 'aviso_condicion', 'aviso_dueno', 'liqpro', 'liqpro_mov', 'liqpro_sesiones', 'permisos', 'lectura'].forEach(h => { out[h] = deps.repo.leer(h); });
+  ['tareas', 'registro', 'garantia', 'actividad', 'rendimiento', 'objetivos', 'cierres', 'profes', 'fichajes', 'reservas_qr', 'avisos', 'uso', 'agenda', 'agenda_franjas', 'beneficios', 'stock', 'ventas', 'ventas_largas', 'ocupacion', 'proximas', 'liquidacion', 'liq_qr', 'coberturas', 'consulta_estado', 'pases', 'aviso_condicion', 'aviso_dueno', 'liqpro', 'liqpro_mov', 'liqpro_sesiones', 'permisos', 'lectura'].forEach(h => { out[h] = deps.repo.leer(h); });
   return out;
 }
 
@@ -1529,6 +1529,12 @@ const ACCIONES = {
   pedidos_mios: (r, d) => pedidosMios(r, d),
   pedidos_ver: (r, d) => pedidosVer(r, d),
   calendario_ver: (r, d) => calendarioVer(r, d),
+  agenda_dia: (r, d) => agendaDia(r, d),
+  agenda_socios: (r, d) => agendaSocios(r, d),
+  agenda_guardar: (r, d) => agendaGuardar(r, d),
+  agenda_estado: (r, d) => agendaEstado(r, d),
+  agenda_franjas_ver: (r, d) => agendaFranjasVer(r, d),
+  agenda_franjas_guardar: (r, d) => agendaFranjasGuardar(r, d),
   pedido_guardar: (r, d) => pedidoGuardar(r, d),
   pedido_borrar: (r, d) => pedidoBorrar(r, d),
   pedido_hecho: (r, d) => pedidoHecho(r, d),
@@ -1557,7 +1563,7 @@ const ACCIONES = {
 
 // Las pantallas que solo miran no esperan turno: un pedido trabado no las frena. Lista cerrada: lo que no esté acá espera.
 // Respaldo, bajadas y lo que usan los procesos de la PC siguen con turno porque necesitan los datos completos y sin cambios a mitad.
-const SOLO_LECTURA = ['mis_tareas', 'mi_dia', 'contacto_extra_socios', 'sede', 'tareas_de', 'rendimiento', 'cierres_ver', 'profes_ver', 'fichajes_ver', 'usuarios_listar', 'servidor_ver', 'ocupacion_ver', 'profe_tareas', 'profe_estado', 'profe_planilla', 'liquidacion_ver', 'liqpro_ver', 'coberturas_ver', 'ranking_ver', 'ranking_profes', 'resumen_semanal', 'consultas_ver', 'pase_ver', 'chat_personas', 'chat_listar', 'chat_ver', 'chat_novedad', 'pedidos_mios', 'pedidos_ver', 'espera_ver', 'espera_mensaje', 'espera_historial', 'espera_candidatos', 'espera_beneficios_de', 'espera_metricas', 'socio_pendiente_socios', 'lectura', 'calendario_ver'];
+const SOLO_LECTURA = ['mis_tareas', 'mi_dia', 'contacto_extra_socios', 'sede', 'tareas_de', 'rendimiento', 'cierres_ver', 'profes_ver', 'fichajes_ver', 'usuarios_listar', 'servidor_ver', 'ocupacion_ver', 'profe_tareas', 'profe_estado', 'profe_planilla', 'liquidacion_ver', 'liqpro_ver', 'coberturas_ver', 'ranking_ver', 'ranking_profes', 'resumen_semanal', 'consultas_ver', 'pase_ver', 'chat_personas', 'chat_listar', 'chat_ver', 'chat_novedad', 'pedidos_mios', 'pedidos_ver', 'espera_ver', 'espera_mensaje', 'espera_historial', 'espera_candidatos', 'espera_beneficios_de', 'espera_metricas', 'socio_pendiente_socios', 'lectura', 'calendario_ver', 'agenda_dia', 'agenda_socios', 'agenda_franjas_ver'];
 const ESPERA_TURNO_MS = 20000;
 const PEDIDO_LENTO_MS = 15000;
 

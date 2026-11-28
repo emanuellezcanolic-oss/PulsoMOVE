@@ -3191,6 +3191,88 @@ ${p.tareas_mes ? `<span class="uso-hoy">📋 Tareas del mes: ${p.tareas_mes.hech
 
   // ---------- Diálogos ----------
 
+  // Reservar una evaluación: tipo → hora libre de un profe → socio
+  function dialogoTurno(fecha) {
+    const d = dialogo(`<h3>Reservar evaluación</h3>
+      <form class="marca-form" style="border:0;padding:0">
+        <p class="bajada" style="margin:0">${esc(ddmm(fecha))} · Lago Puelo · turnos en punto</p>
+        <label class="campo">Qué es<select name="tipo"><option value="reevaluacion">Reevaluación (30 min · 1 punto)</option><option value="ingreso">Evaluación de ingreso (60 min · 2 puntos)</option></select></label>
+        <label class="campo">Profe y hora<select name="hueco" required><option value="">Cargando…</option></select><span class="aclara" data-cupo></span></label>
+        <label class="campo">Socio<input name="socio" list="ag-socios" autocomplete="off" required placeholder="Escribí el nombre"><span class="aclara">Si todavía no es socio, escribí nombre y apellido.</span></label>
+        <datalist id="ag-socios"></datalist>
+        <label class="campo">Nota <span class="opcional">(opcional)</span><input name="nota" maxlength="200"></label>
+        <div class="botones"><button class="boton verde">Reservar</button><button type="button" class="boton claro" data-cerrar>Cancelar</button></div>
+      </form>`);
+    const form = d.querySelector('form'), hueco = form.querySelector('[name=hueco]'), porNombre = {};
+    d.querySelector('[data-cerrar]').onclick = () => d.close();
+    const cargarHuecos = async () => {
+      hueco.innerHTML = '<option value="">Cargando…</option>';
+      try {
+        const r = await cliente.llamar('agenda_dia', { fecha: fecha, sede: 'puelo', tipo: form.querySelector('[name=tipo]').value });
+        const PREF = { p1: '★ preferida', p2: 'segunda opción', turno: 'en su turno' };
+        const grupos = r.profes.filter(p => p.horas.length).map(p => `<optgroup label="${esc(p.nombre)} · ${p.usados} de ${p.tope} puntos">${p.horas.map(h => `<option value="${esc(p.dni)}|${h.hora}">${h.hora} · ${esc(p.nombre.split(' ')[0])} · ${PREF[h.pref]}${h.evitar ? ' · ⚠️ mejor no' : ''}</option>`).join('')}</optgroup>`).join('');
+        hueco.innerHTML = grupos ? '<option value="">Elegí…</option>' + grupos : '<option value="">No hay horas libres</option>';
+        d.querySelector('[data-cupo]').textContent = grupos ? '' : (r.motivo || 'Los profes de ese día ya llegaron a su cupo. Probá otro día.');
+      } catch (e) { falla(e); }
+    };
+    form.querySelector('[name=tipo]').onchange = cargarHuecos;
+    cargarHuecos();
+    cliente.llamar('agenda_socios', {}).then(r => {
+      const rep = {};
+      r.socios.forEach(s => { rep[s.nombre] = (rep[s.nombre] || 0) + 1; });
+      const etiqueta = s => (rep[s.nombre] > 1 ? `${s.nombre} (n.° ${s.socio_id})` : s.nombre);
+      r.socios.forEach(s => { porNombre[etiqueta(s).toLowerCase()] = s; });
+      d.querySelector('#ag-socios').innerHTML = r.socios.map(s => `<option value="${esc(etiqueta(s))}">`).join('');
+    }).catch(falla);
+    form.onsubmit = async ev => {
+      ev.preventDefault();
+      const f = new FormData(form), escrito = String(f.get('socio')).trim(), s = porNombre[escrito.toLowerCase()];
+      const [profe, hora] = String(f.get('hueco')).split('|');
+      if (!s && escrito.split(/\s+/).length < 2) { aviso('Hace falta nombre y apellido.', true); return; }
+      const btn = form.querySelector('button.verde');
+      btn.disabled = true;
+      try {
+        await cliente.llamar('agenda_guardar', { fecha: fecha, sede: 'puelo', tipo: f.get('tipo'), hora: hora, profe_dni: profe, socio_id: s ? s.socio_id : '', socio_nombre: s ? s.nombre : escrito, nota: String(f.get('nota') || '') });
+        d.close();
+        aviso(`✅ Reservado: ${s ? s.nombre : escrito}, ${ddmm(fecha)} a las ${hora}.`);
+        cargarVista();
+      } catch (e) { btn.disabled = false; falla(e); cargarHuecos(); }
+    };
+  }
+
+  // La grilla de horas para evaluar: cada toque cambia la marca. El profe marca preferencias; coordinación, bloqueos.
+  async function dialogoFranjas(dni, origen) {
+    let r;
+    try { r = await cliente.llamar('agenda_franjas_ver', dni ? { profe_dni: dni } : {}); } catch (e) { falla(e); return; }
+    origen = origen || (r.coord && !tiene('profe') ? 'coord' : 'profe');
+    const CICLO = origen === 'coord' ? ['', 'no', 'evitar'] : ['', 'p1', 'p2', 'evitar'];
+    const TXT = { '': '', p1: '★ 1ª', p2: '2ª', evitar: '⚠️', no: '⛔' };
+    const marcas = {};
+    r.franjas.filter(f => f.origen === origen).forEach(f => { marcas[f.dia + '|' + f.hora] = f.tipo; });
+    const horas = [7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21].map(n => (n < 10 ? '0' : '') + n + ':00');
+    const celda = (dia, h) => { const v = marcas[dia + '|' + h] || ''; return `<button type="button" class="fr-celda fr-${v || 'libre'}" data-k="${dia}|${h}" aria-label="${['lunes', 'martes', 'miércoles', 'jueves', 'viernes'][dia]} ${h}">${TXT[v]}</button>`; };
+    const d = dialogo(`<h3>Horas para evaluar · Lago Puelo</h3>
+      ${r.coord ? `<label class="campo">Profe<select data-profe>${r.profes.map(p => `<option value="${esc(p.dni)}" ${p.dni === r.profe_dni ? 'selected' : ''}>${esc(p.nombre)}</option>`).join('')}</select></label>
+      <label class="campo">Qué estás marcando<select data-origen><option value="profe" ${origen === 'profe' ? 'selected' : ''}>Preferencias del profe</option><option value="coord" ${origen === 'coord' ? 'selected' : ''}>Bloqueos de coordinación</option></select></label>` : ''}
+      <p class="aclara">${origen === 'coord' ? 'Tocá cada hora: ⛔ no se puede agendar · ⚠️ mejor no.' : 'Tocá cada hora: ★ primera opción · 2ª segunda · ⚠️ mejor no. Si un día no marcás nada, se ofrece todo tu turno.'}</p>
+      <div class="fr-grilla"><span></span>${['lun', 'mar', 'mié', 'jue', 'vie'].map(x => `<b>${x}</b>`).join('')}${horas.map(h => `<b>${h.slice(0, 2)} h</b>${[0, 1, 2, 3, 4].map(dia => celda(dia, h)).join('')}`).join('')}</div>
+      <div class="botones"><button type="button" class="boton verde" data-guardar>Guardar</button><button type="button" class="boton claro" data-cerrar>Cancelar</button></div>`);
+    d.querySelector('[data-cerrar]').onclick = () => d.close();
+    d.querySelectorAll('.fr-celda').forEach(b => { b.onclick = () => {
+      const v = CICLO[(CICLO.indexOf(marcas[b.dataset.k] || '') + 1) % CICLO.length];
+      marcas[b.dataset.k] = v; b.className = 'fr-celda fr-' + (v || 'libre'); b.textContent = TXT[v];
+    }; });
+    const sp = d.querySelector('[data-profe]'), so = d.querySelector('[data-origen]');
+    if (sp) sp.onchange = () => { d.close(); dialogoFranjas(sp.value, origen); };
+    if (so) so.onchange = () => { d.close(); dialogoFranjas(r.profe_dni, so.value); };
+    d.querySelector('[data-guardar]').onclick = async ev => {
+      ev.target.disabled = true;
+      const franjas = Object.keys(marcas).filter(k => marcas[k]).map(k => ({ dia: Number(k.split('|')[0]), hora: k.split('|')[1], tipo: marcas[k] }));
+      try { await cliente.llamar('agenda_franjas_guardar', { profe_dni: r.profe_dni, sede: r.sede, origen: origen, franjas: franjas }); d.close(); aviso('✅ Horas guardadas.'); }
+      catch (e) { ev.target.disabled = false; falla(e); }
+    };
+  }
+
   function dialogo(html, alAbrir) {
     const d = document.createElement('dialog');
     d.innerHTML = `<div class="dentro">${html}</div>`;
@@ -4288,6 +4370,14 @@ ${p.tareas_mes ? `<span class="uso-hoy">📋 Tareas del mes: ${p.tareas_mes.hech
     const el = ev.target.closest('[data-accion]');
     if (!el || el.tagName === 'SELECT') return;
     const a = el.dataset.accion;
+    if (a === 'cal-reservar') { dialogoTurno(el.dataset.f); return; }
+    if (a === 'cal-franjas') { dialogoFranjas(); return; }
+    if (a === 'cal-estado') {
+      if (el.dataset.e === 'cancelado' && !confirm(`¿Cancelar la evaluación de ${el.dataset.socio}?`)) return;
+      el.disabled = true;
+      try { await cliente.llamar('agenda_estado', { id: el.dataset.id, estado: el.dataset.e }); cargarVista(); } catch (e) { el.disabled = false; falla(e); }
+      return;
+    }
     if (a === 'cal-sede') { E.calSede = el.dataset.s; render(); return; }
     if (a === 'cal-dia') { E.calDia = el.dataset.f; render(); const d = app.querySelector('.cal-detalle'); if (d) d.scrollIntoView({ behavior: 'smooth', block: 'nearest' }); return; }
     if (a === 'cal-mes') { E.calMes = el.dataset.m; E.calDia = ''; cargarVista(); return; }

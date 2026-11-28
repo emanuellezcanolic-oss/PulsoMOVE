@@ -53,6 +53,8 @@ function calendarioVer(req, deps) {
   const finMes = mes + '-31';
   return {
     mes: mes, hoy: hoy,
+    turnos: agendaDelMes(deps, mes, usuario), agenda_sedes: AGENDA_SEDES,
+    puede_reservar: agendaReserva(usuario), puede_franjas: agendaCoordina(usuario) || esProfe(usuario),
     dias: calendarioDias({
       mes: mes, usuarios: usuarios,
       horarios: deps.repo.leer('profe_horarios').map(filaHorario),

@@ -45,6 +45,7 @@
     { dni: '55555555', nombre: 'Profe Mañana (práctica)', sede: 'bolson', turno: 'manana', roles: 'profe' },
     { dni: '55555556', nombre: 'Profe Tarde (práctica)', sede: 'bolson', turno: 'tarde', roles: 'profe' },
     { dni: '55555557', nombre: 'Kine (práctica)', sede: 'bolson', turno: 'manana', roles: 'profe' },
+    { dni: '55555558', nombre: 'Profe Puelo (práctica)', sede: 'puelo', turno: 'manana', roles: 'profe' },
   ];
 
   function semilla() {
@@ -327,7 +328,7 @@
         lista: [venc(7, 'Iván Molina', 12, 5, 14), venc(8, 'Sara Luna', 33, 2, 8), venc(9, 'Raúl Vera', 18, 0, 6)] }),
     ];
     // Horarios y sábados de práctica: el sábado de esta semana le toca al profe de la mañana
-    const profe_horarios = [{ profe: 'Profe Mañana (práctica)', sede: 'bolson', dias: '0-4', desde: '07:00', hasta: '13:30' }, { profe: 'Profe Tarde (práctica)', sede: 'bolson', dias: '0-4', desde: '13:30', hasta: '20:00' }];
+    const profe_horarios = [{ profe: 'Profe Mañana (práctica)', sede: 'bolson', dias: '0-4', desde: '07:00', hasta: '13:30' }, { profe: 'Profe Tarde (práctica)', sede: 'bolson', dias: '0-4', desde: '13:30', hasta: '20:00' }, { profe: 'Profe Puelo (práctica)', sede: 'puelo', dias: '0-4', desde: '08:00', hasta: '15:00' }];
     const sab = n => { const d = new Date(hoy + 'T12:00:00Z'); d.setUTCDate(d.getUTCDate() + ((6 - d.getUTCDay() + 7) % 7) + 7 * n); return d.toISOString().slice(0, 10); };
     const profe_sabados = [-2, -1, 0, 1, 2, 3].map(n => ({ fecha: sab(n), sede: 'bolson', profe: n % 2 ? 'Profe Tarde (práctica)' : 'Profe Mañana (práctica)', profe_dni: n % 2 ? Z : B, nota: '', por_dni: 'planilla', en: '' }));
     const profe_feriados = [{ fecha: sab(2), nombre: 'Feriado de práctica', se_trabaja: '', borrado: '', por_dni: '', en: '' }];

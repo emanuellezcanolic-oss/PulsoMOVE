@@ -79,6 +79,9 @@ const COLUMNAS = {
   // Aviso al dueño (Avisos.js, 24/11/2026): un profe anotó un Plan extra de un socio que figura como de otro. estado: pendiente | si | no.
   // tarea_id = el Plan extra en profe_tareas. Se borran solas a los 180 días.
   aviso_dueno: ['id', 'tarea_id', 'socio_id', 'socio_nombre', 'sede', 'hizo_dni', 'hizo_nombre', 'dueno_dni', 'dueno_nombre', 'estado', 'ts', 'respondida_ts', 'respondio_dni'],
+  // Agenda de evaluaciones (Agenda.js): los turnos, y las horas que marca cada profe (origen 'profe') o bloquea coordinación ('coord')
+  agenda: ['id', 'tipo', 'sede', 'fecha', 'hora', 'profe', 'profe_dni', 'socio_id', 'socio_nombre', 'estado', 'nota', 'creado_por', 'creado', 'actualizado'],
+  agenda_franjas: ['profe_dni', 'sede', 'dia', 'hora', 'tipo', 'origen', 'por_dni', 'en'],
   chat_conv: ['id', 'tipo', 'nombre', 'miembros', 'creada_por', 'creada', 'ultimo_ts'],
   chat_msg: ['id', 'conv_id', 'ts', 'dni', 'nombre', 'texto', 'ref'],
   chat_lect: ['conv_id', 'dni', 'ts'],

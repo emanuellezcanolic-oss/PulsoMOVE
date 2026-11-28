@@ -3,7 +3,7 @@
   const CLAVE_SESION = 'pulso_sesion';
   const CLAVE_COLA = 'pulso_cola';
   // Errores que no se arreglan reintentando: la marca se descarta y se avisa
-  const DEFINITIVOS = ['prohibido', 'no_existe', 'datos_invalidos', 'ya_pedida', 'sin_recepcion', 'ya_avisado', 'ya_anotado', 'vac_solo_recepcion', 'vac_sin_vuelta', 'vac_vencida', 'vac_larga', 'aviso_sin_fecha', 'aviso_fecha_lejos', 'celular_invalido', 'espera_semana', 'espera_baja_pedida', 'espera_oferta_activa', 'espera_tope_beneficio', 'espera_sin_lugar', 'espera_nombre_incompleto', 'espera_sin_franja', 'pendiente_sin_profe', 'pendiente_sin_motivo', 'liquidada', 'periodo_abierto'];
+  const DEFINITIVOS = ['prohibido', 'no_existe', 'datos_invalidos', 'ya_pedida', 'sin_recepcion', 'ya_avisado', 'ya_anotado', 'sin_lugar', 'turno_repetido', 'vac_solo_recepcion', 'vac_sin_vuelta', 'vac_vencida', 'vac_larga', 'aviso_sin_fecha', 'aviso_fecha_lejos', 'celular_invalido', 'espera_semana', 'espera_baja_pedida', 'espera_oferta_activa', 'espera_tope_beneficio', 'espera_sin_lugar', 'espera_nombre_incompleto', 'espera_sin_franja', 'pendiente_sin_profe', 'pendiente_sin_motivo', 'liquidada', 'periodo_abierto'];
   // "ocupado" garantiza que el pedido no se hizo, así que repetirlo es seguro aunque guarde datos.
   const ESPERAS_OCUPADO = [3000, 8000];
   const LIMITE_MS = 90000;   // el servidor espera su turno hasta 20 s; más que esto ya es un pedido colgado
@@ -19,6 +19,8 @@
     no_existe: 'Esa tarea o ese pedido ya no está. Actualizá la pantalla.',
     ya_pedida: 'Recepción ya tiene para coordinarle una reevaluación a este socio.',
     ya_avisado: 'Recepción ya tiene el aviso para cambiarle el profesor a este socio.',
+    sin_lugar: 'Esa hora ya no está libre (o el profe llegó a su cupo del día). Elegí otra.',
+    turno_repetido: 'Ese socio ya tiene un turno de ese tipo agendado. Cancelalo primero si querés cambiarlo.',
     ya_anotado: 'Ese socio ya figura con el plan renovado hoy.',
     vac_solo_recepcion: 'Las vacaciones las carga recepción (o coordinación): pedíselo a recepción con la fecha de vuelta.',
     vac_sin_vuelta: 'Para cargar vacaciones hace falta la fecha de vuelta.',

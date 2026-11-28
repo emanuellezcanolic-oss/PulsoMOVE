@@ -10,6 +10,23 @@
   const otroMes = (m, n) => { const d = new Date(m + '-15T12:00:00Z'); d.setUTCMonth(d.getUTCMonth() + n); return d.toISOString().slice(0, 7); };
   const deSede = (sede, x) => !sede || x === sede;
 
+  const TIPOS = { ingreso: 'Ingreso', reevaluacion: 'Reevaluación' };
+  const ESTADOS = { agendado: '', hecho: '✅ hecho', no_vino: '🚫 no vino' };
+  const turnosDe = (C, sede, f) => (C.turnos || []).filter(t => t.fecha === f && deSede(sede, t.sede));
+
+  function bloqueTurnos(C, sede, f, esc) {
+    const lista = turnosDe(C, sede, f);
+    const habil = diaSemana(f) <= 4;
+    const enAgenda = !sede || (C.agenda_sedes || []).indexOf(sede) >= 0;
+    const reservar = C.puede_reservar && habil && enAgenda && f >= C.hoy;
+    if (!lista.length && !reservar) return '';
+    const boton = (t, e, txt) => `<button class="boton claro cal-mini" data-accion="cal-estado" data-id="${esc(t.id)}" data-e="${e}" data-socio="${esc(t.socio)}">${txt}</button>`;
+    const filas = lista.map(t => `<li class="cal-turno"><span><b>${esc(t.hora)}</b> ${esc(t.socio)} · ${TIPOS[t.tipo] || esc(t.tipo)} · ${esc(t.profe)}${t.nota ? ' · ' + esc(t.nota) : ''} ${ESTADOS[t.estado] || ''}</span>${
+      t.estado === 'agendado' && (C.puede_reservar || t.mio) ? `<span class="cal-acciones">${boton(t, 'hecho', 'Hecho')}${boton(t, 'no_vino', 'No vino')}${C.puede_reservar ? boton(t, 'cancelado', 'Cancelar') : ''}</span>` : ''}</li>`).join('');
+    return `<h3>Evaluaciones</h3>${filas ? `<ul class="cal-turnos">${filas}</ul>` : '<p class="aclara">Todavía no hay evaluaciones este día.</p>'}${
+      reservar ? `<button class="boton verde" data-accion="cal-reservar" data-f="${f}">➕ Reservar evaluación</button> <span class="aclara">Por ahora, en Lago Puelo.</span>` : ''}`;
+  }
+
   function delDia(d, sede) {
     return {
       feriado: d.feriado,
@@ -30,6 +47,7 @@
         ...d.ausentes.map(a => `<span class="cal-falta">${a.tipo === 'vacaciones' ? '🏖' : '📄'} ${esc(a.nombre.split(' ')[0])}</span>`),
         ...d.sabado.map(s => `<span class="cal-sab${s.ausente ? ' cal-falta' : ''}">${esc(s.nombre.split(' ')[0])}</span>`),
         d.coberturas.length ? `<span class="cal-cob">🔁 ${d.coberturas.length}</span>` : '',
+        turnosDe(C, sede, f).length ? `<span class="cal-eval">📋 ${turnosDe(C, sede, f).length}</span>` : '',
       ].join('');
       const clase = [f === C.hoy ? 'hoy' : '', diaSemana(f) > 4 ? 'finde' : ''].join(' ').trim();
       return `<button class="cal-dia ${clase}" data-accion="cal-dia" data-f="${f}" aria-pressed="${f === elegido}" aria-label="${Number(f.slice(8))} de ${nombreMes(C.mes)}"><b>${Number(f.slice(8))}</b>${marcas}</button>`;
@@ -55,7 +73,7 @@
       }${sab.map(x => `<li><b>${esc(x.nombre)}</b> · sábado${x.ausente ? ' <span class="amarillo">está ausente: hay que cambiarlo</span>' : ''}</li>`).join('')
       }${cob.map(x => `<li>🔁 <b>${esc(x.cubre)}</b>${x.titular ? ' cubre a ' + esc(x.titular) : ' hace horas extra'} · ${String(x.horas).replace('.', ',')} h</li>`).join('')}</ul>`);
     });
-    return `<section class="cal-detalle"><h2>${DIAS_LARGOS[diaSemana(f)]} ${Number(f.slice(8))} de ${MESES[Number(f.slice(5, 7)) - 1]}</h2>${bloques.join('') || '<p class="vacio">No hay nada cargado para este día.</p>'}</section>`;
+    return `<section class="cal-detalle"><h2>${DIAS_LARGOS[diaSemana(f)]} ${Number(f.slice(8))} de ${MESES[Number(f.slice(5, 7)) - 1]}</h2>${bloqueTurnos(C, sede, f, esc)}${bloques.join('') || '<p class="vacio">No hay nada cargado para este día.</p>'}</section>`;
   }
 
   // C = lo que devuelve calendario_ver; sede '' = todas
@@ -65,7 +83,8 @@
     const chips = [['', 'Todas las sedes']].concat(Object.keys(SEDES).map(k => [k, SEDES[k]]))
       .map(([k, n]) => `<button class="chip" data-accion="cal-sede" data-s="${k}" aria-pressed="${sede === k}">${n}</button>`).join('');
     return `<h1 class="titulo">Calendario</h1>
-      <p class="bajada">Quién está cada día, quién falta y quién lo cubre. Tocá un día para ver los horarios.</p>
+      <p class="bajada">Quién está cada día, quién falta y las evaluaciones. Tocá un día para ver el detalle y reservar.</p>
+      ${C.puede_franjas ? '<button class="boton claro" data-accion="cal-franjas">🕒 Horas para evaluar</button>' : ''}
       <div class="filtros">${chips}</div>
       <div class="cal-mes"><button class="boton claro" data-accion="cal-mes" data-m="${otroMes(C.mes, -1)}" aria-label="Mes anterior">‹</button><b>${nombreMes(C.mes)}</b><button class="boton claro" data-accion="cal-mes" data-m="${otroMes(C.mes, 1)}" aria-label="Mes siguiente">›</button></div>
       ${grilla(C, sede, f, esc)}
